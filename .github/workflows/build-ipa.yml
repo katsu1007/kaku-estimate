@@ -1,0 +1,35 @@
+name: Build KAKU IPA
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [kaku-ios.zip, .github/workflows/build-ipa.yml]
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unzip project
+        run: unzip -q kaku-ios.zip -d app
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Build
+        working-directory: app
+        run: |
+          xcodegen generate
+          xcodebuild -project Kaku.xcodeproj -target Kaku \
+            -configuration Release -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build
+          mkdir -p Payload
+          cp -R build/Release-iphoneos/Kaku.app Payload/
+          ls Payload/Kaku.app/web | head
+          zip -qr ../Kaku.ipa Payload
+      - name: Publish IPA to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete ipa-latest -y --cleanup-tag || true
+          gh release create ipa-latest Kaku.ipa --title "KAKU 最新版（iPhoneアプリ）" --notes "自動ビルド"
