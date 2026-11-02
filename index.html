@@ -111,6 +111,7 @@ function KAKU_doPrint(){
   Promise.all(imgs).then(()=>{setTimeout(()=>{try{window.print()}finally{setTimeout(()=>{document.title=t},800)}},60)});
 }
 async function KAKU_share(name,text,type){
+  text=String(text).replace(/^\ufeff+/,'\ufeff');
   const nat=KAKU_native('share');if(nat){nat.postMessage({name:name,text:text});return}
   const blob=new Blob([text],{type:(type||'text/plain')+';charset=utf-8'});
   try{const file=new File([blob],name,{type:blob.type});
@@ -346,7 +347,7 @@ function KAKU_snap(x,y,tol){const P=KAKU_plan;let best=null,bd=tol*0.8;P.ends.fo
 function downloadCSV(){if(!current)return;waitEngine().then(e=>{e.sync(current);return KAKU_share((current.name||'estimate')+'.csv','\ufeff'+e.csv(),'text/csv')}).catch(e=>toast(e.message))}
 </script>
 <script>
-if ("serviceWorker" in navigator) && /^https?:$/.test(location.protocol)) {
+if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("./sw.js").catch((error) => {
       console.warn("KAKU offline setup unavailable:", error);
