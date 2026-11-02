@@ -40,6 +40,8 @@
 .hrow1{display:flex;gap:8px}.hrow1 input{flex:1;font-weight:700}
 .hgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}@media(max-width:760px){.hgrid{grid-template-columns:1fr 1fr}}
 .workgrid label,.wform label,.hgrid label{min-width:0}.workgrid input,.wform input,.hgrid input,.hgrid select,.workgrid select{width:100%;min-width:0;box-sizing:border-box}
+.hwhere{font-size:9px;color:var(--muted);display:flex;flex-direction:column;gap:4px}.hwhere select{border:1px solid var(--line);border-radius:5px;padding:8px 6px;background:#fff;font-size:12px}.hroomnote{background:var(--orange2);border-radius:6px;padding:7px 9px;color:var(--ink)}
+.roomcut{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}.roomcut .mini{flex:1;min-width:180px}
 .hchk{display:flex;gap:16px;font-size:12px}.hchk input{width:auto;margin-right:4px}
 #planSvg.m-wall .pfaces polygon,#planSvg.m-cut .pfaces polygon,#planSvg.m-measure .pfaces polygon{cursor:crosshair}
 .pwall{fill:none;stroke:#d92d20;stroke-width:4px;vector-effect:non-scaling-stroke;stroke-linecap:round}
@@ -138,7 +140,7 @@ function KAKU_roomMini(r){const c=KAKU_roomCalc(r);return `床面積 <b>${c.floo
 const KAKU_WORK=[['dFloor','床の解体','demoF'],['dWall','壁の解体','demoW'],['dCeil','天井の解体','demoC'],['ceilBoard','天井の下地','board'],['wallBoard','壁の下地','board'],['floor','床の仕上げ','floor'],['wallFin','壁の仕上げ','wall'],['ceilFin','天井の仕上げ','ceil'],['haba','巾木','trim']];
 function KAKU_itemName(id){if(!id||!KAKU_cat)return'';for(const c of Object.values(KAKU_cat.cats)){const it=c.items.find(x=>x.id===id);if(it)return it.name}return''}
 function KAKU_workSummary(r){const on=KAKU_WORK.filter(([k])=>r[k]).map(([k,t])=>t.replace(/の(解体|下地|仕上げ)/,'$1'));return on.length?on.join('・'):'まだ何も選んでません（全部なし）'}
-function KAKU_sel_(i,k,cat,val){const c=KAKU_cat&&KAKU_cat.cats[cat];const opts=c?c.items.filter(x=>cat!=='trim'||/巾木/.test(x.name)):[];
+function KAKU_sel_(i,k,cat,val){const c=KAKU_cat&&KAKU_cat.cats[cat];const opts=c?c.items.filter(x=>(cat!=='trim'||/巾木/.test(x.name))&&(!/^demo/.test(cat)||x.u==='㎡')):[];
   return `<select onchange="roomChange(${i},'${k}',this.value)"><option value="">なし</option>${opts.map(o=>`<option value="${esc(o.id)}"${o.id===val?' selected':''}>${esc(o.name)}</option>`).join('')}</select>`}
 function renderRooms(){const box=document.getElementById('rooms');if(!current)return;
   const open=new Set([...box.querySelectorAll('details.roomwork[open]')].map(d=>d.dataset.i));
@@ -147,12 +149,13 @@ function renderRooms(){const box=document.getElementById('rooms');if(!current)re
     <div class="mini roommini" style="margin-top:9px">${KAKU_roomMini(r)}</div>
     <details class="roomwork" data-i="${i}"${open.has(String(i))?' open':''}><summary><b>工事内容</b><span class="worksum">${esc(KAKU_workSummary(r))}</span></summary>
       ${KAKU_cat?`<div class="workgrid"><label>天井高 m<input type="number" inputmode="decimal" step=".01" value="${r.ch||KAKU_cat.defH}" onchange="roomChange(${i},'ch',this.value)"></label><label>窓（か所）<input type="number" inputmode="numeric" min="0" value="${r.win??(r.plan?0:1)}" onchange="roomChange(${i},'win',this.value)"></label><label>ドア（か所）<input type="number" inputmode="numeric" min="0" value="${r.door??(r.plan?0:1)}" onchange="roomChange(${i},'door',this.value)"></label>
-        ${KAKU_WORK.map(([k,t,cat])=>`<label>${t}${KAKU_sel_(i,k,cat,r[k]||'')}</label>`).join('')}</div>`:'<p class="mini">計算エンジンの準備中…</p>'}
+        ${KAKU_WORK.map(([k,t,cat])=>`<label>${t}${KAKU_sel_(i,k,cat,r[k]||'')}</label>`).join('')}</div>
+        <div class="roomcut"><button class="btn light" onclick="KAKU_addHatsuRoom(${i})">＋ この部屋の土間にカッター</button><span class="mini">床の一部だけ壊す時は、ここから入れて幅と長さを直してな（床の解体は部屋全部の面積になります）</span></div>`:'<p class="mini">計算エンジンの準備中…</p>'}
     </details></div>`).join('')}
 function roomChange(i,k,v){const r=current&&current.rooms[i];if(!r)return;r[k]=k==='name'||KAKU_WORK.some(w=>w[0]===k)?v:(v===''?'':+v);
   const el=document.querySelectorAll('#rooms .room')[i];if(el){el.querySelector('.roomtop b').textContent=r.name;el.querySelector('.roommini').innerHTML=KAKU_roomMini(r);const s=el.querySelector('.worksum');if(s)s.textContent=KAKU_workSummary(r)}
-  save();if(engine)refreshEngineRows();if(k==='name'&&KAKU_plan)KAKU_renderEditor()}
-function removeRoom(i){current.rooms.splice(i,1);renderRooms();save();if(engine)refreshEngineRows();if(KAKU_plan)KAKU_renderEditor()}
+  save();if(engine)refreshEngineRows();if(k==='name'&&KAKU_plan)KAKU_renderEditor();if((current.hatsu||[]).some(h=>h.roomId))KAKU_renderHatsuOv()}
+function removeRoom(i){current.rooms.splice(i,1);renderRooms();save();if(engine)refreshEngineRows();if(KAKU_plan)KAKU_renderEditor();KAKU_renderHatsuOv()}
 
 /* ---------- 見積明細 ---------- */
 function refreshEngineRows(){if(!current||!engine)return;const a=document.activeElement,box=document.getElementById('items');let pos=null;if(a&&box.contains(a)){const td=a.closest('td'),tr=a.closest('tr');if(td&&tr)pos=[[...box.rows].indexOf(tr),td.cellIndex]}
@@ -258,17 +261,29 @@ function KAKU_removeWall(i){if(!current.walls||!current.walls[i])return;current.
 function KAKU_wallField(i,k,v){const w=current.walls[i];if(!w)return;w[k]=k==='item'?v:Math.max(0,+v||0);save();setTimeout(()=>{refreshEngineRows();KAKU_renderEditor()},0)}
 
 /* ---------- 土間のカッター・はつり ---------- */
-function KAKU_addHatsu(rect){current.hatsu=current.hatsu||[];const n=current.hatsu.length+1;
-  const h={id:'h'+Date.now(),name:'カッター'+n,wmm:0,l:0,t:100,d:300,cut:true,back:true};
+function KAKU_addHatsu(rect,extra){current.hatsu=current.hatsu||[];const n=current.hatsu.length+1;
+  const h=Object.assign({id:'h'+Date.now(),name:'カッター'+n,wmm:0,l:0,t:100,d:300,n:1,cut:true,back:true},extra||{});
   if(rect){const [x0,y0,x1,y1]=rect;h.rect=[Math.min(x0,x1),Math.min(y0,y1),Math.max(x0,x1),Math.max(y0,y1)];h.wmm=Math.round((h.rect[2]-h.rect[0])*1000);h.l=r2(h.rect[3]-h.rect[1])}
-  current.hatsu.push(h);save();if(engine)refreshEngineRows();KAKU_renderEditor();toast('カッターの範囲を追加しました')}
-function KAKU_hatsuField(i,k,v){const h=current.hatsu[i];if(!h)return;h[k]=k==='name'?v:(k==='cut'||k==='back')?!!v:Math.max(0,+v||0);
-  if(h.rect&&(k==='wmm'||k==='l')){h.rect[2]=h.rect[0]+(+h.wmm||0)/1000;h.rect[3]=h.rect[1]+(+h.l||0)}
-  save();setTimeout(()=>{refreshEngineRows();KAKU_renderEditor()},0)}
-function KAKU_removeHatsu(i){current.hatsu.splice(i,1);save();setTimeout(()=>{refreshEngineRows();KAKU_renderEditor()},0)}
-function KAKU_hatsuCalc(h){const w=(+h.wmm||0)/1000,l=+h.l||0,a=w*l;return{a,cut:h.cut!==false&&a>0?2*(w+l):0}}
-
-/* ---------- 図面の画面 ---------- */
+  current.hatsu.push(h);save();if(engine)refreshEngineRows();KAKU_renderEditor();KAKU_renderHatsuOv();toast('カッターの範囲を追加しました')}
+function KAKU_roomId(r){if(!r.id)r.id='r'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);return r.id}
+function KAKU_addHatsuRoom(i){const r=current.rooms[i];if(!r)return;KAKU_addHatsu(null,{name:(r.name||'部屋')+'の土間',roomId:KAKU_roomId(r)});
+  const el=document.getElementById('kakuHatsuOv');if(el)el.scrollIntoView({behavior:'smooth',block:'start'})}
+/* 部屋の床まるごとを、同じ面積・同じ周りの長さの四角に直す（カッターの長さ＝周り） */
+function KAKU_roomRect(r){const w=+r.w||0,h=+r.h||0;if(w>0&&h>0)return[w,h];const a=+r.area||0,p=+r.peri||0;if(!(a>0))return[0,0];
+  const s=p>0?p/2:2*Math.sqrt(a),dd=s*s-4*a;if(dd<0){const q=Math.sqrt(a);return[q,q]}const x=(s+Math.sqrt(dd))/2;return[x,a/x]}
+function KAKU_hatsuDims(h){if(h.roomId){const r=current.rooms.find(x=>x.id===h.roomId);if(r){const [w,l]=KAKU_roomRect(r);return{w,l,room:r}}return{w:0,l:0,room:null,lost:true}}return{w:(+h.wmm||0)/1000,l:+h.l||0}}
+function KAKU_hatsuField(i,k,v){const h=current.hatsu[i];if(!h)return;
+  if(k==='w'){h.wmm=Math.round(Math.max(0,+v||0)*1000)}
+  else if(k==='where'){if(v){const d=KAKU_hatsuDims(h);h.roomId=v}else{const d=KAKU_hatsuDims(h);h.wmm=Math.round(d.w*1000);h.l=r2(d.l);delete h.roomId}}
+  else h[k]=k==='name'?v:(k==='cut'||k==='back')?!!v:Math.max(k==='n'?1:0,+v||0);
+  if(h.rect&&(k==='w'||k==='l')){h.rect[2]=h.rect[0]+(+h.wmm||0)/1000;h.rect[3]=h.rect[1]+(+h.l||0)}
+  save();setTimeout(()=>{refreshEngineRows();KAKU_renderEditor();KAKU_renderHatsuOv()},0)}
+function KAKU_removeHatsu(i){current.hatsu.splice(i,1);save();setTimeout(()=>{refreshEngineRows();KAKU_renderEditor();KAKU_renderHatsuOv()},0)}
+function KAKU_hatsuCalc(h){const d=KAKU_hatsuDims(h),n=Math.max(1,Math.round(+h.n||1)),a=d.w*d.l*n;return{a,cut:h.cut!==false&&a>0?2*(d.w+d.l)*n:0}}
+/* エンジンに渡す形（部屋まるごとは寸法に直す、か所数は同じものを並べる） */
+function KAKU_hatsuForEngine(){return(current.hatsu||[]).flatMap(h=>{const d=KAKU_hatsuDims(h),n=Math.max(1,Math.min(50,Math.round(+h.n||1)));
+  return Array.from({length:n},(_,k)=>({id:h.id+'-'+k,name:h.name,wmm:Math.round(d.w*1000),l:r2(d.l),t:h.t,d:h.d,cut:h.cut!==false,back:h.back!==false}))})}
+function KAKU_renderHatsuOv(){const el=document.getElementById('kakuHatsuOv');if(el&&current)el.innerHTML=KAKU_hatsuListHTML(!!KAKU_plan,true)}
 function KAKU_setMode(m){KAKU_mode=m;KAKU_sel.cut=null;KAKU_sel.meas=[];KAKU_renderEditor()}
 function KAKU_view(){const P=KAKU_plan;let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;const ext=(x,y)=>{if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y};
   P.segs.forEach(s=>{ext(s[0],s[1]);ext(s[2],s[3])});P.faces.forEach(f=>f.poly.forEach(p=>ext(p[0],p[1])));
@@ -312,14 +327,21 @@ function KAKU_panelHTML(){
       ${list?`<div class="wlist"><span class="mini">解体する壁（赤い線）</span>${list}</div>`:''}<p class="mini">線は壁の片面1本ずつです。両面とも壊す時は両方の線を選んでな。廃材処分も自動で足します。</p></div>`}
   if(KAKU_mode==='cut')return `<div class="panel2"><p class="mini">四角を描くと、下の「土間のカッター・はつり」に入ります。厚みや掘る深さはそこで直せます。</p>${KAKU_sel.cut?'<div class="pickbtns"><button class="btn light" onclick="KAKU_sel.cut=null;KAKU_renderEditor()">やり直す</button></div>':''}</div>`;
   const [p,q]=KAKU_sel.meas;return `<div class="panel2"><div class="pickbar"><b>${q?'長さ '+Math.hypot(q[0]-p[0],q[1]-p[1]).toFixed(3)+' m（横 '+Math.abs(q[0]-p[0]).toFixed(3)+' ／ 縦 '+Math.abs(q[1]-p[1]).toFixed(3)+'）':p?'もう1か所タップ':'測りたい所の1か所目をタップ'}</b></div></div>`}
-function KAKU_hatsuListHTML(hasPlan){const H=current.hatsu||[];
-  const rows=H.map((h,i)=>{const c=KAKU_hatsuCalc(h);return `<div class="hrow"><div class="hrow1"><input value="${esc(h.name)}" onchange="KAKU_hatsuField(${i},'name',this.value)" aria-label="場所の名前"><button class="btn ghost" onclick="KAKU_removeHatsu(${i})" aria-label="削除">×</button></div>
-    <div class="hgrid"><label>幅 mm<input type="number" inputmode="numeric" value="${h.wmm||''}" onchange="KAKU_hatsuField(${i},'wmm',this.value)"></label><label>長さ m<input type="number" inputmode="decimal" step=".01" value="${h.l||''}" onchange="KAKU_hatsuField(${i},'l',this.value)"></label>
+function KAKU_hatsuListHTML(hasPlan,inOverview){const H=current.hatsu||[];
+  const rooms=current.rooms.map(r=>({id:KAKU_roomId(r),name:r.name||'部屋'}));
+  const rows=H.map((h,i)=>{const c=KAKU_hatsuCalc(h),d=KAKU_hatsuDims(h);
+    const where=`<label class="hwhere">範囲<select onchange="KAKU_hatsuField(${i},'where',this.value)"><option value="">幅と長さを入れる${h.rect?'（図面の四角）':''}</option>${rooms.map(r=>`<option value="${esc(r.id)}"${r.id===h.roomId?' selected':''}>${esc(r.name)}の床を全部</option>`).join('')}</select></label>`;
+    const dims=h.roomId?`<div class="mini hroomnote">${d.lost?'元の部屋が見つかりません。範囲を選び直してな':`「${esc(d.room.name)}」の床 ${(+d.room.area||d.w*d.l).toFixed(2)}㎡ ／ 周り ${(2*(d.w+d.l)).toFixed(2)}m を使います（部屋の大きさを変えたら一緒に変わります）`}</div>`
+      :`<label>幅 m<input type="number" inputmode="decimal" step=".01" value="${h.wmm?r2(h.wmm/1000):''}" onchange="KAKU_hatsuField(${i},'w',this.value)"></label><label>長さ m<input type="number" inputmode="decimal" step=".01" value="${h.l||''}" onchange="KAKU_hatsuField(${i},'l',this.value)"></label>`;
+    return `<div class="hrow"><div class="hrow1"><input value="${esc(h.name)}" onchange="KAKU_hatsuField(${i},'name',this.value)" aria-label="場所の名前"><button class="btn ghost" onclick="KAKU_removeHatsu(${i})" aria-label="削除">×</button></div>
+    ${where}
+    <div class="hgrid">${h.roomId?'':dims}<label>か所<input type="number" inputmode="numeric" min="1" step="1" value="${Math.max(1,+h.n||1)}" onchange="KAKU_hatsuField(${i},'n',this.value)"></label>
     <label>コンクリート厚 mm<select onchange="KAKU_hatsuField(${i},'t',this.value)">${KAKU_HT.map(t=>`<option${+h.t===t?' selected':''}>${t}</option>`).join('')}</select></label><label>掘る深さ mm<input type="number" inputmode="numeric" step="10" value="${h.d||0}" onchange="KAKU_hatsuField(${i},'d',this.value)"></label></div>
+    ${h.roomId?dims:''}
     <div class="hchk"><label><input type="checkbox" ${h.cut!==false?'checked':''} onchange="KAKU_hatsuField(${i},'cut',this.checked)"> カッターを入れる</label><label><input type="checkbox" ${h.back!==false?'checked':''} onchange="KAKU_hatsuField(${i},'back',this.checked)"> 埋め戻す</label></div>
-    <div class="mini">カッター <b>${c.cut.toFixed(2)} m</b>　はつり <b>${c.a.toFixed(2)} ㎡</b>${h.rect?'　（図面の青い四角）':''}</div></div>`}).join('');
-  return `<div class="hatsu"><div class="sectionhead" style="margin:16px 0 8px"><h3 style="margin:0">土間のカッター・はつり</h3><button class="btn light" onclick="KAKU_addHatsu(null)">＋ 手で追加</button></div>
-    ${rows||`<p class="mini">${hasPlan?'図面の「カッター」で四角を描くか、':''}「＋ 手で追加」で幅と長さを入れてな。カッター・はつり・ガラ処分・掘削・残土・埋め戻しを出します。</p>`}</div>`}
+    <div class="mini">カッター <b>${c.cut.toFixed(2)} m</b>　はつり <b>${c.a.toFixed(2)} ㎡</b>${h.rect&&!h.roomId?'　（図面の青い四角）':''}</div></div>`}).join('');
+  return `<div class="hatsu"><div class="sectionhead" style="margin:${inOverview?'0':'16px'} 0 8px"><h3 style="margin:0">土間のカッター・はつり</h3><button class="btn light" onclick="KAKU_addHatsu(null)">＋ 追加</button></div>
+    ${rows||`<p class="mini">床のコンクリートを一部だけ壊す所（トイレの配管など）を入れてな。幅と長さを入れるか、部屋の床を全部${hasPlan?'、図面の「カッター」で四角を描く':''}こともできます。カッター・はつり・ガラ処分・掘削・残土・埋め戻しを出します。</p>`}</div>`}
 function KAKU_selAllFaces(on){if(!KAKU_plan)return;KAKU_sel.faces=on?new Set(KAKU_plan.faces.map(f=>f.i)):new Set();KAKU_renderEditor()}
 function KAKU_pickZoom(k){const v=document.getElementById('pickView');const cx=(v.scrollLeft+v.clientWidth/2)/v.scrollWidth,cy=(v.scrollTop+v.clientHeight/2)/v.scrollHeight;KAKU_zoom=Math.min(8,Math.max(1,KAKU_zoom*k));KAKU_renderEditor();const v2=document.getElementById('pickView');v2.scrollLeft=cx*v2.scrollWidth-v2.clientWidth/2;v2.scrollTop=cy*v2.scrollHeight-v2.clientHeight/2}
 
@@ -341,11 +363,12 @@ function KAKU_snap(x,y,tol){const P=KAKU_plan;let best=null,bd=tol*0.8;P.ends.fo
   return[Math.round(x*100)/100,Math.round(y*100)/100]}
 
 /* ---------- 案件の切り替えに合わせる ---------- */
-(function(){const op=openProject;openProject=function(id){op(id);KAKU_loadPlan();KAKU_mode='room';KAKU_zoom=1;KAKU_renderEditor()};
+(function(){const op=openProject;openProject=function(id){op(id);KAKU_loadPlan();KAKU_mode='room';KAKU_zoom=1;KAKU_renderEditor();KAKU_renderHatsuOv()};
   const dp=deleteProject;deleteProject=function(){const id=current&&current.id;dp();if(id&&!data.some(p=>p.id===id))try{localStorage.removeItem(KAKU_planKey(id))}catch(e){}};
   const du=duplicateProject;duplicateProject=function(){const from=current&&current.id;du();try{const v=localStorage.getItem(KAKU_planKey(from));if(v&&current)localStorage.setItem(KAKU_planKey(current.id),v)}catch(e){}KAKU_loadPlan();KAKU_renderEditor()};
   const fp=document.getElementById('filePreview');if(fp&&!document.getElementById('kakuPlan'))fp.insertAdjacentHTML('afterend','<div id="kakuPlan"></div>');
-  waitEngine().then(e=>{engine=e;try{KAKU_cat=e.catalog()}catch(err){console.warn(err)}if(current){renderRooms();refreshEngineRows();KAKU_renderEditor()}}).catch(()=>{});
+  const rc=document.getElementById('rooms')&&document.getElementById('rooms').closest('.card');if(rc&&!document.getElementById('kakuHatsuOv'))rc.insertAdjacentHTML('afterend','<div class="card" id="kakuHatsuOv"></div>');
+  waitEngine().then(e=>{engine=e;if(!e.__kakuWrapped){const s0=e.sync;e.sync=function(p){return s0.call(this,Object.assign({},p,{hatsu:p===current?KAKU_hatsuForEngine():(p.hatsu||[])}))};e.__kakuWrapped=true}try{KAKU_cat=e.catalog()}catch(err){console.warn(err)}if(current){renderRooms();refreshEngineRows();KAKU_renderEditor()}}).catch(()=>{});
 })();
 
 /* ---------- 合計がいつも見えるように（画面の下についてくる） ---------- */
