@@ -48,6 +48,10 @@
 .pcutl{fill:#2b4f86;font-weight:800;text-anchor:middle;dominant-baseline:central;paint-order:stroke;stroke:#fff;stroke-width:.25em;pointer-events:none}
 .pmeas{stroke:#20221f;stroke-width:2px;stroke-dasharray:4 3;vector-effect:non-scaling-stroke}
 .pmeasl{fill:#20221f;font-weight:800;text-anchor:middle;paint-order:stroke;stroke:#fff;stroke-width:.3em;pointer-events:none}
+.ktotal{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom));z-index:7;display:none;align-items:baseline;gap:10px;flex-wrap:wrap;justify-content:center;border:0;background:var(--ink);color:#fff;border-radius:14px;padding:10px 18px;box-shadow:0 8px 24px #0004;width:min(560px,calc(100% - 24px));font:inherit;text-align:left}
+.ktotal.show{display:flex}.ktotal .kt-l{font-size:10px;letter-spacing:.08em;color:#ffffffb0}.ktotal>b{font-size:20px;letter-spacing:-.02em}.ktotal .kt-s{font-size:10px;color:#ffffffb0;margin-left:auto}.ktotal .kt-s b{color:#fff;font-weight:700}
+body.has-ktotal main{padding-bottom:150px}
+@media(max-width:760px){.ktotal{bottom:calc(62px + env(safe-area-inset-bottom));border-radius:12px;padding:9px 14px}.ktotal>b{font-size:18px}body.has-ktotal .toast{bottom:calc(132px + env(safe-area-inset-bottom))}body.has-ktotal main{padding-bottom:170px}}
 #printRoot{display:none}
 .pick{display:flex;flex-direction:column;gap:10px;width:100%}
 .pickbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.pickbar b{font-size:13px}.pickbar span{color:var(--muted);font-size:11px}
@@ -343,6 +347,19 @@ function KAKU_snap(x,y,tol){const P=KAKU_plan;let best=null,bd=tol*0.8;P.ends.fo
   const fp=document.getElementById('filePreview');if(fp&&!document.getElementById('kakuPlan'))fp.insertAdjacentHTML('afterend','<div id="kakuPlan"></div>');
   waitEngine().then(e=>{engine=e;try{KAKU_cat=e.catalog()}catch(err){console.warn(err)}if(current){renderRooms();refreshEngineRows();KAKU_renderEditor()}}).catch(()=>{});
 })();
+
+/* ---------- 合計がいつも見えるように（画面の下についてくる） ---------- */
+(function(){
+  if(document.getElementById('kakuTotal'))return;
+  document.body.insertAdjacentHTML('beforeend','<button type="button" class="ktotal" id="kakuTotal" onclick="KAKU_totalTap()" aria-label="合計（押すと見積明細へ）"><span class="kt-l">税込合計</span><b id="ktGrand">¥0</b><span class="kt-s">小計 <b id="ktSub">¥0</b>　<span id="ktCnt">0 項目</span></span></button>');
+  const ws=document.getElementById('workspace'),bar=document.getElementById('kakuTotal');
+  const sync=()=>{const g=document.getElementById('grand'),s=document.getElementById('subtotal'),c=document.getElementById('itemCount');
+    if(g)document.getElementById('ktGrand').textContent=g.textContent;if(s)document.getElementById('ktSub').textContent=s.textContent;if(c)document.getElementById('ktCnt').textContent=c.textContent;
+    const on=ws&&ws.classList.contains('show');bar.classList.toggle('show',!!on);document.body.classList.toggle('has-ktotal',!!on)};
+  const mo=new MutationObserver(sync);['grand','subtotal','itemCount'].forEach(id=>{const el=document.getElementById(id);if(el)mo.observe(el,{childList:true,characterData:true,subtree:true})});
+  if(ws)mo.observe(ws,{attributes:true,attributeFilter:['class']});sync();
+})();
+function KAKU_totalTap(){switchTab('items');const el=document.querySelector('.tabs');if(el)el.scrollIntoView({behavior:'smooth',block:'start'})}
 
 function downloadCSV(){if(!current)return;waitEngine().then(e=>{e.sync(current);return KAKU_share((current.name||'estimate')+'.csv','\ufeff'+e.csv(),'text/csv')}).catch(e=>toast(e.message))}
 </script>
