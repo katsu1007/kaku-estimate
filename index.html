@@ -76,6 +76,20 @@ body.sheet-open{overflow:hidden}
 tr.pick td:first-child{border-left:3px solid var(--green)}
 .topright .btn{white-space:nowrap}
 @media(max-width:760px){.menubtn{padding:9px 12px;font-size:15px}.menubtn .mtxt{display:none}.topright .btn:not(.menubtn){padding:9px 10px}.topright{gap:6px}}
+.ktstart{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px;text-align:left}.ktstart .mini{flex:1;min-width:160px}
+.ktview{background:#fff}
+#ktSvg image{pointer-events:none}
+.ktdone{fill:#3d6fb633;stroke:#2b4f86;stroke-width:2.5px;vector-effect:non-scaling-stroke}
+.ktcur{fill:none;stroke:#e65c32;stroke-width:3px;vector-effect:non-scaling-stroke;stroke-linejoin:round}
+.ktdot{fill:#e65c32;stroke:#fff;stroke-width:2px;vector-effect:non-scaling-stroke}.ktdot.first{fill:#fff;stroke:#e65c32;stroke-width:3px}.ktdot.sc,.ktdot.ms{fill:#20221f}
+.ktline{stroke:#20221f;stroke-width:3px;stroke-dasharray:6 4;vector-effect:non-scaling-stroke}
+.ktlab{fill:#2b4f86;font-weight:800;text-anchor:middle;dominant-baseline:central;paint-order:stroke;stroke:#fff;stroke-width:.3em;pointer-events:none}
+.ktpanel{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.ktpanel b{font-size:13px}.ktlen{font-size:10px;color:var(--muted);display:flex;flex-direction:column;gap:4px}.ktlen input{width:130px;border:1px solid var(--line);border-radius:6px;padding:9px;background:#fff}
+.ktname{flex:1;min-width:150px;border:1px solid var(--line);border-radius:6px;padding:10px;background:#fff}
+.ktchk{font-size:12px;display:flex;align-items:center;gap:4px;margin-left:auto}.ktchk input{width:auto}
+.ktlist{display:flex;flex-direction:column;gap:6px}.ktrow{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-left:5px solid #2b4f86;border-radius:8px;padding:8px 10px;background:var(--white)}.ktrow span{flex:1;font-size:11px;color:var(--muted)}
+.ktclosed{margin-top:12px}
+.btn:disabled{opacity:.45}
 #printRoot{display:none}
 .pick{display:flex;flex-direction:column;gap:10px;width:100%}
 .pickbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.pickbar b{font-size:13px}.pickbar span{color:var(--muted);font-size:11px}
@@ -471,6 +485,7 @@ const KAKU_HELP=[
  ['案件を作る',['「＋ 新規案件」で案件を作ります。案件名・お客様名・現場住所・担当者を入れると、見積書に載ります。','見積番号・有効期限・諸経費・利益率は「案件設定」タブで入れます。同じような現場は「この案件を複製」でコピーできます。','データはこの端末の中に自動で保存されます。']],
  ['部屋と工事内容',['「概要・数量」の「＋ 部屋追加」で部屋を足し、幅・奥行（m）を入れます。図面から作った部屋は面積と周りの長さが自動で入ります。','部屋の「工事内容」を開いて、床・壁・天井の解体、天井と壁の下地、床・壁・天井の仕上げ、巾木を選びます。新しい部屋は全部「なし」から始まるので、やる工事だけ選んでください。','天井高と窓・ドアの数を入れると、壁の面積から窓・ドアの分を引きます。']],
  ['図面を読む（JWW・DXF）',['「図面・資料」でファイルを選び、「図面から部屋を抽出」を押すと図面が出ます。','「部屋」：区画をタップして選び「1部屋にまとめる」。面積は合計、周りの長さは外まわりで出します。「1区画ずつ部屋に」もあります。','「壁の解体」：壊す壁の線をタップして、品目と高さを選び「解体に追加」。線は壁の片面1本ずつなので、両面壊す時は両側の線を選びます。廃材処分も自動で足します。','「カッター」：土間にカッターを入れる四角の角を2か所タップします。','「測る」：2か所タップすると長さが出ます。タップした所は線の端や線の上に吸い付きます。','図面は「＋」「－」か、指2本（ピンチ）で大きく・小さくできます。PDFの図面は文字だけ読んで、帖数から部屋を出します。']],
+ ['なぞって拾う（写真・画像・PDF）',['写真・画像・PDFを選ぶと「なぞって拾う」ボタンが出ます。','「縮尺を合わせる」：寸法線など長さが分かっている所の両端をタップして、その長さ（mm）を入れます。','「部屋をなぞる」：部屋の角を順番にタップし、最初の点をタップすると閉じます。名前を入れて「部屋にする」と「概要・数量」に入ります。「直角に合わせる」がオンだと縦・横にまっすぐ吸い付きます。','「1点戻す」で間違えた点だけ消せます。図面は「＋」「－」か指2本で大きくできます。']],
  ['土間のカッター・はつり',['床のコンクリートを一部だけ壊す所は「土間のカッター・はつり」に入れます。部屋の「工事内容」の「＋ この部屋の土間にカッター」からも入れられます。','範囲は「幅（mm）と長さ（m）」か「部屋の床を全部」から選びます。同じ大きさの所が何か所かある時は「か所」に数を入れます。','カッター（周りの長さ）、はつり（面積）、ガラ処分、掘削、残土処分、埋め戻しの行が出ます。カッターは厚みで単価が変わり、出張の基本料が1回分付きます。']],
  ['見積明細',['部屋や図面から出た行は、数量が自動で決まります。単価だけ直せます。','「メニュー」→「一覧から見積もりに追加」で、建具・電気・設備などの品目を入れられます。電線などは配線手間の行が自動で付きます。数量は見積明細で直します。','一覧にない物は「＋ 行を追加」で、名前・数量・単位・単価を自由に入れられます。','合計は画面の下にいつも出ています。押すと見積明細に移ります。']],
  ['材料・単価の一覧',['「メニュー」→「材料・単価の一覧」で、全部の品目と単価を見られます。種類のボタンか検索で探します。','単価を直すと、全部の案件で使う単価が変わります。空にすると「単価なし」になり、金額に入りません。「単価なしだけ」で入れ忘れを探せます。','「＋ 自分で品目を追加」で、自分の品目を作れます。']],
@@ -481,6 +496,93 @@ function KAKU_help(){KAKU_sheet('kakuHelp','使い方',`<div class="helplist">${
 (function(){const tr=document.querySelector('.topright');if(tr&&!document.getElementById('kakuMenuBtn'))tr.insertAdjacentHTML('beforeend','<button class="btn light menubtn" id="kakuMenuBtn" onclick="KAKU_menu()" aria-label="メニュー（材料・単価の一覧、使い方）">☰<span class="mtxt"> メニュー</span></button>');
   const as=document.querySelector('aside .aside-note');if(as&&!document.getElementById('kakuAsideMenu'))as.insertAdjacentHTML('beforebegin','<div class="nav" id="kakuAsideMenu" onclick="KAKU_openLib(\'view\')"><span class="ico">≡</span>材料・単価</div><div class="nav" onclick="KAKU_help()"><span class="ico">?</span>使い方</div>');
   const ib=[...document.querySelectorAll('#panel-items .sectionhead button')].find(b=>/行を追加/.test(b.textContent));if(ib&&!document.getElementById('kakuPickBtn')){ib.insertAdjacentHTML('beforebegin','<button class="btn light" id="kakuPickBtn" onclick="KAKU_openLib(\'pick\')">＋ 一覧から追加</button>');ib.parentElement.classList.add('itembtns')}})();
+
+/* =====================================================================
+   なぞって拾う：写真・画像・PDFを下に敷いて、縮尺を合わせ、部屋の角をタップして面積を出す
+   ===================================================================== */
+let KT=null,KAKU_lastFile=null;
+const KT_key=id=>'kaku-trace-'+id;
+function KT_save(){if(!current||!KT)return;try{localStorage.setItem(KT_key(current.id),JSON.stringify(KT))}catch(e){toast('画像が大きくて、この端末には保存できませんでした（開いている間は使えます）')}}
+function KT_load(){KT=null;if(!current)return;try{const v=JSON.parse(localStorage.getItem(KT_key(current.id))||'null');if(v&&v.img)KT=Object.assign({cur:[],sc:[],meas:[],zoom:1},v,{cur:[],sc:[],meas:[]})}catch(e){}}
+function KT_loadImg(src){return new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=()=>rej(new Error('画像を開けませんでした'));im.src=src})}
+async function KT_fromFile(f){const ext=(f.name.split('.').pop()||'').toLowerCase();const MAX=2200;let cv=document.createElement('canvas');
+  if(f.type==='application/pdf'||ext==='pdf'){await waitEngine();const fw=document.getElementById('engineFrame').contentWindow;const doc=await fw.pdfLoad(await f.arrayBuffer());const pg=await doc.getPage(1);
+    const v1=pg.getViewport({scale:1}),sc=Math.min(3,MAX/Math.max(v1.width,v1.height));const vp=pg.getViewport({scale:sc});cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);
+    const cx=cv.getContext('2d');cx.fillStyle='#fff';cx.fillRect(0,0,cv.width,cv.height);await pg.render({canvasContext:cx,viewport:vp}).promise}
+  else{const u=URL.createObjectURL(f);try{const im=await KT_loadImg(u);const k=Math.min(1,MAX/Math.max(im.naturalWidth,im.naturalHeight));cv.width=Math.round(im.naturalWidth*k);cv.height=Math.round(im.naturalHeight*k);
+    const cx=cv.getContext('2d');cx.fillStyle='#fff';cx.fillRect(0,0,cv.width,cv.height);cx.drawImage(im,0,0,cv.width,cv.height)}finally{URL.revokeObjectURL(u)}}
+  return{img:cv.toDataURL('image/jpeg',0.82),W:cv.width,H:cv.height}}
+async function KAKU_traceStart(){const f=KAKU_lastFile;if(!f||!current){toast('先に写真・画像・PDFを選んでください');return}
+  if(KT&&KT.polys&&KT.polys.length&&!confirm('前になぞった画像と入れ替えますか？（作った部屋はそのまま残ります）'))return;
+  toast('画像を準備しています…');try{const r=await KT_fromFile(f);KT={img:r.img,W:r.W,H:r.H,scale:null,polys:[],cur:[],sc:[],meas:[],zoom:1,mode:'scale',ortho:true,name:f.name};KT_save();KT_render();
+    const el=document.getElementById('kakuTrace');if(el)el.scrollIntoView({behavior:'smooth',block:'start'})}catch(e){toast('読み込めませんでした：'+e.message)}}
+function KT_mode(m){if(!KT)return;if(m==='draw'&&!KT.scale){toast('先に「縮尺を合わせる」をしてください');m='scale'}KT.mode=m;KT.sc=[];KT.meas=[];KT_render()}
+function KT_len(a,b){return Math.hypot(b[0]-a[0],b[1]-a[1])}
+function KT_area(p){let s=0;for(let i=0;i<p.length;i++){const a=p[i],b=p[(i+1)%p.length];s+=a[0]*b[1]-b[0]*a[1]}return Math.abs(s)/2}
+function KT_peri(p){let s=0;for(let i=0;i<p.length;i++)s+=KT_len(p[i],p[(i+1)%p.length]);return s}
+function KT_m(px){return KT.scale?px*KT.scale:0}
+function KT_render(){const box=document.getElementById('kakuTrace');if(!box)return;if(!KT||!current){box.innerHTML='';return}
+  const r=v=>Math.round(v*10)/10,z=KT.zoom||1;
+  const v0=document.getElementById('ktView'),sl=v0?v0.scrollLeft:0,st=v0?v0.scrollTop:0;
+  const poly=(p,cls)=>`<polygon class="${cls}" points="${p.map(q=>r(q[0])+','+r(q[1])).join(' ')}"/>`;
+  const done=(KT.polys||[]).map((p,k)=>{let cx=0,cy=0;p.pts.forEach(q=>{cx+=q[0];cy+=q[1]});cx/=p.pts.length;cy/=p.pts.length;
+    return poly(p.pts,'ktdone')+`<text class="ktlab" x="${r(cx)}" y="${r(cy)}" style="font-size:var(--ktf)">${esc(p.name)} ${KT_m(0)!==0||KT.scale?(KT_area(p.pts)*KT.scale*KT.scale).toFixed(1)+'㎡':''}</text>`}).join('');
+  const cur=KT.cur.length?`<polyline class="ktcur" points="${KT.cur.map(q=>r(q[0])+','+r(q[1])).join(' ')}"/>`:'';
+  const dots=KT.cur.map((q,k)=>`<circle class="ktdot${k===0?' first':''}" cx="${r(q[0])}" cy="${r(q[1])}" r="var(--ktr)"/>`).join('');
+  const two=(arr,cls)=>arr.map(q=>`<circle class="ktdot ${cls}" cx="${r(q[0])}" cy="${r(q[1])}"/>`).join('')+(arr.length===2?`<line class="ktline ${cls}" x1="${r(arr[0][0])}" y1="${r(arr[0][1])}" x2="${r(arr[1][0])}" y2="${r(arr[1][1])}"/>`:'');
+  const M=[['scale','縮尺を合わせる'],['draw','部屋をなぞる'],['measure','測る']];
+  const hint={scale:'長さが分かっている所（寸法線など）の両端を2か所タップして、その長さを入れてください。',draw:'部屋の角を順番にタップしてください。最初の点（大きい丸）をタップすると閉じます。「直角に合わせる」がオンだと、縦・横にまっすぐ吸い付きます。',measure:'2か所タップすると、その間の長さが出ます。'}[KT.mode];
+  let panel='';
+  if(KT.mode==='scale'){const d=KT.sc.length===2?KT_len(KT.sc[0],KT.sc[1]):0;
+    panel=`<div class="ktpanel">${KT.sc.length<2?`<b>${KT.sc.length?'もう1か所タップしてください':'1か所目をタップしてください'}</b>`:`<label class="ktlen">この長さ（mm）<input id="ktLen" type="number" inputmode="decimal" placeholder="例：2560"></label><button class="btn orange" onclick="KT_setScale()">決定</button>`}
+      <button class="btn light" onclick="KT.sc=[];KT_render()">やり直す</button>${KT.scale?`<span class="mini">今の縮尺：1ピクセル ＝ ${(KT.scale*1000).toFixed(2)} mm</span>`:''}</div>`}
+  else if(KT.mode==='draw'){const n=KT.cur.length,a=n>=3?KT_area(KT.cur)*KT.scale*KT.scale:0,p=n>=2?KT_peri(KT.cur)*KT.scale:0;
+    panel=`<div class="ktpanel"><b>${n?n+'点　'+(n>=3?'面積 '+a.toFixed(2)+'㎡　':'')+'周り '+p.toFixed(2)+'m':'1つ目の角をタップしてください'}</b>
+      <label class="ktchk"><input type="checkbox" ${KT.ortho?'checked':''} onchange="KT.ortho=this.checked;KT_save()"> 直角に合わせる</label></div>
+      <div class="ktpanel"><input id="ktName" class="ktname" placeholder="部屋の名前（例：洋室）" value=""><button class="btn orange" onclick="KT_finish()" ${n<3?'disabled':''}>部屋にする</button><button class="btn light" onclick="KT.cur.pop();KT_render()" ${n?'':'disabled'}>1点戻す</button><button class="btn light" onclick="KT.cur=[];KT_render()" ${n?'':'disabled'}>やり直す</button></div>`}
+  else{const d=KT.meas.length===2?KT_len(KT.meas[0],KT.meas[1]):0;panel=`<div class="ktpanel"><b>${KT.meas.length===2?(KT.scale?'長さ '+Math.round(KT_m(d)*1000).toLocaleString()+' mm':'先に縮尺を合わせてください'):KT.meas.length?'もう1か所タップしてください':'1か所目をタップしてください'}</b></div>`}
+  const list=(KT.polys||[]).map((p,k)=>`<div class="ktrow"><b>${esc(p.name)}</b><span>${(KT_area(p.pts)*KT.scale*KT.scale).toFixed(2)}㎡ ／ 周り ${(KT_peri(p.pts)*KT.scale).toFixed(2)}m</span><button class="btn ghost" aria-label="消す" onclick="KT_remove(${k})">×</button></div>`).join('');
+  box.innerHTML=`<div class="pick kt"><div class="sectionhead" style="margin:16px 0 4px"><h3 style="margin:0">なぞって拾う</h3><button class="btn ghost" onclick="KT_close()">閉じる</button></div>
+    <div class="modes">${M.map(([k,t])=>`<button class="mode${KT.mode===k?' on':''}" onclick="KT_mode('${k}')">${t}</button>`).join('')}</div>
+    <div class="hintrow"><p class="mini pickhint">${hint}</p><div class="pickzoom"><button class="btn light" onclick="KT_zoom(1/1.4)" aria-label="小さく" ${z<=1?'disabled':''}>－</button><button class="btn light" onclick="KT_zoom(1.4)" aria-label="大きく" ${z>=8?'disabled':''}>＋</button></div></div>
+    <div class="pickwrap"><div class="pickview ktview" id="ktView" style="max-height:${Math.round(52*Math.min(z,1.7))}vh"><svg id="ktSvg" viewBox="0 0 ${KT.W} ${KT.H}" style="width:${100*z}%"><image href="${KT.img}" x="0" y="0" width="${KT.W}" height="${KT.H}"/>${done}${cur}${dots}${KT.mode==='scale'?two(KT.sc,'sc'):''}${KT.mode==='measure'?two(KT.meas,'ms'):''}</svg></div></div>
+    ${panel}${list?`<div class="ktlist"><span class="mini">なぞった部屋（「概要・数量」の部屋にも入っています）</span>${list}</div>`:''}</div>`;
+  const v=document.getElementById('ktView');v.scrollLeft=sl;v.scrollTop=st;KT_sizes();
+  document.getElementById('ktSvg').addEventListener('click',KT_tap);KT_pinch(v)}
+/* 点や線の大きさを、画面の上で一定（指で押しやすい大きさ）にする */
+function KT_sizes(){const svg=document.getElementById('ktSvg');if(!svg||!KT)return;const w=svg.getBoundingClientRect().width||1,u=KT.W/w;svg.style.setProperty('--ktr',(9*u).toFixed(2)+'px');svg.style.setProperty('--ktf',(13*u).toFixed(2)+'px');
+  svg.querySelectorAll('circle.ktdot').forEach(c=>c.setAttribute('r',(c.classList.contains('first')&&KT.cur.length>=3?14:9)*u));svg.querySelectorAll('text.ktlab').forEach(t=>t.setAttribute('font-size',13*u))}
+function KT_zoom(k){const v=document.getElementById('ktView');const cx=(v.scrollLeft+v.clientWidth/2)/v.scrollWidth,cy=(v.scrollTop+v.clientHeight/2)/v.scrollHeight;KT.zoom=Math.min(8,Math.max(1,(KT.zoom||1)*k));KT_render();const v2=document.getElementById('ktView');v2.scrollLeft=cx*v2.scrollWidth-v2.clientWidth/2;v2.scrollTop=cy*v2.scrollHeight-v2.clientHeight/2}
+let KT_pinchUntil=0;
+function KT_pinch(v){const svg=v.querySelector('svg');let P=null;const mid=t=>[(t[0].clientX+t[1].clientX)/2,(t[0].clientY+t[1].clientY)/2],dist=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
+  v.addEventListener('touchstart',e=>{if(e.touches.length!==2)return;e.preventDefault();const r=v.getBoundingClientRect(),m=mid(e.touches);P={d:Math.max(10,dist(e.touches)),z:KT.zoom||1,z1:KT.zoom||1,fx:(v.scrollLeft+m[0]-r.left)/v.scrollWidth,fy:(v.scrollTop+m[1]-r.top)/v.scrollHeight}},{passive:false});
+  v.addEventListener('touchmove',e=>{if(!P||e.touches.length!==2)return;e.preventDefault();const r=v.getBoundingClientRect(),m=mid(e.touches);const z=Math.min(8,Math.max(1,P.z*dist(e.touches)/P.d));P.z1=z;svg.style.width=(100*z)+'%';v.style.maxHeight=Math.round(52*Math.min(z,1.7))+'vh';
+    v.scrollLeft=P.fx*v.scrollWidth-(m[0]-r.left);v.scrollTop=P.fy*v.scrollHeight-(m[1]-r.top)},{passive:false});
+  const end=e=>{if(!P||e.touches.length>=2)return;KT.zoom=Math.round(P.z1*100)/100;P=null;KT_pinchUntil=Date.now()+450;KT_sizes();const zb=document.querySelectorAll('#kakuTrace .pickzoom button');if(zb.length===2){zb[0].disabled=KT.zoom<=1;zb[1].disabled=KT.zoom>=8}KT_save()};
+  v.addEventListener('touchend',end);v.addEventListener('touchcancel',end);['gesturestart','gesturechange'].forEach(n=>v.addEventListener(n,e=>e.preventDefault(),{passive:false}))}
+function KT_tap(ev){if(Date.now()<KT_pinchUntil||!KT)return;const svg=ev.currentTarget,m=svg.getScreenCTM();if(!m)return;const q=new DOMPoint(ev.clientX,ev.clientY).matrixTransform(m.inverse());let p=[q.x,q.y];const u=1/Math.abs(m.a);
+  if(KT.mode==='scale'){KT.sc=KT.sc.length>=2?[p]:[...KT.sc,p];KT_render();if(KT.sc.length===2){const i=document.getElementById('ktLen');if(i)i.focus()}return}
+  if(KT.mode==='measure'){KT.meas=KT.meas.length>=2?[p]:[...KT.meas,p];KT_render();return}
+  const c=KT.cur;
+  if(c.length>=3&&KT_len(p,c[0])<22*u){KT_finish();return}
+  if(c.length&&KT.ortho){const a=c[c.length-1],dx=p[0]-a[0],dy=p[1]-a[1];if(Math.abs(dx)<Math.abs(dy)*0.18)p=[a[0],p[1]];else if(Math.abs(dy)<Math.abs(dx)*0.18)p=[p[0],a[1]]}
+  if(c.length&&KT_len(p,c[c.length-1])<4*u)return;
+  c.push(p);KT_render()}
+function KT_setScale(){const mm=+document.getElementById('ktLen').value;if(!(mm>0)||KT.sc.length!==2){toast('長さ（mm）を入れてください');return}
+  const px=KT_len(KT.sc[0],KT.sc[1]);if(px<5){toast('2か所が近すぎます');return}KT.scale=(mm/1000)/px;KT.sc=[];KT.mode='draw';KT_save();KT_render();toast('縮尺を合わせました。部屋の角をタップしてください')}
+function KT_finish(){if(!KT||KT.cur.length<3)return;const pts=KT.cur.slice(),nm=(document.getElementById('ktName')||{}).value||'';const name=nm.trim()||('なぞった部屋'+((KT.polys||[]).length+1));
+  const area=r2(KT_area(pts)*KT.scale*KT.scale),peri=r2(KT_peri(pts)*KT.scale);
+  if(current.rooms.length===1&&KAKU_isDefaultRoom(current.rooms[0]))current.rooms=[];
+  const room={name,w:0,h:0,qty:1,area,peri,traced:true,ch:KAKU_cat?KAKU_cat.defH:2.4,win:0,door:0};KAKU_roomId(room);current.rooms.push(room);
+  KT.polys=KT.polys||[];KT.polys.push({name,pts,roomId:room.id});KT.cur=[];KT_save();renderRooms();save();if(engine)refreshEngineRows();KT_render();toast('「'+name+'」を部屋にしました（'+area.toFixed(2)+'㎡）')}
+function KT_remove(k){const p=KT.polys[k];if(!p)return;if(!confirm('「'+p.name+'」を消しますか？（「概要・数量」の部屋も消えます）'))return;KT.polys.splice(k,1);current.rooms=current.rooms.filter(r=>r.id!==p.roomId);KT_save();renderRooms();save();if(engine)refreshEngineRows();KT_render()}
+function KT_close(){KT_render();const b=document.getElementById('kakuTrace');if(b)b.innerHTML=`<div class="ktclosed"><button class="btn light" onclick="KT_render()">なぞって拾うを開く</button></div>`}
+(function(){const lf=loadFile;loadFile=function(inp){const f=inp.files&&inp.files[0];KAKU_lastFile=f||null;lf(inp);if(!f)return;const ext=(f.name.split('.').pop()||'').toLowerCase();
+    if(f.type.startsWith('image/')||ext==='pdf'||f.type==='application/pdf'){const box=document.getElementById('filePreview');box.insertAdjacentHTML('beforeend',`<div class="ktstart"><button class="btn orange" onclick="KAKU_traceStart()">この${ext==='pdf'?'PDF':'画像'}をなぞって拾う</button><span class="mini">縮尺を合わせて、部屋の角をタップすると面積が出ます</span></div>`)}};
+  const pl=document.getElementById('kakuPlan');if(pl&&!document.getElementById('kakuTrace'))pl.insertAdjacentHTML('afterend','<div id="kakuTrace"></div>');
+  const op=openProject;openProject=function(id){op(id);KT_load();KT_render()};
+  const dp=deleteProject;deleteProject=function(){const id=current&&current.id;dp();if(id&&!data.some(p=>p.id===id))try{localStorage.removeItem(KT_key(id))}catch(e){}};
+  window.addEventListener('resize',()=>{if(KT)KT_sizes()})})();
 
 function downloadCSV(){if(!current)return;waitEngine().then(e=>{e.sync(current);return KAKU_share((current.name||'estimate')+'.csv','\ufeff'+e.csv(),'text/csv')}).catch(e=>toast(e.message))}
 </script>
