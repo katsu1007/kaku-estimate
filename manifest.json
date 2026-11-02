@@ -1,0 +1,28 @@
+{
+  "id": "./",
+  "name": "KAKU | 建築見積ワークスペース",
+  "short_name": "KAKU",
+  "description": "建築・リフォーム向け見積もりワークスペース",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f4f1eb",
+  "theme_color": "#f4f1eb",
+  "lang": "ja",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
