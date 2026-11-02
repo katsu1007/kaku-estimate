@@ -58,7 +58,7 @@ body.has-ktotal main{padding-bottom:150px}
 .pick{display:flex;flex-direction:column;gap:10px;width:100%}
 .pickbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.pickbar b{font-size:13px}.pickbar span{color:var(--muted);font-size:11px}
 .pickwrap{position:relative}.hintrow{display:flex;gap:10px;align-items:center}.hintrow .pickhint{flex:1}.pickzoom{display:flex;gap:6px;flex:none}.pickzoom .btn{padding:8px 14px;font-size:17px;line-height:1;box-shadow:0 2px 8px #0002}.pickzoom .btn:disabled{opacity:.4}
-.pickview{overflow:auto;-webkit-overflow-scrolling:touch;background:#fff;border:1px solid var(--line);border-radius:8px;touch-action:pan-x pan-y}
+.pickview{overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;background:#fff;border:1px solid var(--line);border-radius:8px;touch-action:pan-x pan-y}
 .pickview svg{display:block;min-width:100%}
 .plines{fill:none;stroke:#3b3d37;stroke-width:1;vector-effect:non-scaling-stroke}
 .pfaces polygon{fill:#e65c3214;stroke:none;cursor:pointer}.pfaces polygon.on{fill:#e65c3270}
@@ -276,7 +276,7 @@ function KAKU_hatsuField(i,k,v){const h=current.hatsu[i];if(!h)return;
   if(k==='w'){h.wmm=Math.round(Math.max(0,+v||0)*1000)}
   else if(k==='where'){if(v){const d=KAKU_hatsuDims(h);h.roomId=v}else{const d=KAKU_hatsuDims(h);h.wmm=Math.round(d.w*1000);h.l=r2(d.l);delete h.roomId}}
   else h[k]=k==='name'?v:(k==='cut'||k==='back')?!!v:Math.max(k==='n'?1:0,+v||0);
-  if(h.rect&&(k==='w'||k==='l')){h.rect[2]=h.rect[0]+(+h.wmm||0)/1000;h.rect[3]=h.rect[1]+(+h.l||0)}
+  if(h.rect&&(k==='w'||k==='wmm'||k==='l')){h.rect[2]=h.rect[0]+(+h.wmm||0)/1000;h.rect[3]=h.rect[1]+(+h.l||0)}
   save();setTimeout(()=>{refreshEngineRows();KAKU_renderEditor();KAKU_renderHatsuOv()},0)}
 function KAKU_removeHatsu(i){current.hatsu.splice(i,1);save();setTimeout(()=>{refreshEngineRows();KAKU_renderEditor();KAKU_renderHatsuOv()},0)}
 function KAKU_hatsuCalc(h){const d=KAKU_hatsuDims(h),n=Math.max(1,Math.round(+h.n||1)),a=d.w*d.l*n;return{a,cut:h.cut!==false&&a>0?2*(d.w+d.l)*n:0}}
@@ -312,7 +312,7 @@ function KAKU_renderEditor(){const box=document.getElementById('kakuPlan');if(!b
     <div class="pickwrap"><div class="pickview" id="pickView" style="max-height:${Math.round(52*Math.min(z,1.7))}vh"><svg id="planSvg" class="m-${KAKU_mode}" viewBox="${r(V.x0-V.pad)} ${r(-(V.y1+V.pad))} ${r(V.w+2*V.pad)} ${r(V.h+2*V.pad)}" style="width:${100*z}%"><g class="pfaces">${polys}</g><path class="plines" d="${d}"/>${walls}${wsel}${cuts}<g class="plabels">${labels}</g>${tmp}</svg></div></div>
     ${KAKU_panelHTML()}</div>${KAKU_hatsuListHTML(true)}`;
   const v=document.getElementById('pickView');v.scrollLeft=sl;v.scrollTop=stp;
-  document.getElementById('planSvg').addEventListener('click',KAKU_tap)}
+  document.getElementById('planSvg').addEventListener('click',KAKU_tap);KAKU_pinchSetup(v)}
 function KAKU_panelHTML(){
   if(KAKU_mode==='room'){const ids=[...KAKU_sel.faces],a=ids.reduce((s,i)=>s+(KAKU_faceById(i)||{area:0}).area,0);
     const rooms=current.rooms.map((rm,k)=>rm.plan?`<button class="chip" style="--rc:${KAKU_COLORS[(rm.color||0)%KAKU_COLORS.length]}" onclick="KAKU_pickRoom(${k})">${esc(rm.name)}<small>${(rm.faces||[]).length}区画 ${r2(rm.area).toFixed(2)}㎡</small></button>`:'').join('');
@@ -332,7 +332,7 @@ function KAKU_hatsuListHTML(hasPlan,inOverview){const H=current.hatsu||[];
   const rows=H.map((h,i)=>{const c=KAKU_hatsuCalc(h),d=KAKU_hatsuDims(h);
     const where=`<label class="hwhere">範囲<select onchange="KAKU_hatsuField(${i},'where',this.value)"><option value="">幅と長さを入れる${h.rect?'（図面の四角）':''}</option>${rooms.map(r=>`<option value="${esc(r.id)}"${r.id===h.roomId?' selected':''}>${esc(r.name)}の床を全部</option>`).join('')}</select></label>`;
     const dims=h.roomId?`<div class="mini hroomnote">${d.lost?'元の部屋が見つかりません。範囲を選び直してください':`「${esc(d.room.name)}」の床 ${(+d.room.area||d.w*d.l).toFixed(2)}㎡ ／ 周り ${(2*(d.w+d.l)).toFixed(2)}m を使います（部屋の大きさを変えたら一緒に変わります）`}</div>`
-      :`<label>幅 m<input type="number" inputmode="decimal" step=".01" value="${h.wmm?r2(h.wmm/1000):''}" onchange="KAKU_hatsuField(${i},'w',this.value)"></label><label>長さ m<input type="number" inputmode="decimal" step=".01" value="${h.l||''}" onchange="KAKU_hatsuField(${i},'l',this.value)"></label>`;
+      :`<label>幅 mm<input type="number" inputmode="numeric" step="10" value="${h.wmm?Math.round(h.wmm):''}" onchange="KAKU_hatsuField(${i},'wmm',this.value)"></label><label>長さ m<input type="number" inputmode="decimal" step=".01" value="${h.l||''}" onchange="KAKU_hatsuField(${i},'l',this.value)"></label>`;
     return `<div class="hrow"><div class="hrow1"><input value="${esc(h.name)}" onchange="KAKU_hatsuField(${i},'name',this.value)" aria-label="場所の名前"><button class="btn ghost" onclick="KAKU_removeHatsu(${i})" aria-label="削除">×</button></div>
     ${where}
     <div class="hgrid">${h.roomId?'':dims}<label>か所<input type="number" inputmode="numeric" min="1" step="1" value="${Math.max(1,+h.n||1)}" onchange="KAKU_hatsuField(${i},'n',this.value)"></label>
@@ -348,7 +348,21 @@ function KAKU_pickZoom(k){const v=document.getElementById('pickView');const cx=(
 /* ---------- タップの処理 ---------- */
 function KAKU_pip(x,y,poly){let c=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const [xi,yi]=poly[i],[xj,yj]=poly[j];if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi))c=!c}return c}
 function KAKU_segDist(s,x,y){const dx=s[2]-s[0],dy=s[3]-s[1],L2=dx*dx+dy*dy;let t=L2?((x-s[0])*dx+(y-s[1])*dy)/L2:0;t=Math.max(0,Math.min(1,t));const px=s[0]+t*dx,py=s[1]+t*dy;return{d:Math.hypot(x-px,y-py),p:[px,py]}}
-function KAKU_tap(ev){const svg=ev.currentTarget,m=svg.getScreenCTM();if(!m)return;const pt=new DOMPoint(ev.clientX,ev.clientY).matrixTransform(m.inverse());const x=pt.x,y=-pt.y;
+/* 指2本で図面を大きく・小さく（ピンチ）。指を離した所で大きさが決まる */
+let KAKU_pinchUntil=0;
+const KAKU_pinchMaxH=z=>Math.round(52*Math.min(z,1.7))+'vh';
+function KAKU_pinchSetup(v){const svg=v.querySelector('svg');if(!svg)return;let P=null;
+  const mid=t=>[(t[0].clientX+t[1].clientX)/2,(t[0].clientY+t[1].clientY)/2],dist=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
+  v.addEventListener('touchstart',e=>{if(e.touches.length!==2)return;e.preventDefault();const r=v.getBoundingClientRect(),m=mid(e.touches);
+    P={d:Math.max(10,dist(e.touches)),z:KAKU_zoom,z1:KAKU_zoom,fx:(v.scrollLeft+m[0]-r.left)/v.scrollWidth,fy:(v.scrollTop+m[1]-r.top)/v.scrollHeight}},{passive:false});
+  v.addEventListener('touchmove',e=>{if(!P||e.touches.length!==2)return;e.preventDefault();const r=v.getBoundingClientRect(),m=mid(e.touches);
+    const z=Math.min(8,Math.max(1,P.z*dist(e.touches)/P.d));P.z1=z;svg.style.width=(100*z)+'%';v.style.maxHeight=KAKU_pinchMaxH(z);
+    v.scrollLeft=P.fx*v.scrollWidth-(m[0]-r.left);v.scrollTop=P.fy*v.scrollHeight-(m[1]-r.top)},{passive:false});
+  const end=e=>{if(!P||e.touches.length>=2)return;KAKU_zoom=Math.round(P.z1*100)/100;P=null;KAKU_pinchUntil=Date.now()+450;
+    const zb=document.querySelectorAll('#kakuPlan .pickzoom button');if(zb.length===2){zb[0].disabled=KAKU_zoom<=1;zb[1].disabled=KAKU_zoom>=8}};
+  v.addEventListener('touchend',end);v.addEventListener('touchcancel',end);
+  ['gesturestart','gesturechange'].forEach(n=>v.addEventListener(n,e=>e.preventDefault(),{passive:false}))}
+function KAKU_tap(ev){if(Date.now()<KAKU_pinchUntil)return;const svg=ev.currentTarget,m=svg.getScreenCTM();if(!m)return;const pt=new DOMPoint(ev.clientX,ev.clientY).matrixTransform(m.inverse());const x=pt.x,y=-pt.y;
   const unit=1/Math.abs(m.a),tol=16*unit,P=KAKU_plan;
   if(KAKU_mode==='room'){const f=P.faces.find(f=>KAKU_pip(x,y,f.poly));if(!f)return;KAKU_sel.faces.has(f.i)?KAKU_sel.faces.delete(f.i):KAKU_sel.faces.add(f.i);KAKU_renderEditor();return}
   if(KAKU_mode==='wall'){let best=-1,bd=tol;P.segs.forEach((s,i)=>{const d=KAKU_segDist(s,x,y).d;if(d<bd){bd=d;best=i}});if(best<0)return;KAKU_sel.segs.has(best)?KAKU_sel.segs.delete(best):KAKU_sel.segs.add(best);KAKU_renderEditor();return}
