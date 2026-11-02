@@ -25,12 +25,12 @@
 #printRoot{display:none}
 .pick{display:flex;flex-direction:column;gap:10px;width:100%}
 .pickbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.pickbar b{font-size:13px}.pickbar span{color:var(--muted);font-size:11px}
-.pickzoom{margin-left:auto;display:flex;gap:6px}.pickzoom .btn{padding:6px 12px;font-size:15px;line-height:1}
-.pickview{overflow:auto;-webkit-overflow-scrolling:touch;max-height:62vh;background:#fff;border:1px solid var(--line);border-radius:8px;touch-action:pan-x pan-y}
+.pickwrap{position:relative}.pickzoom{position:absolute;right:8px;bottom:8px;display:flex;gap:6px}.pickzoom .btn{padding:8px 14px;font-size:17px;line-height:1;box-shadow:0 2px 8px #0002}.pickzoom .btn:disabled{opacity:.4}
+.pickview{overflow:auto;-webkit-overflow-scrolling:touch;background:#fff;border:1px solid var(--line);border-radius:8px;touch-action:pan-x pan-y}
 .pickview svg{display:block;min-width:100%}
 .plines{fill:none;stroke:#3b3d37;stroke-width:1;vector-effect:non-scaling-stroke}
 .pfaces polygon{fill:#e65c3214;stroke:none;cursor:pointer}.pfaces polygon.on{fill:#e65c3270}
-.plabels text{text-anchor:middle;fill:#20221f;font-weight:700;pointer-events:none;paint-order:stroke;stroke:#fff;stroke-width:.25em;stroke-linejoin:round}
+.plabels text{text-anchor:middle;dominant-baseline:central;fill:#20221f;font-weight:700;pointer-events:none;paint-order:stroke;stroke:#fff;stroke-width:.25em;stroke-linejoin:round}
 .pickbtns{display:flex;gap:8px;flex-wrap:wrap}
 .preview.haspick{max-height:none;text-align:left;background:transparent;padding:0}
 .line-table input.desc{min-width:150px;font-weight:650}.line-table input.unit{width:52px}.line-table tr.extra input{border-color:var(--line);background:var(--white)}
@@ -121,23 +121,44 @@ function runDrawingImport(){const fl=document.getElementById('file').files;if(!f
     st.textContent=res.message||'解析完了';
     if(res.rooms&&res.rooms.length){current.rooms=res.rooms.map((r,i)=>({name:r.name||('区画'+(i+1)),w:r.w||0,h:r.h||0,qty:1,area:r.area||0,peri:r.peri||0}));renderRooms();save();refreshEngineRows();st.textContent+=' / '+res.rooms.length+'区画を取り込みました'}
     else st.textContent+=' / 部屋候補が見つかりませんでした'})).catch(e=>{st.textContent='解析エラー：'+e.message})}
+/* 番号の順番：離れた建物（棟）ごとに左から、棟の中は上の段から、段の中は左から */
+function KAKU_orderFaces(P){const F=P.faces;F.forEach(f=>{let a=Infinity,b=Infinity,c=-Infinity,d=-Infinity;f.poly.forEach(([x,y])=>{if(x<a)a=x;if(x>c)c=x;if(y<b)b=y;if(y>d)d=y});f.bb=[a,b,c,d]});
+  const groups=[];let cur=null,end=-Infinity;[...F].sort((p,q)=>p.bb[0]-q.bb[0]).forEach(f=>{if(!cur||f.bb[0]>end+0.05){cur=[];groups.push(cur);end=f.bb[2]}else end=Math.max(end,f.bb[2]);cur.push(f)});
+  const order=[];groups.forEach(g=>{g.sort((p,q)=>q.bb[3]-p.bb[3]);const rows=[];g.forEach(f=>{const r=rows.find(r=>Math.abs(r.top-f.bb[3])<0.3);if(r)r.f.push(f);else rows.push({top:f.bb[3],f:[f]})});rows.forEach(r=>{r.f.sort((p,q)=>p.bb[0]-q.bb[0]);order.push(...r.f)})});
+  order.forEach((f,k)=>f.no=k+1);P.faces=order}
+function KAKU_faceName(f){return f.name||('区画'+f.no)}
+/* 文字を区画の中に収める：いちばん広く空いている所を探して、そこに入る大きさにする */
+function KAKU_span(poly,horiz,c,p){const xs=[];for(let k=0;k<poly.length;k++){const a=poly[k],b=poly[(k+1)%poly.length];const A=horiz?a[1]:a[0],B=horiz?b[1]:b[0];if((A>c)!==(B>c)){const t=(c-A)/(B-A);xs.push(horiz?a[0]+t*(b[0]-a[0]):a[1]+t*(b[1]-a[1]))}}xs.sort((u,v)=>u-v);for(let k=0;k+1<xs.length;k+=2)if(p>=xs[k]&&p<=xs[k+1])return[xs[k],xs[k+1]];return null}
+function KAKU_emw(s){let w=0;for(const ch of s)w+=ch.charCodeAt(0)<128?0.6:1;return w}
+function KAKU_label(f,fs){const [a,b,c,d]=f.bb,n=10;let best=null;const l1=KAKU_faceName(f),l2=f.area.toFixed(1)+'㎡';
+  for(let iy=1;iy<n;iy++)for(let ix=1;ix<n;ix++){const px=a+(c-a)*ix/n,py=b+(d-b)*iy/n;const hs=KAKU_span(f.poly,true,py,px);if(!hs)continue;const cx=(hs[0]+hs[1])/2,vs=KAKU_span(f.poly,false,cx,py);if(!vs)continue;const cy=(vs[0]+vs[1])/2;
+    const hs2=KAKU_span(f.poly,true,cy,cx)||hs;const w=hs2[1]-hs2[0],h=vs[1]-vs[0];if(!best||Math.min(w,h*1.6)>Math.min(best.w,best.h*1.6))best={x:(hs2[0]+hs2[1])/2,y:cy,w,h}}
+  if(!best)return null;
+  const fitW=(W,Hh,t1,t2)=>Math.min(fs,W*0.88/Math.max(KAKU_emw(t1),KAKU_emw(t2)),Hh*0.85/2.4);
+  const fit=(t1,t2,rot)=>rot?fitW(best.h,best.w,t1,t2):fitW(best.w,best.h,t1,t2);
+  let t1=l1,t2=l2,rot=false,fz=fit(t1,t2,false);const zr=fit(t1,t2,true);if(zr>fz*1.25){rot=true;fz=zr}
+  if(!f.name&&fz<fs*0.4){const s1=String(f.no),z=fit(s1,t2,rot);if(z>fz*1.3){t1=s1;fz=z}}
+  return{x:best.x,y:best.y,fz,t1,t2,rot}}
 function KAKU_renderPicker(){const P=KAKU_plan,box=document.getElementById('filePreview');if(!P)return;box.classList.remove('hide');box.classList.add('haspick');
+  if(!P.ordered){KAKU_orderFaces(P);P.ordered=true}
   let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;const ext=(x,y)=>{if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y};
   P.segs.forEach(s=>{ext(s[0],s[1]);ext(s[2],s[3])});P.faces.forEach(f=>f.poly.forEach(p=>ext(p[0],p[1])));
-  const w=(x1-x0)||1,h=(y1-y0)||1,pad=Math.max(w,h)*0.03,fs=Math.max(w,h)/38,r=v=>Math.round(v*1000)/1000;
+  const w=(x1-x0)||1,h=(y1-y0)||1,pad=Math.max(w,h)*0.03,fs=Math.max(w,h)/34,r=v=>Math.round(v*1000)/1000;
+  if(!P.labels)P.labels=P.faces.map(f=>KAKU_label(f,fs));
   const d=P.segs.map(s=>`M${r(s[0])} ${r(-s[1])}L${r(s[2])} ${r(-s[3])}`).join('');
   const polys=P.faces.map(f=>`<polygon data-i="${f.i}" class="${f.sel?'on':''}" points="${f.poly.map(p=>r(p[0])+','+r(-p[1])).join(' ')}"/>`).join('');
-  const labels=P.faces.map(f=>{let cx=0,cy=0;f.poly.forEach(p=>{cx+=p[0];cy+=p[1]});cx/=f.poly.length;cy/=f.poly.length;const fz=Math.min(fs,Math.sqrt(f.area)/3.2);return `<text x="${r(cx)}" y="${r(-cy)}" font-size="${r(fz)}"><tspan x="${r(cx)}">${esc(f.name||('区画'+(f.i+1)))}</tspan><tspan x="${r(cx)}" dy="1.2em">${f.area.toFixed(1)}㎡</tspan></text>`}).join('');
-  const n=P.faces.filter(f=>f.sel).length;
-  box.innerHTML=`<div class="pick"><div class="pickbar"><b>取り込む部屋をタップ</b><span>${n?n+'個 選択中':'まだ選んでません'}</span><span class="pickzoom"><button class="btn light" onclick="KAKU_pickZoom(1/1.5)" aria-label="縮小">－</button><button class="btn light" onclick="KAKU_pickZoom(1.5)" aria-label="拡大">＋</button></span></div>
-    <div class="pickview" id="pickView"><svg viewBox="${r(x0-pad)} ${r(-(y1+pad))} ${r(w+2*pad)} ${r(h+2*pad)}" style="width:${100*KAKU_zoom}%"><path class="plines" d="${d}"/><g class="pfaces">${polys}</g><g class="plabels">${labels}</g></svg></div>
+  const labels=P.labels.map(L=>L?`<g${L.rot?` transform="rotate(-90 ${r(L.x)} ${r(-L.y)})"`:''}><text x="${r(L.x)}" y="${r(-L.y-L.fz*0.62)}" font-size="${r(L.fz)}">${esc(L.t1)}</text><text x="${r(L.x)}" y="${r(-L.y+L.fz*0.62)}" font-size="${r(L.fz)}">${esc(L.t2)}</text></g>`:'').join('');
+  const n=P.faces.filter(f=>f.sel).length,z=KAKU_zoom;
+  box.innerHTML=`<div class="pick"><div class="pickbar"><b>取り込む部屋をタップ</b><span>${n?n+'個 選択中':'まだ選んでません'}</span></div>
+    <div class="pickwrap"><div class="pickview" id="pickView" style="max-height:${Math.round(52*Math.min(z,1.7))}vh"><svg viewBox="${r(x0-pad)} ${r(-(y1+pad))} ${r(w+2*pad)} ${r(h+2*pad)}" style="width:${100*z}%"><path class="plines" d="${d}"/><g class="pfaces">${polys}</g><g class="plabels">${labels}</g></svg></div>
+    <div class="pickzoom"><button class="btn light" onclick="KAKU_pickZoom(1/1.4)" aria-label="小さく" ${z<=1?'disabled':''}>－</button><button class="btn light" onclick="KAKU_pickZoom(1.4)" aria-label="大きく" ${z>=8?'disabled':''}>＋</button></div></div>
     <div class="pickbtns"><button class="btn light" onclick="KAKU_pickAll(true)">全部選ぶ</button><button class="btn light" onclick="KAKU_pickAll(false)">選択を解除</button><button class="btn orange" onclick="KAKU_pickImport()">選んだ区画を取り込む${n?'（'+n+'）':''}</button></div>
-    <p class="mini">取り込むと「概要・数量」の部屋が、選んだ区画に入れ替わります。部屋名はあとから直せます。</p></div>`;
+    <p class="mini">「＋」「－」で図面の大きさを変えられます（大きくした時は指でずらして見てな）。取り込むと「概要・数量」の部屋が、選んだ区画に入れ替わります。部屋名はあとから直せます。</p></div>`;
   box.querySelectorAll('.pfaces polygon').forEach(pg=>pg.addEventListener('click',()=>{const f=P.faces.find(x=>x.i===+pg.dataset.i);if(!f)return;f.sel=!f.sel;const v=document.getElementById('pickView'),sl=v.scrollLeft,stp=v.scrollTop;KAKU_renderPicker();const v2=document.getElementById('pickView');v2.scrollLeft=sl;v2.scrollTop=stp}))}
 function KAKU_pickZoom(k){const v=document.getElementById('pickView');const cx=(v.scrollLeft+v.clientWidth/2)/v.scrollWidth,cy=(v.scrollTop+v.clientHeight/2)/v.scrollHeight;KAKU_zoom=Math.min(8,Math.max(1,KAKU_zoom*k));KAKU_renderPicker();const v2=document.getElementById('pickView');v2.scrollLeft=cx*v2.scrollWidth-v2.clientWidth/2;v2.scrollTop=cy*v2.scrollHeight-v2.clientHeight/2}
 function KAKU_pickAll(on){if(!KAKU_plan)return;KAKU_plan.faces.forEach(f=>f.sel=on);KAKU_renderPicker()}
 function KAKU_pickImport(){if(!KAKU_plan||!current)return;const sel=KAKU_plan.faces.filter(f=>f.sel);if(!sel.length){toast('取り込む部屋をタップして選んでな');return}
-  current.rooms=sel.map(f=>({name:f.name||('区画'+(f.i+1)),w:0,h:0,qty:1,area:Math.round(f.area*100)/100,peri:f.peri}));renderRooms();save();if(engine)refreshEngineRows();
+  current.rooms=sel.map(f=>({name:KAKU_faceName(f),w:0,h:0,qty:1,area:Math.round(f.area*100)/100,peri:f.peri}));renderRooms();save();if(engine)refreshEngineRows();
   document.getElementById('drawingStatus').textContent=sel.length+'区画を取り込みました（合計 '+sel.reduce((s,f)=>s+f.area,0).toFixed(2)+' ㎡）';toast(sel.length+'区画を取り込みました')}
 function downloadCSV(){if(!current)return;waitEngine().then(e=>{e.sync(current);return KAKU_share((current.name||'estimate')+'.csv','\ufeff'+e.csv(),'text/csv')}).catch(e=>toast(e.message))}
 </script>
