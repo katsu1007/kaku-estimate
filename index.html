@@ -90,6 +90,16 @@ tr.pick td:first-child{border-left:3px solid var(--green)}
 .ktlist{display:flex;flex-direction:column;gap:6px}.ktrow{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-left:5px solid #2b4f86;border-radius:8px;padding:8px 10px;background:var(--white)}.ktrow span{flex:1;font-size:11px;color:var(--muted)}
 .ktclosed{margin-top:12px}
 .btn:disabled{opacity:.45}
+.ke .kelays{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--white)}.ke .kelays summary{font-weight:750;font-size:12px;cursor:pointer}
+.kelay{display:grid;grid-template-columns:1fr auto 130px;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}.kelname{font-size:12px;font-weight:700;word-break:break-all}.kelay select,.kemap,.kewire select,.kewire input{border:1px solid var(--line);border-radius:6px;padding:7px;background:#fff;font-size:12px;min-width:0}
+.keplan{background:#fff;border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:50vh}.keplan svg{display:block;width:100%}
+.kearch{fill:none;stroke:#b9b7ae;stroke-width:1px;vector-effect:non-scaling-stroke}.kewires{fill:none;stroke:#3d6fb6;stroke-width:1.5px;vector-effect:non-scaling-stroke}
+.kemk{fill:none;stroke-width:2px;vector-effect:non-scaling-stroke}.kemk.hl{stroke-width:5px;fill:#ffd60055}.keleg{fill:none;stroke:#999;stroke-dasharray:3 3;stroke-width:1.5px;vector-effect:non-scaling-stroke}
+.keh{margin:12px 0 6px;font-size:13px}
+.ketypes{display:flex;flex-direction:column;gap:6px}.ketype{display:grid;grid-template-columns:52px 1fr auto;grid-template-areas:"ic nm ct" "ic sel sel";gap:4px 10px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--white)}
+.keshow{grid-area:ic;border:1px solid var(--line);border-radius:6px;background:#fff;padding:3px;width:52px;height:52px}.keicon{width:100%;height:100%;fill:none;stroke:#20221f;stroke-width:1.6px;vector-effect:non-scaling-stroke}.keicon .fill{fill:#20221f}
+.kename{grid-area:nm;display:flex;flex-direction:column;gap:2px;min-width:0}.kename b{font-size:12px}.kecount{grid-area:ct;font-size:20px;font-weight:850}.ketype .kemap{grid-area:sel;width:100%}
+.kewire{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.kewire b{font-size:18px}.kewire label{font-size:9px;color:var(--muted);display:flex;flex-direction:column;gap:3px}.kewire input{width:70px}
 #printRoot{display:none}
 .pick{display:flex;flex-direction:column;gap:10px;width:100%}
 .pickbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.pickbar b{font-size:13px}.pickbar span{color:var(--muted);font-size:11px}
@@ -583,6 +593,425 @@ function KT_close(){KT_render();const b=document.getElementById('kakuTrace');if(
   const op=openProject;openProject=function(id){op(id);KT_load();KT_render()};
   const dp=deleteProject;deleteProject=function(){const id=current&&current.id;dp();if(id&&!data.some(p=>p.id===id))try{localStorage.removeItem(KT_key(id))}catch(e){}};
   window.addEventListener('resize',()=>{if(KT)KT_sizes()})})();
+
+/* =====================================================================
+   電気の拾い出し：DXF・JWWの電気のレイヤーから、器具の数と配線の長さを出す
+   ===================================================================== */
+let KE=null; // {name, ents, layers:{name:{role, stat}}, res}
+const KE_ROLES=[['arch','建築（壁など）'],['dev','電気の器具'],['wire','配線'],['both','器具と配線が同じ'],['old','撤去・既存（数えない）'],['furn','家具・機器（数えない）'],['frame','図枠・表題'],['off','使わない']];
+const KE_U=s=>String(s==null?'':s).replace(/\\U\+([0-9A-Fa-f]{4})/g,(_,h)=>String.fromCharCode(parseInt(h,16)));
+
+/* ---------- 読む（DXF） ---------- */
+function KE_parseDXF(str){
+  const ln=str.split(/\r?\n/);let ins=null;
+  for(let i=0;i+3<ln.length&&i<40000;i+=2){if(ln[i+1]&&ln[i+1].trim()==='$INSUNITS'){ins=+ln[i+3].trim();break}}
+  const blocks={},top=[];let sec='',list=null,cur=null,blk=null,poly=null;
+  /* レイヤーの表：非表示（色がマイナス）・フリーズ・線の種類 */
+  const ltab={};{let sec0='',o=null,want=false;for(let i=0;i+1<ln.length;i+=2){const c=+ln[i].trim(),v=ln[i+1].trim();
+    if(c===0){if(o&&o.name)ltab[o.name]=o;o=null;if(v==='SECTION'){want=true;continue}if(v==='ENDSEC'){if(sec0==='TABLES')break;sec0='';continue}if(sec0==='TABLES'&&v==='LAYER')o={};continue}
+    if(want&&c===2){sec0=v;want=false;if(v==='ENTITIES'||v==='BLOCKS')break;continue}
+    if(o){if(c===2)o.name=KE_U(v);else if(c===62)o.color=+v;else if(c===70)o.flags=+v;else if(c===6)o.lt=v}}}
+  let lastIns=null;
+  const flush=()=>{if(!cur)return;const t=cur.type;
+    if(t==='VERTEX'){if(poly)poly.v.push(cur)}
+    else if(t==='SEQEND'){poly=null;lastIns=null}
+    else if(t==='BLOCK'){blk=cur;cur.ents=[];list=cur.ents}
+    else if(t==='ENDBLK'){if(blk&&blk.name)blocks[blk.name]=blk;blk=null;list=null}
+    else if(t==='ATTRIB'){if(lastIns)(lastIns.att=lastIns.att||[]).push(cur)}
+    else if(t==='ATTDEF'){}
+    else if(list){if(t==='POLYLINE'){poly=cur;cur.v=[]}else poly=null;lastIns=t==='INSERT'?cur:null;list.push(cur)}
+    cur=null};
+  for(let i=0;i+1<ln.length;i+=2){const c=+ln[i].trim(),v=ln[i+1];
+    if(c===0){flush();const t=v.trim();
+      if(t==='SECTION'){sec='?';continue}if(t==='ENDSEC'){sec='';list=null;continue}if(t==='EOF')break;
+      if(sec==='ENTITIES'||sec==='BLOCKS'){cur={type:t,g:[]};if(sec==='ENTITIES')list=top}
+      continue}
+    if(c===2&&sec==='?'){sec=v.trim();if(sec==='ENTITIES')list=top;continue}
+    if(cur){cur.g.push([c,v]);if(cur.type==='BLOCK'){if(c===2)cur.name=v.trim();if(c===10)cur.bx=+v;if(c===20)cur.by=+v}}}
+  flush();
+  const num=(g,k,d)=>{for(const [c,v] of g)if(c===k)return parseFloat(v);return d};
+  const str1=(g,k,d)=>{for(const [c,v] of g)if(c===k)return v;return d};
+  const P=(m,x,y)=>[m[0]*x+m[2]*y+m[4],m[1]*x+m[3]*y+m[5]];
+  const mul=(m,n)=>[m[0]*n[0]+m[2]*n[1],m[1]*n[0]+m[3]*n[1],m[0]*n[2]+m[2]*n[3],m[1]*n[2]+m[3]*n[3],m[0]*n[4]+m[2]*n[5]+m[4],m[1]*n[4]+m[3]*n[5]+m[5]];
+  const sc=m=>Math.sqrt(Math.abs(m[0]*m[3]-m[1]*m[2]))||1;
+  const out=[];let insId=0;
+  const bulgePts=(a,b,bu)=>{if(!bu||Math.abs(bu)<1e-9)return[b];const th=4*Math.atan(bu),dx=b[0]-a[0],dy=b[1]-a[1],cl=Math.hypot(dx,dy);if(!cl)return[b];
+    const h=(cl/2)/Math.tan(th/2),cx=(a[0]+b[0])/2-dy/cl*h,cy=(a[1]+b[1])/2+dx/cl*h,r=Math.hypot(a[0]-cx,a[1]-cy),a0=Math.atan2(a[1]-cy,a[0]-cx);
+    const k=Math.max(2,Math.ceil(Math.abs(th)/(Math.PI/12))),pts=[];for(let i=1;i<=k;i++){const t=a0+th*i/k;pts.push(i===k?b:[cx+r*Math.cos(t),cy+r*Math.sin(t)])}return pts};
+  const walk=(ents,m,inLy,owner,depth)=>{for(const e of ents){const g=e.g;if(num(g,67,0)===1)continue;  /* 紙面（ペーパー空間）は数えない */
+    let ly=KE_U(String(str1(g,8,'0')).trim());if((ly==='0'||!ly)&&inLy)ly=inLy;const o=owner;
+    switch(e.type){
+      case 'LINE':out.push({k:'line',ly,a:P(m,num(g,10,0),num(g,20,0)),b:P(m,num(g,11,0),num(g,21,0)),o});break;
+      case 'LWPOLYLINE':{const pts=[];for(const [c,v] of g){if(c===10)pts.push([+v,0,0]);else if(c===20&&pts.length)pts[pts.length-1][1]=+v;else if(c===42&&pts.length)pts[pts.length-1][2]=+v}
+        const cl=!!(num(g,70,0)&1);if(pts.length<2)break;const res=[[pts[0][0],pts[0][1]]];const n=pts.length;
+        for(let k=0;k<(cl?n:n-1);k++){const a=pts[k],b=pts[(k+1)%n];res.push(...bulgePts([a[0],a[1]],[b[0],b[1]],a[2]))}
+        out.push({k:'poly',ly,pts:res.map(p=>P(m,p[0],p[1])),closed:cl,o,w:num(g,43,0)});break}
+      case 'POLYLINE':{const vs=(e.v||[]).map(v=>[num(v.g,10,0),num(v.g,20,0),num(v.g,42,0)]);const cl=!!(num(g,70,0)&1);if(vs.length<2)break;const res=[[vs[0][0],vs[0][1]]];const n=vs.length;
+        for(let k=0;k<(cl?n:n-1);k++){const a=vs[k],b=vs[(k+1)%n];res.push(...bulgePts([a[0],a[1]],[b[0],b[1]],a[2]))}
+        out.push({k:'poly',ly,pts:res.map(p=>P(m,p[0],p[1])),closed:cl,o});break}
+      case 'CIRCLE':out.push({k:'circle',ly,c:P(m,num(g,10,0),num(g,20,0)),r:num(g,40,0)*sc(m),o});break;
+      case 'ELLIPSE':{const c=P(m,num(g,10,0),num(g,20,0)),r=Math.hypot(num(g,11,0),num(g,21,0))*sc(m);out.push({k:'circle',ly,c,r,o});break}
+      case 'ARC':{const r=num(g,40,0),cx=num(g,10,0),cy=num(g,20,0);let a0=num(g,50,0),a1=num(g,51,360);if(a1<=a0)a1+=360;const pts=[];const n=Math.max(4,Math.ceil((a1-a0)/10));
+        for(let k=0;k<=n;k++){const a=(a0+(a1-a0)*k/n)*Math.PI/180;pts.push(P(m,cx+r*Math.cos(a),cy+r*Math.sin(a)))}
+        out.push({k:'arc',ly,c:P(m,cx,cy),r:r*sc(m),sweep:a1-a0,pts,o});break}
+      case 'SOLID':case 'TRACE':case '3DFACE':{const pts=[[10,20],[11,21],[12,22],[13,23]].map(([x,y])=>[num(g,x,NaN),num(g,y,NaN)]).filter(p=>!isNaN(p[0]));out.push({k:'solid',ly,pts:pts.map(p=>P(m,p[0],p[1])),o});break}
+      case 'HATCH':{const pts=[];for(const [c,v] of g){if(c===10)pts.push([+v,0]);else if(c===20&&pts.length)pts[pts.length-1][1]=+v}const p2=pts.slice(1);if(p2.length)out.push({k:'solid',ly,pts:p2.map(p=>P(m,p[0],p[1])),o,h:true});break}
+      case 'TEXT':case 'MTEXT':{let t=g.filter(([c])=>c===1||c===3).map(x=>x[1]).join('');t=KE_U(t);
+        if(e.type==='MTEXT')t=t.replace(/\\P/gi,' ').replace(/\\[A-Za-z][^;\\]*;/g,'').replace(/[{}]/g,'');t=t.replace(/%%[cC]/g,'φ').trim();if(!t)break;
+        out.push({k:'text',ly,t,p:P(m,num(g,10,0),num(g,20,0)),h:num(g,40,100)*sc(m),o});break}
+      case 'INSERT':{const name=String(str1(g,2,'')).trim(),b=blocks[name];const nameU=KE_U(name);if(!b||depth>5)break;
+        const sx=num(g,41,1)||1,sy=num(g,42,1)||1,rot=num(g,50,0)*Math.PI/180,x=num(g,10,0),y=num(g,20,0);
+        const cols=Math.max(1,num(g,70,1)|0),rows=Math.max(1,num(g,71,1)|0),csp=num(g,44,0),rsp=num(g,45,0);   /* 配列（MINSERT） */
+        const att=(e.att||[]).map(a=>KE_U(String(str1(a.g,1,'')).trim())).filter(Boolean);
+        const cs=Math.cos(rot),sn=Math.sin(rot);
+        for(let ri=0;ri<Math.min(rows,100);ri++)for(let ci=0;ci<Math.min(cols,100);ci++){
+          const ox=ci*csp,oy=ri*rsp,X=x+ox*cs-oy*sn,Y=y+ox*sn+oy*cs;
+          const T=[cs*sx,sn*sx,-sn*sy,cs*sy,X,Y];const B=[1,0,0,1,-(b.bx||0),-(b.by||0)];const M=mul(m,mul(T,B));
+          const rec={k:'insert',ly,name:nameU,p:P(m,X,Y),id:++insId,parent:o||null,att,o:o||null,mirror:sx*sy<0};out.push(rec);walk(b.ents,M,ly,rec,depth+1)}
+        break}
+    }}};
+  walk(top,[1,0,0,1,0,0],null,null,0);
+  return{ents:out,insunits:ins,ltab}}
+
+/* ---------- 読む（JWW、概算くんの読み取りを使う） ---------- */
+async function KE_parseJWW(buf){await waitEngine();const fw=document.getElementById('engineFrame').contentWindow;const J=fw.jwwRead(buf);const out=[];
+  const lname=(g,l)=>{const a=((J.glayName||[])[g]||'').trim(),b=(((J.lay||[])[g]||[])[l]||'').trim();return `${g.toString(16).toUpperCase()}-${l.toString(16).toUpperCase()}`+(b?' '+b:a?' '+a:'')};
+  (J.items||[]).forEach(o=>{const s=(J.scale&&J.scale[o.glay])||1,ly=lname(o.glay||0,o.lay||0);const Q=(x,y)=>[x*s,y*s];
+    if(o.t==='sen')out.push({k:'line',ly,a:Q(o.x1,o.y1),b:Q(o.x2,o.y2)});
+    else if(o.t==='enko'){const r=(o.r||0)*s,sw=Math.abs((o.da||0)*180/Math.PI);if(o.full||sw>=359||!o.da)out.push({k:'circle',ly,c:Q(o.x,o.y),r});else{const a0=o.a0||0,a1=a0+o.da,pts=[];for(let k=0;k<=12;k++){const a=a0+(a1-a0)*k/12;pts.push(Q(o.x+o.r*Math.cos(a),o.y+o.r*Math.sin(a)))}out.push({k:'arc',ly,c:Q(o.x,o.y),r,sweep:sw,pts})}}
+    else if(o.t==='moji'&&o.s)out.push({k:'text',ly,t:String(o.s).trim(),p:Q(o.x1,o.y1),h:(o.sy||3)*s});
+    else if(o.t==='block')out.push({k:'insert',ly,name:'ブロック'+o.num,p:Q(o.x,o.y),id:out.length+1,o:null,noGeom:true})});
+  return{ents:out,insunits:4}}
+
+/* ---------- 下ごしらえ ---------- */
+function KE_len(e){if(e.k==='line')return Math.hypot(e.b[0]-e.a[0],e.b[1]-e.a[1]);if(e.k==='poly'||e.k==='arc'){let s=0;for(let i=1;i<e.pts.length;i++)s+=Math.hypot(e.pts[i][0]-e.pts[i-1][0],e.pts[i][1]-e.pts[i-1][1]);return s}if(e.k==='circle')return 2*Math.PI*e.r;return 0}
+function KE_bb(e){let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;const a=p=>{if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<y0)y0=p[1];if(p[1]>y1)y1=p[1]};
+  if(e.k==='line'){a(e.a);a(e.b)}else if(e.k==='circle'){a([e.c[0]-e.r,e.c[1]-e.r]);a([e.c[0]+e.r,e.c[1]+e.r])}else if(e.pts)e.pts.forEach(a);else if(e.p)a(e.p);return[x0,y0,x1,y1]}
+function KE_scaleUnits(R){let f=1;const u=R.insunits;if(u===4)f=1;else if(u===5)f=10;else if(u===6)f=1000;else if(u===1)f=25.4;else{
+    let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity;R.ents.forEach(e=>{if(e.k==='text'||e.k==='insert')return;const b=KE_bb(e);if(b[0]<x0)x0=b[0];if(b[2]>x1)x1=b[2];if(b[1]<y0)y0=b[1];if(b[3]>y1)y1=b[3]});const ext=Math.max(x1-x0,y1-y0);f=ext>0&&ext<200?1000:1}
+  if(f!==1){const S=p=>[p[0]*f,p[1]*f];R.ents.forEach(e=>{if(e.a)e.a=S(e.a);if(e.b)e.b=S(e.b);if(e.c)e.c=S(e.c);if(e.r)e.r*=f;if(e.pts)e.pts=e.pts.map(S);if(e.p)e.p=S(e.p);if(e.h)e.h*=f})}
+  return f}
+/* ---------- レイヤーの役割を決める（名前はヒント、決め手は中身） ---------- */
+const KE_RX={
+  elec:/電気|電灯|照明|コンセ|ｺﾝｾﾝﾄ|スイッチ|弱電|強電|^E\d+$|^EL?\d|DENKI|SHOMEI|DENTO|KONSENT|^E[-_ ]|^EL[-_ ]|ELEC|LITE|LIGHT|LTG|POWR|POWER|OUTLET|RECEP|COMM|SWITCH|器具/i,
+  wire:/配線|WIRE|ﾊｲｾﾝ|HAISEN|CIRC|CKT|回路|ケーブル|CABLE|配管|幹線|RACEWAY/i,
+  old:/撤去|既設|既存|EXIST|DEMO|REMOV|KIZON|TEKKYO|旧/i,
+  legend:/凡例|LEGEND|LEGD|HANREI/i,
+  memo:/注記|^NOTE|ANNO|引出|コメント|CHUKI|下書|DRAFT/i,
+  frame:/図枠|^枠|枠$|FRAME|TITLE|TTLB|表題|BORDER|WAKU/i,
+  note:/ANNO|NOTE|注記|TEXT|文字|MOJI|寸法|DIM/i,
+  furn:/什器|家具|FURN|備品|厨房|EQPM|EQUIP|KAGU|機器|衛生|SANIT|植栽|PLANT/i,
+  arch:/建築|^ARCH|壁|KABE|TOORI|SHIN$|HASHIRA|SUNPO|SHITSU|YUKA|TENJO|KUTAI|WALL|躯体|間仕切|^A[-_ ]|通り?芯|GRID|寸法|DIM|建具|TATEGU|DOOR|WINDOW|GLAZ|室名|部屋|ROOM|文字|MOJI|階段|STAIR|柱|COLUMN|仕上/i};
+function KE_layerStats(ents){const L={};const S=n=>L[n]||(L[n]={n:0,ins:0,sym:0,smallCirc:0,bigCirc:0,longLines:0,lines:0,solid:0,text:0,labelText:0,numText:0,dbl:0,doorArc:0});
+  const longs={};
+  ents.forEach(e=>{const s=S(e.ly);s.n++;
+    if(e.k==='insert'){if(!e.o)s.ins++;return}
+    if(e.k==='circle'){if(e.r>=40&&e.r<=450){s.smallCirc++;s.sym++}else if(e.r>450)s.bigCirc++;return}
+    if(e.k==='solid'){s.solid++;const b=KE_bb(e);if(Math.max(b[2]-b[0],b[3]-b[1])<=600)s.sym++;return}
+    if(e.k==='text'){s.text++;if(/^\d{3,}$|^\d{1,3}(,\d{3})+$|^\d+\.\d+$/.test(e.t.trim()))s.numText++;else if(e.t.length<=4)s.labelText++;return}
+    if(e.k==='arc'){if(e.sweep>=80&&e.sweep<=100&&e.r>=500&&e.r<=1300)s.doorArc++;return}
+    if(e.k==='line'||e.k==='poly'){s.lines++;const L2=KE_len(e);if(L2>1500){s.longLines++;if(e.k==='line')(longs[e.ly]=longs[e.ly]||[]).push(e);else for(let i=1;i<e.pts.length;i++){const a=e.pts[i-1],b=e.pts[i];if(Math.hypot(b[0]-a[0],b[1]-a[1])>1500)(longs[e.ly]=longs[e.ly]||[]).push({k:'line',a,b})}}
+      if(e.k==='poly'&&e.closed){const b=KE_bb(e);if(Math.max(b[2]-b[0],b[3]-b[1])<=1700)s.sym++}}});
+  /* 壁らしさ：長い線に、50〜350mm離れて平行に並ぶ相方がいる割合 */
+  Object.entries(longs).forEach(([n,ls])=>{let pair=0;const sm=ls.slice(0,400);sm.forEach(l=>{const dx=l.b[0]-l.a[0],dy=l.b[1]-l.a[1],L=Math.hypot(dx,dy),ux=dx/L,uy=dy/L;
+      if(sm.some(o=>{if(o===l)return false;const ox=o.b[0]-o.a[0],oy=o.b[1]-o.a[1],OL=Math.hypot(ox,oy);if(Math.abs(ux*oy/OL-uy*ox/OL)>0.02)return false;const d=Math.abs((o.a[0]-l.a[0])*uy-(o.a[1]-l.a[1])*ux);if(d<50||d>350)return false;
+        const t1=(o.a[0]-l.a[0])*ux+(o.a[1]-l.a[1])*uy,t2=(o.b[0]-l.a[0])*ux+(o.b[1]-l.a[1])*uy;return Math.min(L,Math.max(t1,t2))-Math.max(0,Math.min(t1,t2))>0.4*Math.min(L,OL)}))pair++});
+    L[n].dbl=sm.length?pair/sm.length:0});
+  return L}
+function KE_classify(ents,ltab){const st=KE_layerStats(ents),L={};const X=KE_RX;
+  Object.keys(st).sort().forEach(n=>{const lt=ltab[n]||{},s=st[n];let role=null,why='';
+    if(n.toUpperCase()==='DEFPOINTS'){role='off';why='印刷しないレイヤー'}
+    else if(lt.color<0||(lt.flags&1)){role='off';why='非表示・フリーズ'}
+    else if(X.old.test(n)){role='old';why='名前（撤去・既存）'}
+    else if(X.legend.test(n)){role='off';why='名前（凡例）'}
+    else if(X.frame.test(n)){role='frame';why='名前（図枠）'}
+    else if(X.memo.test(n)&&!X.wire.test(n)){role='off';why='名前（注記）'}
+    else if(X.elec.test(n)||X.wire.test(n)){
+      if(X.wire.test(n))role='wire';else if(X.note.test(n)&&s.sym<3)role='off';else role='dev';why='名前（電気）'}
+    else if(X.furn.test(n)){role='furn';why='名前（家具・機器）'}
+    else if(X.arch.test(n)){role='arch';why='名前（建築）'}
+    L[n]={stat:s,role,why,lt}});
+  /* 通り芯の丸（中に X1・Y1 などの文字がある丸） */
+  const texts=ents.filter(e=>e.k==='text');const TG={};const G=600;texts.forEach(x=>{const k=Math.floor(x.p[0]/G)+','+Math.floor(x.p[1]/G);(TG[k]=TG[k]||[]).push(x)});
+  const textIn=(c,r)=>{const gx=Math.floor(c[0]/G),gy=Math.floor(c[1]/G);for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){const a=TG[(gx+dx)+','+(gy+dy)];if(a)for(const x of a)if(Math.hypot(x.p[0]-c[0],x.p[1]-c[1])<r*0.8)return true}return false};
+  const bubble={};ents.forEach(e=>{if(e.k==='insert'&&!e.o&&/GRID|BUBBLE|通り?芯|TOORI|符号/i.test(e.name)){bubble[e.ly]=(bubble[e.ly]||0)+1;return}if(e.o||e.k!=='circle'||e.r<200||e.r>700)return;if(textIn(e.c,e.r))bubble[e.ly]=(bubble[e.ly]||0)+1});
+  /* 名前で決まらないレイヤーは中身で：壁らしい・扉の円弧・数字の文字が多い・通り芯 → 建築 */
+  Object.entries(L).forEach(([n,o])=>{if(o.role)return;const s=o.stat;
+    if(s.n===s.text){o.role='off';o.why='文字だけ';return}
+    if((s.dbl>=0.35&&s.longLines>=4&&s.sym<=s.longLines*0.2)||s.doorArc>=2||(s.numText>=5&&s.numText>=s.text*0.6&&s.sym<3)){o.role='arch';o.why='中身（壁・建具・寸法）';return}
+    if(bubble[n]&&bubble[n]>=s.sym*0.6){o.role='arch';o.why='中身（通り芯）';return}
+    o.role='?'});
+  /* 器具の候補の中心（電気のレイヤーと、まだ決まらないレイヤーの小さい記号） */
+  const symAt=[];ents.forEach(e=>{const r=L[e.ly]&&L[e.ly].role;if(!(r==='dev'||r==='?'||r==='wire'))return;
+    if(e.k==='insert'){symAt.push({p:e.p,r:300,ly:e.ly})}else if(!e.o&&e.k==='circle'&&e.r>=40&&e.r<=450&&!(e.r>=200&&textIn(e.c,e.r)))symAt.push({p:e.c,r:e.r,ly:e.ly});
+    else if(!e.o&&(e.k==='solid'||(e.k==='poly'&&e.closed))){const b=KE_bb(e);if(Math.max(b[2]-b[0],b[3]-b[1])<=1700)symAt.push({p:[(b[0]+b[2])/2,(b[1]+b[3])/2],r:Math.max(b[2]-b[0],b[3]-b[1])/2,ly:e.ly})}});
+  symAt.forEach((s,i)=>s.i=i);
+  const grid={};symAt.forEach(s=>{const k=Math.floor(s.p[0]/G)+','+Math.floor(s.p[1]/G);(grid[k]=grid[k]||[]).push(s)});
+  const symNear=(p,exLy)=>{const gx=Math.floor(p[0]/G),gy=Math.floor(p[1]/G);let best=null,bd=Infinity;for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){const a=grid[(gx+dx)+','+(gy+dy)];if(!a)continue;for(const s of a){if(exLy&&s.ly===exLy)continue;const d=Math.hypot(p[0]-s.p[0],p[1]-s.p[1])-s.r;if(d<=250&&d<bd){bd=d;best=s}}}return best};
+  const ends=e=>e.k==='line'?[e.a,e.b]:((e.k==='poly'&&!e.closed)||(e.k==='arc'&&e.r>450))?[e.pts[0],e.pts[e.pts.length-1]]:[];
+  /* 線の端が（ほかのレイヤーの）器具の近くに集まっていれば配線 */
+  const endRatio=(n,ex)=>{let c=0,near=0;ents.forEach(e=>{if(e.o||e.ly!==n)return;const ps=ends(e);if(!ps.length||KE_len(e)<150)return;ps.forEach(p=>{c++;if(symNear(p,ex?n:null))near++})});return{ends:c,r:c?near/c:0}};
+  /* 同じレイヤーの線が、別々の記号どうしをつないでいる割合（配線も同じレイヤーに描いてあるか） */
+  const ownConn=n=>{const ls=ents.filter(e=>!e.o&&e.ly===n&&ends(e).length&&KE_len(e)>=300);if(!ls.length)return 0;const T=25,key=p=>Math.round(p[0]/T)+','+Math.round(p[1]/T);
+    const par=ls.map((_,i)=>i),f=i=>par[i]===i?i:(par[i]=f(par[i]));const at={};ls.forEach((e,i)=>ends(e).forEach(p=>{const k=key(p);if(at[k]!==undefined)par[f(i)]=f(at[k]);else at[k]=i}));
+    const cn={},ce={};ls.forEach((e,i)=>{const r=f(i);ce[r]=(ce[r]||0)+1;(cn[r]=cn[r]||new Set());ends(e).forEach(p=>cn[r].add(key(p)))});
+    const comp={};ls.forEach((e,i)=>{if(ce[f(i)]>=cn[f(i)].size&&ce[f(i)]>=3)return;ends(e).forEach(p=>{const s=symNear(p,null);if(s&&s.ly===n){(comp[f(i)]=comp[f(i)]||new Set()).add(s.i)}})});
+    const got=new Set();Object.values(comp).forEach(S=>{if(S.size>=2)S.forEach(x=>got.add(x))});const own=symAt.filter(s=>s.ly===n).length;return own?got.size/own:0};
+  Object.entries(L).forEach(([n,o])=>{const s=o.stat;if(o.role==='dev'&&s.lines>=8&&(s.sym<3||s.lines>=s.sym*4)&&s.ins<s.lines/4&&endRatio(n,true).r>=0.35){o.role=s.sym<3?'wire':'both';o.why='中身（線の端が器具に集まる）';return}
+    if(o.role!=='?')return;
+    const own=endRatio(n,false);if(own.ends>=8&&(s.sym<3||s.lines>=s.sym*5)&&endRatio(n,true).r>=0.3){o.role=s.sym<3?'wire':'both';o.why='中身（線の端が器具に集まる）'+(s.sym<3?'':'＋記号が少し')}});
+  /* 配線のレイヤーの線の端 */
+  const wireEnds=[];ents.forEach(e=>{const r=L[e.ly]&&L[e.ly].role;if(r!=='wire'||e.o)return;wireEnds.push(...ends(e))});
+  const WG={};wireEnds.forEach(p=>{const k=Math.floor(p[0]/G)+','+Math.floor(p[1]/G);(WG[k]=WG[k]||[]).push(p)});
+  const wired=(p,r)=>{const gx=Math.floor(p[0]/G),gy=Math.floor(p[1]/G);for(let dx=-1;dx<=1;dx++)for(let dy=-1;dy<=1;dy++){const a=WG[(gx+dx)+','+(gy+dy)];if(a)for(const q of a)if(Math.hypot(p[0]-q[0],p[1]-q[1])<=r+120)return true}return false};
+  /* 器具の文字（E・ET・WP・3・H・D1・a〜z など）が記号のそばにある割合 */
+  const labNear=n=>{const ss=symAt.filter(s=>s.ly===n);if(!ss.length)return 0;let k=0;ss.forEach(s=>{const gx=Math.floor(s.p[0]/G),gy=Math.floor(s.p[1]/G);let hit=false;
+    for(let dx=-1;dx<=1&&!hit;dx++)for(let dy=-1;dy<=1&&!hit;dy++){const a=TG[(gx+dx)+','+(gy+dy)];if(a)for(const x of a)if(/^[A-Za-z0-9φΦ\-]{1,4}$/.test(x.t)&&!['arch','frame','furn','off'].includes((L[x.ly]||{}).role)&&Math.hypot(x.p[0]-s.p[0],x.p[1]-s.p[1])<=s.r+400){hit=true;break}}if(hit)k++});return k/ss.length};
+  Object.entries(L).forEach(([n,o])=>{if(o.role!=='?'&&o.role!=='dev')return;const ss=symAt.filter(s=>s.ly===n);
+    if(o.role==='?'&&!ss.length){o.role='off';o.why='中身（器具なし）';return}
+    const w=ss.length?ss.filter(s=>wired(s.p,s.r)).length/ss.length:0,lab=labNear(n),conn=ss.length>=3?ownConn(n):0;
+    o.score={w:+w.toFixed(2),lab:+lab.toFixed(2),conn:+conn.toFixed(2)};
+    if(o.role==='dev'){if(conn>=0.4)o.role='both',o.why+='＋配線も同じレイヤー';return}
+    if(wireEnds.length&&w<0.15&&conn<0.4){const lt=String((o.lt||{}).lt||'');const oldTx=texts.filter(x=>/撤去|既設|既存|移設/.test(x.t)&&ss.some(s=>Math.hypot(x.p[0]-s.p[0],x.p[1]-s.p[1])<=s.r+800)).length;
+      if(/DASH|HIDDEN|DOT|破線|点線|BORDER|CENTER/i.test(lt)||oldTx>=Math.max(1,ss.length*0.2)){o.role='old';o.why='中身（配線がなく、破線・撤去の文字）';return}}
+    if(w>=0.5||(ss.length<=2&&w>0)||lab>=0.4||conn>=0.4){o.role=conn>=0.4?'both':'dev';o.why=w>=0.5?'中身（配線がつながる記号）':conn>=0.4?'中身（記号と配線）':'中身（器具の文字がある記号）'}
+    else{o.role='furn';o.why='中身（配線のない記号＝家具・機器）'}});
+  /* 配線のレイヤーが1つもない時は、線の多い電気のレイヤーに配線も描いてある */
+  if(!Object.values(L).some(o=>o.role==='wire'||o.role==='both')){let best=null,bl=0;Object.entries(L).forEach(([n,o])=>{if(o.role!=='dev')return;const s=o.stat;if(s.lines>=Math.max(10,s.sym)&&s.lines>bl&&endRatio(n,false).r>=0.25){best=o;bl=s.lines}});
+    if(best){best.role='both';best.why+='＋配線も同じレイヤー（ほかに配線のレイヤーがない）'}}
+  return L}
+/* ---------- 数える ---------- */
+function KE_analyze(){const ents=KE.ents,role=n=>(KE.layers[n]||{}).role||'off';
+  const isDev=ly=>{const r=role(ly);return r==='dev'||r==='both'},isWire=ly=>{const r=role(ly);return r==='wire'||r==='both'};
+  /* 部品の中身（入れ子も含めて）の大きさ */
+  const ins=ents.filter(e=>e.k==='insert'),box={};
+  ents.forEach(e=>{if(e.k==='insert'||e.k==='text'||!e.o)return;const b=KE_bb(e);for(let q=e.o,d=0;q&&d<8;q=q.o,d++){const x=box[q.id];box[q.id]=x?[Math.min(x[0],b[0]),Math.min(x[1],b[1]),Math.max(x[2],b[2]),Math.max(x[3],b[3])]:b.slice()}});
+  /* 器具の部品：電気のレイヤーにあって小さい物。大きい部品（家具・部屋ごとまとめた部品）の中は、さらに中を見る */
+  const symIns=new Set();
+  const isCand=e=>{if(!isDev(e.ly)||/GRID|BUBBLE|ARROW|矢印|^HR[_-]|HOMERUN|ﾔｼﾞﾙｼ|LEADER/i.test(e.name))return false;const b=box[e.id];if(!b)return true;return Math.max(b[2]-b[0],b[3]-b[1])<=1800};
+  ins.forEach(e=>{let q=e.o,up=false;for(let d=0;q&&d<8;q=q.o,d++)if(symIns.has(q)){up=true;break}if(!up&&isCand(e))symIns.add(e)});
+  const owner=e=>{let r=null;for(let q=e.o,d=0;q&&d<8;q=q.o,d++)if(symIns.has(q))r=q;return r};
+  /* 同じ物が重なって2回描いてあるのは1つにする */
+  const seen=new Set(),key=e=>{const q=v=>Math.round(v);if(e.k==='line'){const a=e.a.map(q),b=e.b.map(q);return'l'+(a[0]<b[0]||(a[0]===b[0]&&a[1]<=b[1])?a.concat(b):b.concat(a)).join(',')}
+    if(e.k==='circle')return'c'+e.c.map(q).join(',')+','+q(e.r);if(e.k==='insert')return'i'+e.name+'|'+e.p.map(v=>Math.round(v/5)).join(',');if(e.pts)return e.k+e.pts.map(p=>p.map(q).join(',')).join(';');if(e.k==='text')return't'+e.t+e.p.map(q).join(',');return null};
+  const inner={};
+  const E=ents.filter(e=>{if(e.k==='insert')return false;const ow=owner(e);if(ow){(inner[ow.id]=inner[ow.id]||[]).push(e);return false}
+    const k=key(e);if(k===null)return true;const kk=e.ly+'|'+k;if(seen.has(kk))return false;seen.add(kk);return true});
+  /* 建物の範囲（建築のレイヤーの線） */
+  let A=[Infinity,Infinity,-Infinity,-Infinity];E.forEach(e=>{if(role(e.ly)!=='arch'||e.k==='text')return;const b=KE_bb(e);A=[Math.min(A[0],b[0]),Math.min(A[1],b[1]),Math.max(A[2],b[2]),Math.max(A[3],b[3])]});
+  const hasA=isFinite(A[0]);
+  /* 属性：部品名ごとに、値の種類が少ない属性は「種類」、多い属性は回路番号などなので使わない */
+  const attN={};symIns.forEach(e=>{(e.att||[]).forEach((v,i)=>{const k=e.name+'#'+i;const o=attN[k]||(attN[k]={n:0,v:new Set()});o.n++;o.v.add(v)})});
+  const typeAtt=e=>(e.att||[]).filter((v,i)=>{const o=attN[e.name+'#'+i];return v.length<=12&&o&&o.v.size<=Math.max(3,o.n/4)}).join(' ');
+  const sym=[],sk=new Set();
+  symIns.forEach(e=>{const k='i'+e.name+'|'+e.p.map(v=>Math.round(v/5)).join(',');if(sk.has(k))return;sk.add(k);
+    const all=inner[e.id]||[],parts=all.filter(x=>x.k!=='text');const bb=box[e.id]||[e.p[0]-150,e.p[1]-150,e.p[0]+150,e.p[1]+150];
+    const tx=all.filter(x=>x.k==='text'&&x.t.length<=8).map(x=>x.t)[0]||'';
+    if(parts.length&&parts.every(x=>(x.k==='solid'&&!x.h||(x.k==='poly'&&x.closed&&!(x.w>0)))&&new Set(x.pts.map(p=>Math.round(p[0])+','+Math.round(p[1]))).size===3)&&Math.max(bb[2]-bb[0],bb[3]-bb[1])<=600)return;  /* 矢じりだけの部品 */
+    sym.push({src:'ins',name:e.name,bb,parts,ly:e.ly,att:typeAtt(e),inLabel:tx,attOld:(e.att||[]).some(v=>/既設|撤去|既存|EXIST|DEMO/i.test(v))})});
+  /* バラで描いてある記号：小さい図形どうしをくっつけて1つの記号にする */
+  const cand=[],wires=[];
+  const rects=KE_rectLines(E.filter(e=>isDev(e.ly)&&e.k==='line'));
+  E.forEach(e=>{if(e.k==='insert'||e.k==='text')return;const dev=isDev(e.ly),wr=isWire(e.ly);if(!dev&&!wr)return;
+    const L=KE_len(e),b=KE_bb(e),sz=Math.max(b[2]-b[0],b[3]-b[1]);
+    if(e.k==='circle'){if(dev&&e.r<=450&&e.r>=35)cand.push(e);return}
+    if(e.k==='solid'){if(dev&&sz<=600)cand.push(e);return}
+    if(e.k==='arc'){if(dev&&e.r<=450)cand.push(e);else if(wr)wires.push(e);return}
+    if(e.k==='poly'&&e.closed&&dev&&sz<=1700){cand.push(e);return}
+    if(e.k==='poly'&&e.closed&&sz<=600)return;   /* 配線のレイヤーの小さい閉じた形＝矢じり */
+    if(e.k==='line'&&rects.has(e)){cand.push(e);return}
+    if(dev&&L<=600&&!(role(e.ly)==='wire')){cand.push(e);return}
+    if(wr)wires.push(e)});
+  /* くっつける：近い図形どうし。ただし1つの記号が大きくなりすぎる（配線の切れ端でつながる）くっつけ方はしない */
+  const n=cand.length,par=cand.map((_,i)=>i),f=i=>par[i]===i?i:(par[i]=f(par[i]));const B=cand.map(KE_bb),pad=30,CAP=1800;const RB=B.map(b=>b.slice());
+  const join=(i,j)=>{const a=f(i),b=f(j);if(a===b)return;const u=[Math.min(RB[a][0],RB[b][0]),Math.min(RB[a][1],RB[b][1]),Math.max(RB[a][2],RB[b][2]),Math.max(RB[a][3],RB[b][3])];
+    if(Math.max(u[2]-u[0],u[3]-u[1])>CAP)return;par[a]=b;RB[b]=u};
+  const order=cand.map((_,i)=>i).sort((a,b)=>B[a][0]-B[b][0]);
+  const shapeFirst=(i)=>cand[i].k==='circle'||cand[i].k==='solid'||(cand[i].k==='poly'&&cand[i].closed)||rects.has(cand[i]);
+  for(const pass of [1,2])for(let x=0;x<n;x++){const i=order[x];for(let y=x+1;y<n;y++){const j=order[y];if(B[j][0]>B[i][2]+2*pad)break;if(B[j][1]>B[i][3]+2*pad||B[i][1]>B[j][3]+2*pad)continue;
+    if(pass===1&&!(shapeFirst(i)||shapeFirst(j)))continue;if(KE_touch(cand[i],cand[j],pad))join(i,j)}}
+  /* 記号から少し離して描いた線や円弧（センサーの波など）は、150mm以内の記号に付ける */
+  {const hasShape=r=>cand.some((e,k)=>f(k)===r&&shapeFirst(k));const roots=[...new Set(cand.map((_,i)=>f(i)))];const shapeRoots=roots.filter(hasShape);
+   roots.filter(r=>!hasShape(r)).forEach(r=>{const b=RB[r];if(Math.max(b[2]-b[0],b[3]-b[1])>600)return;let best=null,bd=150;
+     shapeRoots.forEach(s=>{const q=RB[s];const dx=Math.max(q[0]-b[2],0,b[0]-q[2]),dy=Math.max(q[1]-b[3],0,b[1]-q[3]);const d=Math.hypot(dx,dy);if(d<bd){bd=d;best=s}});
+     if(best!==null){const i=cand.findIndex((_,k)=>f(k)===r),j=cand.findIndex((_,k)=>f(k)===best);join(i,j)}})}
+  const groups={};cand.forEach((e,i)=>{(groups[f(i)]=groups[f(i)]||[]).push(e)});
+  Object.values(groups).forEach(g=>{const closedShape=g.some(e=>e.k==='circle'||e.k==='solid'||e.k==='arc'||(e.k==='poly'&&e.closed)||rects.has(e));
+    let bb=[Infinity,Infinity,-Infinity,-Infinity];g.forEach(x=>{const b=KE_bb(x);bb=[Math.min(bb[0],b[0]),Math.min(bb[1],b[1]),Math.max(bb[2],b[2]),Math.max(bb[3],b[3])]});
+    const tot=g.reduce((s,e)=>s+KE_len(e),0);
+    const tri=g.length===1&&(g[0].k==='solid'||(g[0].k==='poly'&&g[0].closed))&&new Set(g[0].pts.map(p=>Math.round(p[0])+','+Math.round(p[1]))).size<=3&&Math.max(bb[2]-bb[0],bb[3]-bb[1])<=350;
+    if(tri)return;                                                    /* 小さい三角だけ＝矢じり */
+    if(g.every(e=>e.k==='arc'))return;                                /* 円弧だけ＝扉の線やセンサーの波の切れ端 */
+    if(!closedShape){if(tot>=250&&g.every(e=>isWire(e.ly)))wires.push(...g);return}  /* 線だけの集まりは、配線の切れ端か矢印 */
+    if(Math.max(bb[2]-bb[0],bb[3]-bb[1])>2500)return;
+    sym.push({src:'raw',parts:g,bb,ly:g[0].ly})});
+  /* ラベル（D1・2・E・WP・3 など、記号のすぐそばの短い文字） */
+  const texts=E.filter(e=>e.k==='text');
+  sym.forEach(s=>{s.cx=(s.bb[0]+s.bb[2])/2;s.cy=(s.bb[1]+s.bb[3])/2;s.label=s.inLabel||''});
+  /* 文字は、いちばん近い記号のラベルにする（となりの記号の文字を取らない） */
+  texts.forEach(tx=>{if(tx.t.length>8||!isDev(tx.ly)||/撤去|既設|凡例/.test(tx.t))return;let best=null,bd=Infinity;
+    sym.forEach(s=>{const R=Math.max(s.bb[2]-s.bb[0],s.bb[3]-s.bb[1])/2+250;const dx=Math.max(s.bb[0]-tx.p[0],0,tx.p[0]-s.bb[2]),dy=Math.max(s.bb[1]-tx.p[1],0,tx.p[1]-s.bb[3]);const d=Math.hypot(dx,dy);if(d<=250&&d<bd){bd=d;best=s}});
+    if(best&&(!best._ld||bd<best._ld)){best.label=tx.t.trim();best._ld=bd}});
+  /* 凡例：①建物の外 ②縦に並んだ記号の右に説明の文字がある所 ③「凡例」の文字のまわり */
+  const longT=texts.filter(t=>t.t.length>=3);const legT=texts.filter(t=>/凡\s*例|LEGEND|記号/i.test(t.t));
+  sym.forEach(s=>{const h=Math.max((s.bb[3]-s.bb[1])*0.6,150);let best=null,bd=Infinity;longT.forEach(t=>{if(/^[\d,.\s]+$/.test(t.t))return;const dx=t.p[0]-s.bb[2];if(dx<-50||dx>2500||Math.abs(t.p[1]-s.cy)>h)return;const d=dx+Math.abs(t.p[1]-s.cy)*2+(t.ly===s.ly?0:400);if(d<bd){bd=d;best=t}});s.descr=best});
+  const oldT=texts.filter(t=>/撤去|既設|既存|移設|EXIST|REMOV/i.test(t.t));
+  sym.forEach(s=>{let why='';
+    if(s.attOld)why='撤去・既存';
+    else if(oldT.some(t=>{const dx=Math.max(s.bb[0]-t.p[0],0,t.p[0]-s.bb[2]),dy=Math.max(s.bb[1]-t.p[1],0,t.p[1]-s.bb[3]);return Math.hypot(dx,dy)<=400}))why='撤去・既存';
+    else if(hasA&&(s.cx<A[0]-300||s.cx>A[2]+300||s.cy<A[1]-300||s.cy>A[3]+300))why='建物の外';
+    else if(s.descr){const col=sym.filter(o=>o!==s&&o.descr&&Math.abs(o.cx-s.cx)<200&&Math.abs(o.cy-s.cy)<6000);
+      if(col.length>=2&&legT.some(t=>Math.abs(t.p[0]-s.cx)<5000&&t.p[1]>s.cy&&t.p[1]-s.cy<10000))why='凡例の並び'}
+    s.legend=why});
+  /* 形の特徴で種類に分ける（部品は部品名ごと） */
+  const types={};
+  const variant=l=>{const s=String(l||'').replace(/\s+/g,'').toUpperCase();return /^(2|3|4|H|E|ET|EET|WP|2E|3E|EE|E?200V|200V?E?|\d口|T|EL|EM)$/.test(s)?s:''};
+  sym.forEach(s=>{s.vlabel=variant(s.label);const k=s.src==='ins'?'ins:'+s.name+'|'+(s.att||s.vlabel):'raw:'+KE_sig(s.parts)+'|'+s.vlabel;const t=types[k]||(types[k]={key:k,src:s.src,name:s.name||'',label:s.att||s.vlabel||'',sample:s,list:[],legend:0});
+    if(s.legend){t.legend++;if(s.descr&&!t.legendText)t.legendText=s.descr.t}else t.list.push(s)});
+  /* 凡例が数えないレイヤーにある時も、同じ部品の横の説明文を凡例の文字として使う */
+  {const used=new Set(sym.map(s=>s.name+'|'+Math.round(s.cx)+','+Math.round(s.cy)));const tx=texts.length?texts:[];const allT=ents.filter(e=>e.k==='text'&&!e.o&&e.t.length>=2&&!/^[\d,.\s]+$/.test(e.t));
+   Object.values(types).forEach(t=>{if(t.src!=='ins'||t.legendText)return;for(const e of ents){if(e.k!=='insert'||e.name!==t.name||e.o)continue;const k=e.name+'|'+Math.round(e.p[0])+','+Math.round(e.p[1]);
+     let best=null,bd=Infinity;allT.forEach(x=>{const dx=x.p[0]-e.p[0];if(dx<100||dx>2500||Math.abs(x.p[1]-e.p[1])>300)return;const d=dx+Math.abs(x.p[1]-e.p[1])*3;if(d<bd){bd=d;best=x}});
+     if(best&&(role(e.ly)==='off'||role(e.ly)==='frame'||/凡例|LEG/i.test(e.ly))){t.legendText=best.t;break}}})}
+  /* バラで描いた記号が、部品と同じ形なら同じ種類にまとめる */
+  {const bySig={};Object.values(types).forEach(t=>{if(t.src!=='ins'||!t.sample.parts.length)return;const k=KE_sig(t.sample.parts)+'|'+t.label;if(!bySig[k]||bySig[k].list.length<t.list.length)bySig[k]=t});
+   Object.keys(types).forEach(k=>{const t=types[k];if(t.src!=='raw')return;const m=bySig[k.slice(4)];if(!m)return;m.list.push(...t.list);m.legend+=t.legend;if(!m.legendText&&t.legendText)m.legendText=t.legendText;m.merged=(m.merged||0)+t.list.length;delete types[k]})}
+  /* 配線の長さ（凡例・建物の外は除く） */
+  const wireIn=wires.filter(e=>{if(!hasA)return true;const b=KE_bb(e),cx=(b[0]+b[2])/2,cy=(b[1]+b[3])/2;return !(cx<A[0]-300||cx>A[2]+300||cy<A[1]-300||cy>A[3]+300)});
+  {const T=8,key=p=>Math.round(p[0]/T)+','+Math.round(p[1]/T),ends={};wireIn.forEach(e=>{if(e.k!=='line')return;[e.a,e.b].forEach(p=>{(ends[key(p)]=ends[key(p)]||[]).push(e)})});
+   const longEnd=new Set();wireIn.forEach(e=>{if(KE_len(e)>300){const ps=e.k==='line'?[e.a,e.b]:e.pts?[e.pts[0],e.pts[e.pts.length-1]]:[];ps.forEach(p=>longEnd.add(key(p)))}});
+   const drop=new Set();Object.entries(ends).forEach(([k,ls])=>{const sh=ls.filter(l=>KE_len(l)<=250);if(sh.length>=2&&longEnd.has(k))sh.forEach(l=>drop.add(l))});
+   for(let i=wireIn.length-1;i>=0;i--)if(drop.has(wireIn[i]))wireIn.splice(i,1)}
+  const byLy={};let total=0;wireIn.forEach(e=>{const L=KE_len(e);total+=L;byLy[e.ly]=(byLy[e.ly]||0)+L});
+  /* 1つの部品に同じ黒丸が2つ以上（2連スイッチなど）は、その数だけ数える */
+  const gang=s=>{if(s.src!=='ins')return 1;const d=s.parts.filter(e=>e.k==='solid'||(e.k==='poly'&&e.closed&&e.w>0));if(d.length<2)return 1;const bs=d.map(KE_bb),sz=bs.map(b=>Math.max(b[2]-b[0],b[3]-b[1]));
+    if(sz.some(z=>z>200||Math.abs(z-sz[0])>sz[0]*0.15))return 1;const g=sz[0]*0.3,u=[];bs.forEach(b=>{const m=u.find(q=>b[0]<=q[2]+g&&b[2]>=q[0]-g&&b[1]<=q[3]+g&&b[3]>=q[1]-g);if(m){m[0]=Math.min(m[0],b[0]);m[1]=Math.min(m[1],b[1]);m[2]=Math.max(m[2],b[2]);m[3]=Math.max(m[3],b[3])}else u.push(b.slice())});
+    return u.length>=2&&u.length<=6&&u.every(q=>Math.max(q[2]-q[0],q[3]-q[1])<=sz[0]*1.3)?u.length:1};
+  Object.values(types).forEach(t=>{t.count=t.list.reduce((a,s)=>a+(s.n=gang(s)),0)});
+  KE.res={types:Object.values(types).filter(t=>t.list.length||t.legend).sort((a,b)=>b.count-a.count),wiresM:total/1000,byLy,wires:wireIn,A:hasA?A:null,sym};
+  return KE.res}
+/* 4本の線で閉じた小さい長方形（ベースライトなど）を見つける */
+function KE_rectLines(lines){const res=new Set(),T=6,k=p=>Math.round(p[0]/T)+','+Math.round(p[1]/T);const node={};
+  lines.forEach(l=>{if(KE_len(l)>1700)return;[k(l.a),k(l.b)].forEach(n=>{(node[n]=node[n]||[]).push(l)})});
+  const adj=l=>[...(node[k(l.a)]||[]),...(node[k(l.b)]||[])].filter(x=>x!==l);const done=new Set();
+  lines.forEach(l=>{if(done.has(l)||KE_len(l)>1700)return;const comp=[],st=[l];const s=new Set([l]);while(st.length&&comp.length<12){const x=st.pop();comp.push(x);adj(x).forEach(y=>{if(!s.has(y)){s.add(y);st.push(y)}})}
+    comp.forEach(x=>done.add(x));if(comp.length===4){const deg={};comp.forEach(x=>{[k(x.a),k(x.b)].forEach(n=>deg[n]=(deg[n]||0)+1)});if(Object.keys(deg).length===4&&Object.values(deg).every(d=>d===2))comp.forEach(x=>res.add(x))}});
+  return res}
+function KE_touch(a,b,pad){const pa=KE_keyPts(a),pb=KE_keyPts(b);
+  /* 円どうし・円と線は、近ければくっつける */
+  for(const p of pa)for(const q of pb)if(Math.hypot(p[0]-q[0],p[1]-q[1])<=pad)return true;
+  const near=(e,p)=>{if(e.k==='circle')return Math.abs(Math.hypot(p[0]-e.c[0],p[1]-e.c[1])-e.r)<=pad||Math.hypot(p[0]-e.c[0],p[1]-e.c[1])<e.r;if(e.k==='line')return KE_ptSeg(p,e.a,e.b)<=pad;
+    if(e.pts){for(let i=1;i<e.pts.length;i++)if(KE_ptSeg(p,e.pts[i-1],e.pts[i])<=pad)return true;if(e.k==='solid'||(e.k==='poly'&&e.closed)){const b=KE_bb(e);return p[0]>=b[0]&&p[0]<=b[2]&&p[1]>=b[1]&&p[1]<=b[3]}}return false};
+  return pa.some(p=>near(b,p))||pb.some(p=>near(a,p))}
+function KE_keyPts(e){if(e.k==='line')return[e.a,e.b,[(e.a[0]+e.b[0])/2,(e.a[1]+e.b[1])/2]];if(e.k==='circle')return[e.c,[e.c[0]+e.r,e.c[1]],[e.c[0]-e.r,e.c[1]],[e.c[0],e.c[1]+e.r],[e.c[0],e.c[1]-e.r]];return e.pts||[]}
+function KE_ptSeg(p,a,b){const dx=b[0]-a[0],dy=b[1]-a[1],L=dx*dx+dy*dy;let t=L?((p[0]-a[0])*dx+(p[1]-a[1])*dy)/L:0;t=Math.max(0,Math.min(1,t));return Math.hypot(p[0]-a[0]-t*dx,p[1]-a[1]-t*dy)}
+/* 形の特徴（向きと少しの大きさの違いは同じとみなす） */
+function KE_sig(parts){const c={circle:0,arc:0,line:0,poly:0,solid:0};let bb=[Infinity,Infinity,-Infinity,-Infinity];const rs=[];
+  parts.forEach(e=>{c[e.k]=(c[e.k]||0)+1;if(e.k==='circle')rs.push(Math.round(e.r/25)*25);const b=KE_bb(e);bb=[Math.min(bb[0],b[0]),Math.min(bb[1],b[1]),Math.max(bb[2],b[2]),Math.max(bb[3],b[3])]});
+  const w=bb[2]-bb[0],h=bb[3]-bb[1],q=v=>Math.round(v/50)*50;const s=[q(Math.max(w,h)),q(Math.min(w,h))];
+  return `c${c.circle}a${c.arc}l${c.line}p${c.poly}s${c.solid}r${rs.sort().join('.')}b${s.join('x')}`}
+function KE_describe(t){const lg=t.legendText?'【凡例：'+t.legendText.slice(0,16)+'】':'';return lg+KE_describe0(t)}
+function KE_describe0(t){if(t.src==='ins'&&t.name&&!/^(\*|BLK|BLOCK|A\$|U\d|ブロック\d|BL\$|\d+$)/i.test(t.name))return t.name+(t.label?'（'+t.label+'）':'');
+  const p=t.sample.parts,c=p.filter(e=>e.k==='circle'),b=t.sample.bb,w=Math.round(b[2]-b[0]),h=Math.round(b[3]-b[1]);
+  let d=p.some(e=>e.k==='solid')&&!c.length?'黒丸・塗り':c.length?`円 φ${Math.round(c[0].r*2)}`:`四角 ${Math.max(w,h)}×${Math.min(w,h)}`;
+  if(c.length&&p.some(e=>e.k==='line'))d+='＋線'+p.filter(e=>e.k==='line').length+'本';if(c.length&&p.some(e=>e.k==='solid'))d+='＋塗り';if(c.length>1)d+=`（円${c.length}つ）`;
+  return(t.label?'「'+t.label+'」':'')+d+(t.src==='ins'?'（部品 '+t.name+'）':'')}
+function KE_shape(t){const p=t.sample.parts||[],c=p.filter(e=>e.k==='circle').sort((a,b)=>b.r-a.r),b=t.sample.bb,w=b[2]-b[0],h=b[3]-b[1],L=Math.max(w,h),S=Math.min(w,h);
+  const solid=p.some(e=>e.k==='solid'),arcs=p.filter(e=>e.k==='arc').length,lines=p.filter(e=>e.k==='line');
+  if(!c.length){if(L>=500&&L/Math.max(S,1)>=2.5)return'base';if(L>=450&&Math.abs(w-h)<L*0.15)return'square';if(solid&&L<=320)return'sw';if(L<=130&&Math.abs(w-h)<L*0.2)return'sw';if(solid&&L>=400&&L<=1300)return'panel?';return''}
+  const R=c[0].r,ctr=c[0].c;
+  if(arcs&&c.length)return'fan';
+  if(solid&&R<=90&&L<=260)return'sw';
+  const inside=lines.filter(l=>Math.hypot((l.a[0]+l.b[0])/2-ctr[0],(l.a[1]+l.b[1])/2-ctr[1])<R*0.6&&KE_len(l)>R*1.2);
+  if(inside.length>=2){const d=l=>Math.atan2(l.b[1]-l.a[1],l.b[0]-l.a[0]);const a0=d(inside[0]),a1=d(inside[1]);const df=Math.abs(Math.sin(a0-a1));if(df>0.5)return'x'}
+  if(c.length>=2&&c[1].r>R*0.2&&Math.hypot(c[1].c[0]-ctr[0],c[1].c[1]-ctr[1])<R*0.2)return solid?'emg':'dl';
+  if(solid)return'sw';
+  const outLines=lines.filter(l=>KE_len(l)<=R*2.2&&Math.min(Math.hypot(l.a[0]-ctr[0],l.a[1]-ctr[1]),Math.hypot(l.b[0]-ctr[0],l.b[1]-ctr[1]))<R*1.3);
+  if(outLines.length===2)return'con';
+  if(!lines.length)return'plain';return''}
+function KE_lab(t){const k=String(t.label||'').toUpperCase().trim().split(/\s+/).filter(Boolean);return k.find(x=>/^(\d|H$|E|ET$|EET$|WP$|EE|T$|TV$|LAN$|200V|3φ)/.test(x))||k[0]||''}
+function KE_guessItem(t){let a=KE_kw(t,[t.name,t.label].join(' '));if(a!==null)return a;if(t.legendText){a=KE_kw(t,t.legendText+' '+t.label);if(a!==null)return a}return KE_byShape(t)}
+function KE_kw(t,s){const lab=KE_lab(t);
+  const has=re=>re.test(s);
+  if(has(/分電盤|動力盤|制御盤|PANEL|PNL|^盤|盤$|^(LP|PP|EP|DP)[-_\d]*$/i))return'e-panel';
+  if(has(/総合盤|FAP|受信機/i))return'';
+  if(has(/インターホン|ｲﾝﾀｰﾎﾝ|INTERCOM|ドアホン|親機|子機|^IH[-_]?(親|子)|^IP[-_]?[MDS]$|DOORPHONE/i))return'e-intercom';
+  if(has(/LAN|DATA|情報|ﾓｼﾞｭﾗ|モジュラ|TEL/i))return'e-lanjack';
+  if(has(/TV|テレビ|ﾃﾚﾋﾞ|アンテナ/i))return'e-tvjack';
+  if(has(/換気|ファン|FAN|VF|ﾌｧﾝ/i))return'e-fan';
+  if(has(/ダウンライト|ﾀﾞｳﾝﾗｲﾄ|\bDL\b|^DL|DOWN/i)||/^D\d/.test(lab))return'e-dl100';
+  if(has(/シーリング|\bCL\b|CEIL|引掛/i))return'e-clight';
+  if(has(/^BL[-_\d]|^BL$|^FL[-_]|スポット|SPOT|ダクト|DUCT|非常|誘導|EXIT|EMG|EMER|^EM[-_\d]*$|^EML|高天井|HB-|照明|ライト|ﾗｲﾄ|灯|蛍光|ベース|BASE|FL\d|LED|PD|ペンダント|ブラケット|BR\b|SQ\d|LIGHT|LITE|FIX/i))return'e-light';
+  if(has(/コンセ|ｺﾝｾﾝﾄ|OUTLET|RECEP|REC\b|REC-|CON\b|^CON/i)||/^(E|ET|EET|EE|WP|2E|3E|E?200V?|2|3口|2口)$/.test(lab)&&!has(/スイッチ|SW/i)){
+    if(/E|WP|200/.test(lab))return'e-cone';if(/^2|2口/.test(lab))return'e-con2';return'e-con'}
+  if(has(/スイッチ|ｽｲｯﾁ|SWITCH|\bSW|^SW/i)){if(/^3/.test(lab)||/^4/.test(lab))return'e-sw3';if(/^H/.test(lab))return'e-swh';return'e-sw1'}
+  if(has(/センサ|SENS|^SEN$|HEAT|GAS|ガス|感知|警報|ナース|呼出|ｼﾞｭｳｹｲｷ|住警|^SD$|^HD$|SMK|CAM|カメラ/i))return'';
+  return null}
+function KE_byShape(t){const lab=KE_lab(t),sh=KE_shape(t);
+  if(sh==='sw')return/^[34]/.test(lab)?'e-sw3':/^H/.test(lab)?'e-swh':'e-sw1';
+  if(sh==='con')return/E|WP|200/.test(lab)?'e-cone':/^2/.test(lab)?'e-con2':'e-con';
+  if(sh==='fan')return'e-fan';if(sh==='dl')return'e-dl100';if(sh==='x'||sh==='base'||sh==='square'||sh==='emg')return'e-light';
+  if(sh==='panel?')return'e-panel';
+  if(sh==='plain'&&/^(TV)$/.test(lab))return'e-tvjack';
+  return''}
+
+/* ---------- 画面 ---------- */
+/* ---------- 覚える：一度直したレイヤーの役割と器具の割り当ては、次の図面から自動で使う ---------- */
+function KE_mem(){try{const m=JSON.parse(localStorage.getItem('kaku-elec-mem')||'{}');return{roles:m.roles||{},maps:m.maps||{}}}catch(e){return{roles:{},maps:{}}}}
+function KE_memSave(roles,maps){try{const m=KE_mem();Object.assign(m.roles,roles);Object.assign(m.maps,maps);
+  const cut=o=>{const k=Object.keys(o);if(k.length>3000)k.slice(0,k.length-3000).forEach(x=>delete o[x])};cut(m.roles);cut(m.maps);localStorage.setItem('kaku-elec-mem',JSON.stringify(m))}catch(e){}}
+function KE_memClear(){if(!confirm('覚えたレイヤーの役割と器具の割り当てを消しますか？'))return;try{localStorage.removeItem('kaku-elec-mem')}catch(e){}toast('覚えた内容を消しました')}
+function KE_memApply(){const m=KE_mem();let n=0;Object.entries(KE.layers).forEach(([k,o])=>{o.auto=o.role;if(m.roles[k]&&m.roles[k]!==o.role){o.role=m.roles[k];o.why='前に直した内容';n++}});
+  const saved=(current&&current.elec&&current.elec.file===KE.name&&current.elec.roles)||{};Object.keys(saved).forEach(k=>{if(KE.layers[k])KE.layers[k].role=saved[k]});KE.memUsed=n}
+
+async function KE_start(){const f=KAKU_lastFile;if(!f){toast('先にDXFかJWWのファイルを選んでください');return}const ext=(f.name.split('.').pop()||'').toLowerCase();if(!/^(dxf|jww|jwc)$/.test(ext)){toast('電気を数えられるのはDXF・JWWだけです');return}
+  toast('図面を読んでいます…');try{let R;if(ext==='dxf'){const buf=await f.arrayBuffer();let s;try{s=new TextDecoder('utf-8',{fatal:true}).decode(buf)}catch(e){s=new TextDecoder('shift_jis').decode(buf)}R=KE_parseDXF(s)}else R=await KE_parseJWW(await f.arrayBuffer());
+    KE_scaleUnits(R);    KE={name:f.name,ents:R.ents,ltab:R.ltab||{}};KE.layers=KE_classify(R.ents,KE.ltab);KE_memApply();KE_analyze();KE_render();
+    const el=document.getElementById('kakuElec');if(el)el.scrollIntoView({behavior:'smooth',block:'start'})}catch(e){console.error(e);toast('読み込めませんでした：'+e.message)}}
+function KE_role(n,v){KE.layers[n].role=v;KE_analyze();KE_render()}
+function KE_icon(s){const b=s.bb,w=Math.max(b[2]-b[0],1),h=Math.max(b[3]-b[1],1),pad=Math.max(w,h)*0.15,r=v=>Math.round(v*10)/10;
+  const parts=(s.parts||[]).map(e=>{if(e.k==='circle')return`<circle cx="${r(e.c[0])}" cy="${r(-e.c[1])}" r="${r(e.r)}"/>`;if(e.k==='line')return`<path d="M${r(e.a[0])} ${r(-e.a[1])}L${r(e.b[0])} ${r(-e.b[1])}"/>`;
+    if(e.pts)return`<${e.k==='solid'?'polygon class="fill"':e.closed?'polygon':'polyline'} points="${e.pts.map(p=>r(p[0])+','+r(-p[1])).join(' ')}"/>`;return''}).join('');
+  return`<svg class="keicon" viewBox="${r(b[0]-pad)} ${r(-b[3]-pad)} ${r(w+2*pad)} ${r(h+2*pad)}">${parts||'<circle cx="'+r((b[0]+b[2])/2)+'" cy="'+r(-(b[1]+b[3])/2)+'" r="'+r(w/3)+'"/>'}</svg>`}
+function KE_items(){if(!KAKU_cat)return[];const all=engine.catalogAll();return all.filter(c=>['elec','fix','labor'].includes(c.key)).flatMap(c=>c.items.map(i=>({...i,cat:c.name})))}
+function KE_render(){const box=document.getElementById('kakuElec');if(!box)return;if(!KE){box.innerHTML=current&&current.elec&&current.elec.summary?`<div class="pick ke"><div class="sectionhead" style="margin:16px 0 4px"><h3 style="margin:0">電気の拾い出し</h3></div><p class="mini">前回：${esc(current.elec.file)} から ${esc(current.elec.summary)}。もう一度数える時は図面ファイルを選んで「電気を数える」を押してください。</p></div>`:'';return}
+  const R=KE.res,map=(current.elec&&current.elec.file===KE.name&&current.elec.map)||{},items=KE_items();
+  const lay=Object.entries(KE.layers).map(([n,o])=>`<div class="kelay"><span class="kelname">${esc(n)}</span><span class="mini">${o.stat.n}個${o.stat.ins?'・部品'+o.stat.ins:''}${o.stat.smallCirc?'・小円'+o.stat.smallCirc:''}${o.why?'・'+esc(o.why):''}</span><select onchange="KE_role('${esc(n).replace(/'/g,"\\'")}',this.value)">${KE_ROLES.map(([k,t])=>`<option value="${k}"${o.role===k?' selected':''}>${t}</option>`).join('')}</select></div>`).join('');
+  const opt=sel=>`<option value="">見積もりに入れない</option>`+items.map(i=>`<option value="${esc(i.id)}"${i.id===sel?' selected':''}>${esc(i.name)}${i.spec?' '+esc(i.spec):''}</option>`).join('');
+  const types=R.types.map((t,k)=>{const mm=KE_mem().maps;const sel=map[t.key]!==undefined?map[t.key]:mm[t.key]!==undefined?mm[t.key]:KE_guessItem(t);return`<div class="ketype"><button class="keshow" onclick="KE_hl(${k})" aria-label="図で見る">${KE_icon(t.sample)}</button><div class="kename"><b>${esc(KE_describe(t))}</b><span class="mini">${t.count}個${t.legend?'（凡例・建物の外・撤去の '+t.legend+'個は数えていません）':''}</span></div><div class="kecount">${t.count}</div><select data-k="${esc(t.key)}" class="kemap">${opt(sel)}</select></div>`}).join('')||'<p class="mini">電気の器具が見つかりませんでした。上のレイヤーの役割を確かめてください。</p>';
+  const cable=(current.elec&&current.elec.cable)||'e-v16-2',extra=(current.elec&&current.elec.extra!==undefined)?current.elec.extra:10;
+  const wireOpt=engine.catalogAll().filter(c=>c.key==='wire').flatMap(c=>c.items).map(i=>`<option value="${esc(i.id)}"${i.id===cable?' selected':''}>${esc(i.name)} ${esc(i.spec)}</option>`).join('');
+  box.innerHTML=`<div class="pick ke"><div class="sectionhead" style="margin:16px 0 4px"><h3 style="margin:0">電気の拾い出し</h3><button class="btn ghost" onclick="KE=null;KE_render()">閉じる</button></div>
+    <p class="mini">${esc(KE.name)}。レイヤーの役割を自動で決めています。違う時は直してください（直すと数え直します）。直した内容は覚えて、次の図面から自動で使います。${KE.memUsed?'（今回 '+KE.memUsed+'個のレイヤーに前に直した内容を使いました）':''}</p>
+    <details class="kelays"><summary>レイヤー（${Object.keys(KE.layers).length}）</summary>${lay}<p class="mini"><button class="btn ghost" onclick="KE_memClear()">覚えた内容を消す</button></p></details>
+    <div class="keplan">${KE_planSVG()}</div>
+    <h4 class="keh">器具（同じ形・同じ部品ごと）</h4><div class="ketypes">${types}</div>
+    <h4 class="keh">配線</h4><div class="kewire"><b>${R.wiresM.toFixed(2)} m</b><span class="mini">${Object.entries(R.byLy).map(([n,v])=>esc(n)+' '+(v/1000).toFixed(2)+'m').join('　')||'配線のレイヤーがありません'}</span>
+      <label>ケーブル<select id="keCable"><option value="">見積もりに入れない</option>${wireOpt}</select></label><label>余長 %<input id="keExtra" type="number" inputmode="numeric" min="0" value="${extra}"></label></div>
+    <div class="pickbtns"><button class="btn orange" onclick="KE_apply()">この内容で見積もりに入れる</button></div>
+    <p class="mini">図面から自動で数えた目安です。部品の名前や記号の描き方で外れることがあるので、図と数を見比べてから入れてください。入れた後は見積明細で数量を直せます。もう一度入れると前の分と入れ替わります。</p></div>`}
+function KE_planSVG(hl){const R=KE.res,role=n=>(KE.layers[n]||{}).role;let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+  const arch=[];KE.ents.forEach(e=>{if(e.k==='text'||e.k==='insert')return;if(role(e.ly)!=='arch')return;arch.push(e)});
+  const all=arch.concat(R.wires);all.forEach(e=>{const b=KE_bb(e);x0=Math.min(x0,b[0]);y0=Math.min(y0,b[1]);x1=Math.max(x1,b[2]);y1=Math.max(y1,b[3])});
+  R.sym.forEach(s=>{x0=Math.min(x0,s.bb[0]);y0=Math.min(y0,s.bb[1]);x1=Math.max(x1,s.bb[2]);y1=Math.max(y1,s.bb[3])});
+  if(!isFinite(x0))return'';const w=x1-x0,h=y1-y0,pad=Math.max(w,h)*0.02,r=v=>Math.round(v);
+  const path=list=>list.map(e=>{if(e.k==='line')return`M${r(e.a[0])} ${r(-e.a[1])}L${r(e.b[0])} ${r(-e.b[1])}`;if(e.pts)return'M'+e.pts.map(p=>r(p[0])+' '+r(-p[1])).join('L');if(e.k==='circle')return`M${r(e.c[0]-e.r)} ${r(-e.c[1])}a${r(e.r)} ${r(e.r)} 0 1 0 ${r(2*e.r)} 0a${r(e.r)} ${r(e.r)} 0 1 0 ${r(-2*e.r)} 0`;return''}).join('');
+  const C=['#e65c32','#2f7d6d','#3d6fb6','#b5852b','#8a4fb0','#c2416b','#4f8a2f','#5b6470','#d4a017','#1b998b'];const ti=new Map();R.types.forEach((t,k)=>{t.list.forEach(s=>ti.set(s,k))});
+  const mk=R.sym.map(s=>{const k=ti.get(s),rr=Math.max(120,Math.max(s.bb[2]-s.bb[0],s.bb[3]-s.bb[1])/2+60);return s.legend?`<circle class="keleg" cx="${r(s.cx)}" cy="${r(-s.cy)}" r="${r(rr)}"/>`:`<circle class="kemk${hl!==undefined&&hl===k?' hl':''}" style="stroke:${C[k%C.length]}" cx="${r(s.cx)}" cy="${r(-s.cy)}" r="${r(rr)}"/>`}).join('');
+  return`<svg viewBox="${r(x0-pad)} ${r(-y1-pad)} ${r(w+2*pad)} ${r(h+2*pad)}"><path class="kearch" d="${path(arch)}"/><path class="kewires" d="${path(R.wires)}"/>${mk}</svg>`}
+function KE_hl(k){const el=document.querySelector('#kakuElec .keplan');if(el)el.innerHTML=KE_planSVG(k);el&&el.scrollIntoView({behavior:'smooth',block:'center'})}
+function KE_apply(){if(!KE||!current)return;const R=KE.res;const map={};document.querySelectorAll('#kakuElec select.kemap').forEach(s=>map[s.dataset.k]=s.value);
+  const cable=document.getElementById('keCable').value,extra=Math.max(0,+document.getElementById('keExtra').value||0);
+  current.picks=(current.picks||[]).filter(p=>p.src!=='elec');const add={};R.types.forEach(t=>{const id=map[t.key];if(id&&t.count)add[id]=(add[id]||0)+t.count});
+  Object.entries(add).forEach(([id,q])=>current.picks.push({item:id,qty:q,src:'elec'}));
+  if(cable&&R.wiresM>0)current.picks.push({item:cable,qty:Math.round(R.wiresM*(1+extra/100)*10)/10,src:'elec'});
+  const roles={},learn={};Object.entries(KE.layers).forEach(([n,o])=>{roles[n]=o.role;if(o.role!==o.auto)learn[n]=o.role});KE_memSave(learn,map);
+  const n=Object.values(add).reduce((s,v)=>s+v,0);current.elec={file:KE.name,roles,map,cable,extra,summary:`器具 ${n}個・配線 ${R.wiresM.toFixed(1)}m`};
+  save();refreshEngineRows();toast('電気の器具 '+n+'個と配線を見積もりに入れました')}
+(function(){const pl=document.getElementById('kakuTrace')||document.getElementById('kakuPlan');if(pl&&!document.getElementById('kakuElec'))pl.insertAdjacentHTML('afterend','<div id="kakuElec"></div>');
+  const lf=loadFile;loadFile=function(inp){lf(inp);const f=inp.files&&inp.files[0];if(!f)return;const ext=(f.name.split('.').pop()||'').toLowerCase();
+    if(/^(dxf|jww|jwc)$/.test(ext)){const box=document.getElementById('filePreview');box.insertAdjacentHTML('beforeend',`<div class="ktstart"><button class="btn light" onclick="KE_start()">この図面の電気を数える</button><span class="mini">照明・コンセント・スイッチの数と配線の長さを出します（電気屋さんが書き込んだ図面向け）</span></div>`)}};
+  const op=openProject;openProject=function(id){op(id);KE=null;KE_render()}})();
 
 function downloadCSV(){if(!current)return;waitEngine().then(e=>{e.sync(current);return KAKU_share((current.name||'estimate')+'.csv','\ufeff'+e.csv(),'text/csv')}).catch(e=>toast(e.message))}
 </script>
