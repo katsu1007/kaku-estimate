@@ -737,13 +737,21 @@ function KE_parseDXF(str){
   return{ents:out,insunits:ins,ltab}}
 
 /* ---------- 読む（JWW、概算くんの読み取りを使う） ---------- */
-async function KE_parseJWW(buf){await waitEngine();const fw=document.getElementById('engineFrame').contentWindow;const J=fw.jwwRead(buf);const out=[];
+async function KE_parseJWW(buf,opt){opt=opt||{};await waitEngine();const fw=document.getElementById('engineFrame').contentWindow;const J=fw.jwwRead(buf);const out=[];
   const lname=(g,l)=>{const a=((J.glayName||[])[g]||'').trim(),b=(((J.lay||[])[g]||[])[l]||'').trim();return `${g.toString(16).toUpperCase()}-${l.toString(16).toUpperCase()}`+(b?' '+b:a?' '+a:'')};
-  (J.items||[]).forEach(o=>{const s=(J.scale&&J.scale[o.glay])||1,ly=lname(o.glay||0,o.lay||0);const Q=(x,y)=>[x*s,y*s];
+  const lists={};(J.lists||[]).forEach(l=>{lists[l.num]=l});
+  /* 円弧は、つぶれた円（扁平率）と傾きもそのまま使う（小便器・便器の楕円が散らばらないように）。opt.blocks の時はブロックの中身も広げる */
+  const walk=(arr,m,gIn,depth)=>arr.forEach(o=>{const g=gIn!=null?gIn:(o.glay||0),s=(J.scale&&J.scale[g])||1,ly=lname(g,o.lay||0);const Q=(x,y)=>[(m[0]*x+m[2]*y+m[4])*s,(m[1]*x+m[3]*y+m[5])*s];const sx=Math.hypot(m[0],m[1]);
     if(o.t==='sen')out.push({k:'line',ly,a:Q(o.x1,o.y1),b:Q(o.x2,o.y2)});
-    else if(o.t==='enko'){const r=(o.r||0)*s,sw=Math.abs((o.da||0)*180/Math.PI);if(o.full||sw>=359||!o.da)out.push({k:'circle',ly,c:Q(o.x,o.y),r});else{const a0=o.a0||0,a1=a0+o.da,pts=[];for(let k=0;k<=12;k++){const a=a0+(a1-a0)*k/12;pts.push(Q(o.x+o.r*Math.cos(a),o.y+o.r*Math.sin(a)))}out.push({k:'arc',ly,c:Q(o.x,o.y),r,sweep:sw,pts})}}
+    else if(o.t==='enko'){const flat=o.flat==null?1:o.flat,tilt=o.tilt||0,r=(o.r||0)*s*sx,sw=Math.abs((o.da||0)*180/Math.PI),full=o.full||sw>=359||!o.da;
+      const pt=a=>{const ex=o.r*Math.cos(a),ey=o.r*flat*Math.sin(a),ct=Math.cos(tilt),st=Math.sin(tilt);return Q(o.x+ex*ct-ey*st,o.y+ex*st+ey*ct)};
+      if(full){const c={k:'circle',ly,c:Q(o.x,o.y),r};if(Math.abs(flat-1)>1e-6){c.ell=Array.from({length:25},(_,k)=>pt(k*2*Math.PI/24))}out.push(c)}
+      else{const a0=o.a0||0,pts=[];for(let k=0;k<=12;k++)pts.push(pt(a0+o.da*k/12));out.push({k:'arc',ly,c:Q(o.x,o.y),r,sweep:sw,pts})}}
     else if(o.t==='moji'&&o.s)out.push({k:'text',ly,t:String(o.s).trim(),p:Q(o.x1,o.y1),h:(o.sy||3)*s});
-    else if(o.t==='block')out.push({k:'insert',ly,name:'ブロック'+o.num,p:Q(o.x,o.y),id:out.length+1,o:null,noGeom:true})});
+    else if(o.t==='block'){const p=Q(o.x,o.y);out.push({k:'insert',ly,name:'ブロック'+o.num,p,id:out.length+1,o:null,noGeom:true});
+      if(opt.blocks&&depth<8){const L=lists[o.num];if(!L)return;const c=Math.cos(o.rot||0),sn=Math.sin(o.rot||0),bx=o.sx||1,by=o.sy||1;const loc=[c*bx,sn*bx,-sn*by,c*by,o.x,o.y];
+        walk(L.items||[],[m[0]*loc[0]+m[2]*loc[1],m[1]*loc[0]+m[3]*loc[1],m[0]*loc[2]+m[2]*loc[3],m[1]*loc[2]+m[3]*loc[3],m[0]*loc[4]+m[2]*loc[5]+m[4],m[1]*loc[4]+m[3]*loc[5]+m[5]],g,depth+1)}}});
+  walk(J.items||[],[1,0,0,1,0,0],null,0);
   return{ents:out,insunits:4}}
 
 /* ---------- 下ごしらえ ---------- */
@@ -1193,7 +1201,7 @@ function KF_drop(id){try{localStorage.removeItem(KF_key(id))}catch(e){}}
 
 /* ---- 読む：図面の全部の線から、壁・寸法・電気以外のまとまりを拾う ---- */
 async function KF_fromFile(f,opt){opt=opt||{};const prev=KAKU_fix;KAKU_fix=null;KF.err='';if(!f||!KAKU_plan)return;const ext=(f.name.split('.').pop()||'').toLowerCase();if(!/^(dxf|jww|jwc)$/.test(ext))return;
-  try{let R;if(ext==='dxf'){let s;try{s=new TextDecoder('utf-8',{fatal:true}).decode(await f.arrayBuffer())}catch(e){s=new TextDecoder('shift_jis').decode(await f.arrayBuffer())}R=KE_parseDXF(s)}else R=await KE_parseJWW(await f.arrayBuffer());
+  try{let R;if(ext==='dxf'){let s;try{s=new TextDecoder('utf-8',{fatal:true}).decode(await f.arrayBuffer())}catch(e){s=new TextDecoder('shift_jis').decode(await f.arrayBuffer())}R=KE_parseDXF(s)}else R=await KE_parseJWW(await f.arrayBuffer(),{blocks:true});
     const fac=KE_scaleUnits(R);const rot=KF_angle(KAKU_plan);if(rot){const T=p=>{const q=KF_L([p[0]/1000,p[1]/1000],rot);return[q[0]*1000,q[1]*1000]};R.ents.forEach(e=>{['a','b','c','p'].forEach(k=>{if(e[k]&&e[k].length===2)e[k]=T(e[k])});if(e.pts)e.pts=e.pts.map(T);if(e.ell)e.ell=e.ell.map(T)})}KF_Pc=null;let roles={};try{const c=KE_classify(R.ents,R.ltab||{});Object.keys(c).forEach(k=>roles[k]=c[k].role)}catch(e){}KAKU_fix={rot};KAKU_fix=KF_build(R.ents,KF_P(),fac,roles);KAKU_fix.rot=rot;
     /* 図面を選び直しただけの時：今の区画と線が重ならない（別の図面）なら使わない */
     if(opt.check&&!(KAKU_fix.match>=.05&&KAKU_fix.hits>=10)){KAKU_fix=prev;KF_Pc=null;return false}KF_save()}catch(e){console.error(e);KAKU_fix=null;KF.err=String(e&&e.message||e)}}
@@ -1257,7 +1265,9 @@ function KF_build(ents,P,fac,roles){roles=roles||{};const m=1/1000;
           if(!rest.includes(o))return;const sub=rest.filter(q=>q.b[0]>=o.b[0]-.01&&q.b[1]>=o.b[1]-.01&&q.b[2]<=o.b[2]+.01&&q.b[3]<=o.b[3]+.01);if(sub.length===g.length||sub.length<3)return;
           /* 中に大きな閉じた形（浴槽など）を抱えた外枠（ユニットバスの枠など）は器具1つではない */const A=(o.b[2]-o.b[0])*(o.b[3]-o.b[1]);if(sub.some(q=>q!==o&&q.cl&&(q.b[2]-q.b[0])*(q.b[3]-q.b[1])>A*.3))return;const r2=mk(sub);if(r2.t){put(r2);rest=rest.filter(q=>!sub.includes(q));got=true}});
         if(got){if(rest.length&&depth<2)group(rest,depth+1);return}
-        if(depth<2&&g.length>3&&Math.max(w,h)>1.2&&Math.max(w,h)<12){const big=o=>(o.b[2]-o.b[0])>=w*.85&&(o.b[3]-o.b[1])>=h*.85||(o.k==='line'||o.k==='poly'&&!o.cv)&&Math.max(o.b[2]-o.b[0],o.b[3]-o.b[1])>=Math.max(w,h)*.8;
+        if(depth<2&&g.length>3&&Math.max(w,h)>1.2&&Math.max(w,h)<12){/* 同じ向き・同じ位置で続いている線（器具の列を貫く管や壁の線）は、合わせた長さで見る */
+          const run={};g.forEach(o=>{if(o.k!=='line')return;const [p,q]=o.pts,hz=Math.abs(p[1]-q[1])<.005,vt=Math.abs(p[0]-q[0])<.005;if(!hz&&!vt)return;const k=(hz?'h':'v')+Math.round((hz?p[1]:p[0])*100);o._rk=k;run[k]=(run[k]||0)+Math.hypot(q[0]-p[0],q[1]-p[1])});
+          const big=o=>(o.b[2]-o.b[0])>=w*.85&&(o.b[3]-o.b[1])>=h*.85||(o.k==='line'||o.k==='poly'&&!o.cv)&&Math.max(o.b[2]-o.b[0],o.b[3]-o.b[1])>=Math.max(w,h)*.8||o._rk&&run[o._rk]>=Math.max(w,h)*.6;
           const rest2=g.filter(o=>!big(o));if(rest2.length&&rest2.length<g.length)group(rest2,depth+1)}return}
       put(r)})};
   group(C,0);
@@ -1282,6 +1292,10 @@ function KF_build(ents,P,fac,roles){roles=roles||{};const m=1/1000;
   return FX}
 /* 同じ大きさの小さい器具が3つ以上、同じ壁に等間隔で並んでいたら小便器 */
 function KF_urinals(fx){
+  /* 便器の形でも、同じ形が同じ壁に85cm以下の間隔で並んでいたら小便器（洋便器は個室の幅があるので85cmより詰めて並ばない） */
+  const T=fx.filter(x=>x.t==='toilet'&&x.back&&!x.v);T.forEach(a=>{const hor=a.back==='N'||a.back==='S',pa=KF_backPos(a),wa=a.b[2]-a.b[0],ha=a.b[3]-a.b[1];
+    const row=T.filter(b=>b.back===a.back&&Math.abs(KF_backPos(b)-pa)<.06&&Math.abs((b.b[2]-b.b[0])-wa)<.03&&Math.abs((b.b[3]-b.b[1])-ha)<.03);if(row.length<2)return;
+    const c=row.map(b=>hor?(b.b[0]+b.b[2])/2:(b.b[1]+b.b[3])/2).sort((p,q)=>p-q);const gp=c.slice(1).map((v,i)=>v-c[i]);if(Math.max(...gp)<=.85)row.forEach(b=>{b.t=b.ot='urinal'})});
   /* 小便器の形の物が、同じ壁に1.2m以内の間隔で2台以上並んでいたら小便器（手洗器は壁に沿って広い形なので入らない） */
   const U=fx.filter(x=>x.uc&&x.t==='sink');U.forEach(a=>{const hor=a.back==='N'||a.back==='S',pa=KF_backPos(a);
     const row=U.filter(b=>b.back===a.back&&Math.abs(KF_backPos(b)-pa)<.06);if(row.length<2)return;const c=row.map(b=>hor?(b.b[0]+b.b[2])/2:(b.b[1]+b.b[3])/2).sort((p,q)=>p-q);
