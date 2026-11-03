@@ -294,7 +294,7 @@ function runDrawingImport(){const fl=document.getElementById('file').files;if(!f
     const plan=res.geometry&&e.plan?e.plan():null;
     if(plan&&plan.faces.length){
       if(KAKU_plan&&(current.rooms.some(r=>r.plan)||(current.walls||[]).length||(current.hatsu||[]).some(h=>h.rect))&&!confirm('前の図面で作った部屋・壁・カッターの位置は、新しい図面とずれるかもしれません。新しい図面に切り替えますか？')){st.textContent='切り替えをやめました';return}
-      KAKU_preparePlan(plan);KAKU_savePlan();KF.sel=null;KF.dot=null;KF_fromFile(fl[0]).then(()=>{if(KAKU_plan===plan)KAKU_renderEditor()});KAKU_zoom=1;KAKU_mode='room';KAKU_sel.faces.clear();KAKU_sel.segs.clear();
+      KAKU_preparePlan(plan);KAKU_savePlan();KF.sel=null;KF.dot=null;KF_fromFile(fl[0]||KAKU_lastFile).then(()=>{if(KAKU_plan===plan)KAKU_renderEditor()});KAKU_zoom=1;KAKU_mode='room';KAKU_sel.faces.clear();KAKU_sel.segs.clear();
       document.getElementById('filePreview').classList.add('hide');KAKU_renderEditor();
       st.textContent=plan.faces.length+'個の区画を見つけました。下の図で部屋にする区画をタップしてください';return}
     st.textContent=res.message||'解析完了';
@@ -1192,9 +1192,11 @@ function KF_load(){KAKU_fix=null;KF.sel=null;KF.dot=null;if(!current)return;try{
 function KF_drop(id){try{localStorage.removeItem(KF_key(id))}catch(e){}}
 
 /* ---- 読む：図面の全部の線から、壁・寸法・電気以外のまとまりを拾う ---- */
-async function KF_fromFile(f){KAKU_fix=null;KF.err='';if(!f||!KAKU_plan)return;const ext=(f.name.split('.').pop()||'').toLowerCase();if(!/^(dxf|jww|jwc)$/.test(ext))return;
+async function KF_fromFile(f,opt){opt=opt||{};const prev=KAKU_fix;KAKU_fix=null;KF.err='';if(!f||!KAKU_plan)return;const ext=(f.name.split('.').pop()||'').toLowerCase();if(!/^(dxf|jww|jwc)$/.test(ext))return;
   try{let R;if(ext==='dxf'){let s;try{s=new TextDecoder('utf-8',{fatal:true}).decode(await f.arrayBuffer())}catch(e){s=new TextDecoder('shift_jis').decode(await f.arrayBuffer())}R=KE_parseDXF(s)}else R=await KE_parseJWW(await f.arrayBuffer());
-    const fac=KE_scaleUnits(R);const rot=KF_angle(KAKU_plan);if(rot){const T=p=>{const q=KF_L([p[0]/1000,p[1]/1000],rot);return[q[0]*1000,q[1]*1000]};R.ents.forEach(e=>{['a','b','c','p'].forEach(k=>{if(e[k]&&e[k].length===2)e[k]=T(e[k])});if(e.pts)e.pts=e.pts.map(T);if(e.ell)e.ell=e.ell.map(T)})}KF_Pc=null;let roles={};try{const c=KE_classify(R.ents,R.ltab||{});Object.keys(c).forEach(k=>roles[k]=c[k].role)}catch(e){}KAKU_fix={rot};KAKU_fix=KF_build(R.ents,KF_P(),fac,roles);KAKU_fix.rot=rot;KF_save()}catch(e){console.error(e);KAKU_fix=null;KF.err=String(e&&e.message||e)}}
+    const fac=KE_scaleUnits(R);const rot=KF_angle(KAKU_plan);if(rot){const T=p=>{const q=KF_L([p[0]/1000,p[1]/1000],rot);return[q[0]*1000,q[1]*1000]};R.ents.forEach(e=>{['a','b','c','p'].forEach(k=>{if(e[k]&&e[k].length===2)e[k]=T(e[k])});if(e.pts)e.pts=e.pts.map(T);if(e.ell)e.ell=e.ell.map(T)})}KF_Pc=null;let roles={};try{const c=KE_classify(R.ents,R.ltab||{});Object.keys(c).forEach(k=>roles[k]=c[k].role)}catch(e){}KAKU_fix={rot};KAKU_fix=KF_build(R.ents,KF_P(),fac,roles);KAKU_fix.rot=rot;
+    /* 図面を選び直しただけの時：今の区画と線が重ならない（別の図面）なら使わない */
+    if(opt.check&&!(KAKU_fix.match>=.05&&KAKU_fix.hits>=10)){KAKU_fix=prev;KF_Pc=null;return false}KF_save()}catch(e){console.error(e);KAKU_fix=null;KF.err=String(e&&e.message||e)}}
 const KF_SKIP=/寸法|DIM|通り?芯|GRID|基準|文字|TEXT|ANNO|注記|ハッチ|HATCH|図枠|FRAME|^E-|電気|電灯|動力|コンセント|ELEC|DENKI|配線|WIRE|弱電|照明/i;
 /* 電気の器具と見られた層でも、名前が衛生・設備なら外さない */
 const KF_SAN=/衛生|設備|器具|機器|厨房|FIXT|SAN|PLUMB|EQ|WC|便|洗面/i;
@@ -1204,6 +1206,8 @@ function KF_build(ents,P,fac,roles){roles=roles||{};const m=1/1000;
   let X0=Infinity,Y0=Infinity,X1=-Infinity,Y1=-Infinity;P.segs.forEach(s=>{X0=Math.min(X0,s[0],s[2]);X1=Math.max(X1,s[0],s[2]);Y0=Math.min(Y0,s[1],s[3]);Y1=Math.max(Y1,s[1],s[3])});X0-=.3;Y0-=.3;X1+=.3;Y1+=.3;
   const key=(x,y)=>Math.round(x*100)+','+Math.round(y*100),ends=new Set();P.segs.forEach(s=>{ends.add(key(s[0],s[1]));ends.add(key(s[2],s[3]))});
   const M=p=>[p[0]*m,p[1]*m];const L=[];
+  /* 区画の線と、この図面の線がどれだけ重なるか（同じ図面か確かめる） */
+  let hits=0;ents.forEach(e=>{if(e.k==='line'&&ends.has(key(e.a[0]*m,e.a[1]*m))&&ends.has(key(e.b[0]*m,e.b[1]*m)))hits++});
   ents.forEach(e=>{if(e.k==='text'||e.k==='insert'||e.k==='solid')return;let pts,cv=0,circ=0;
     if(e.k==='line'){pts=[M(e.a),M(e.b)];if(KF_bent(pts))cv=1}
     else if(e.k==='poly'){pts=e.pts.map(M);if(e.closed&&pts.length>2)pts.push(pts[0]);if(e.bul||KF_bent(pts)>=4)cv=1}
@@ -1262,7 +1266,7 @@ function KF_build(ents,P,fac,roles){roles=roles||{};const m=1/1000;
   /* 薄く描く線（mm の整数。続いている線は1本にまとめる） */
   let d='',last=null;K.forEach(o=>{if(o.b[2]-o.b[0]<.003&&o.b[3]-o.b[1]<.003)return;const q=o.pts.map(p=>[Math.round(p[0]*1000),Math.round(-p[1]*1000)]);
     if(!last||last[0]!==q[0][0]||last[1]!==q[0][1])d+='M'+q[0][0]+' '+q[0][1];let pv=q[0];for(let k=1;k<q.length;k++){const dx=q[k][0]-pv[0],dy=q[k][1]-pv[1];if(dx||dy||k===q.length-1){d+='l'+dx+' '+dy;pv=q[k]}}last=pv});
-  const FX={fx,g:d.length<1.5e6?d:'',doors:doors.map(o=>({c:o.c.map(v=>Math.round(v*1000)/1000),r:Math.round(o.r*1000)/1000,m:o.m.map(v=>Math.round(v*1000)/1000)}))};
+  const FX={hits,match:hits/Math.max(1,P.segs.length),fx,g:d.length<1.5e6?d:'',doors:doors.map(o=>({c:o.c.map(v=>Math.round(v*1000)/1000),r:Math.round(o.r*1000)/1000,m:o.m.map(v=>Math.round(v*1000)/1000)}))};
   fx.forEach(x=>KF_orient(x,P));
   /* 壁との向きで見分け直す：便器は壁から奥へ長い（幅の1.15倍以上）。タンクのない壁掛け便器も同じ。
      手洗器は壁に沿って広い。どっちとも言えない時は無理に決めず「？（判定保留）」にする */
@@ -1434,6 +1438,10 @@ function KF_tap(x,y,tol){const P=KAKU_plan;let hit=null,bd=Math.min(tol,.3);
   KF.sel=null;const f=P.faces.find(f=>KAKU_pip(x,y,f.poly));if(!f){KAKU_renderEditor();return}KAKU_sel.faces.has(f.i)?KAKU_sel.faces.delete(f.i):KAKU_sel.faces.add(f.i);KAKU_renderEditor()}
 function KF_dotDel(){const p=(current.places||[]).find(q=>q.id===KF.dot.pid);if(p){p.del=[...(p.del||[]),KF.dot.k];if(p.mv)delete p.mv[KF.dot.k]}KF.dot=null;KP_sync();KAKU_renderEditor()}
 function KF_dotReset(){const p=(current.places||[]).find(q=>q.id===KF.dot.pid);if(p&&p.mv)delete p.mv[KF.dot.k];KP_sync();KAKU_renderEditor()}
+/* 図面ファイルを選んだだけで、今の区画と同じ図面なら器具だけ読み直す（部屋や電気の配置はそのまま） */
+(function(){const lf=loadFile;loadFile=function(inp){const f=inp.files&&inp.files[0];lf(inp);if(!f||!KAKU_plan||!current)return;const ext=(f.name.split('.').pop()||'').toLowerCase();if(!/^(dxf|jww|jwc)$/.test(ext))return;
+  KF_fromFile(f,{check:true}).then(ok=>{if(ok===false)return;KF_save();KP_sync();KAKU_renderEditor();if(KAKU_fix){const n=KAKU_fix.fx.filter(x=>x.t!=='other').length;toast(n?'図面の器具を'+n+'個読みました':'図面に器具は見つかりませんでした')}})}})();
+
 
 function downloadCSV(){if(!current)return;waitEngine().then(e=>{e.sync(current);return KAKU_share((current.name||'estimate')+'.csv','\ufeff'+e.csv(),'text/csv')}).catch(e=>toast(e.message))}
 </script>
