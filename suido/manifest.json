@@ -1,0 +1,15 @@
+{
+  "name": "水道概算",
+  "short_name": "水道概算",
+  "description": "配管の長さと器具の数から、水道工事の見積もりを作るアプリ",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f1eb",
+  "theme_color": "#f8f6f1",
+  "lang": "ja",
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ]
+}

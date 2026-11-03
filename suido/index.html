@@ -1,0 +1,1530 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif;-webkit-text-size-adjust:100%}img{max-width:100%}[hidden]{display:none!important}</style>
+</head><body>
+<title>水道概算</title>
+<link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icon-192.png"><meta name="theme-color" content="#f8f6f1"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="水道概算">
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one phone-width column — rooms you measure on site, then the take-off by trade, then the total like the foot of an estimate sheet */
+:root{
+  --bg:#f2f1ee; --card:#ffffff; --fg:#22211f; --muted:#6d6a63; --line:#dedbd4;
+  --ink:#1f4f66; --ink-soft:#e2edf2; --shu:#b7322c; --shu-soft:#f7e3e1;
+  --f-display:"Dela Gothic One","Hiragino Sans","Noto Sans JP",sans-serif;
+  --f-body:"Zen Kaku Gothic New","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#141619; --card:#1d2024; --fg:#ebe9e4; --muted:#9c9890; --line:#30343a;
+  --ink:#7fc0dd; --ink-soft:#1c3340; --shu:#f07a6f; --shu-soft:#3a1f1d; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141619; --card:#1d2024; --fg:#ebe9e4; --muted:#9c9890; --line:#30343a;
+  --ink:#7fc0dd; --ink-soft:#1c3340; --shu:#f07a6f; --shu-soft:#3a1f1d; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.6}
+.wrap{max-width:600px;margin:0 auto;padding-block:20px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:20px}
+h1{font-family:var(--f-display);font-size:24px;margin:0;letter-spacing:.02em}
+.lead{margin:2px 0 0;color:var(--muted);font-size:13px}
+h2{font-size:15px;margin:0 0 8px;font-weight:700;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+input,select{font:inherit;font-size:16px;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:8px 9px;width:100%;min-width:0}
+input[type=number]{font-family:var(--f-mono);text-align:right}
+
+.total-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:4px}
+.total-card .label{font-size:12px;color:var(--muted);letter-spacing:.08em}
+.big{font-family:var(--f-display);font-size:38px;line-height:1.1;color:var(--shu)}
+.big small{font-size:16px;margin-left:4px}
+.total-card .meta{font-size:12px;color:var(--muted)}
+
+.room{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.room-top{display:flex;gap:8px;align-items:center}
+.room-top input{font-weight:700;font-family:var(--f-body);text-align:left}
+.rm{border:1px solid var(--line);background:transparent;border-radius:9px;padding:8px 10px;color:var(--muted);font-size:13px;white-space:nowrap}
+.rm.armed{background:var(--shu-soft);color:var(--shu);border-color:var(--shu)}
+.dims{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.dims2{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.f{display:flex;flex-direction:column;gap:3px;min-width:0}
+.f label{font-size:11px;color:var(--muted)}
+.room-calc{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted);border-top:1px dashed var(--line);padding-top:8px}
+.room-calc b{color:var(--fg);font-family:var(--f-mono);font-weight:600}
+.example{font-size:10px;background:var(--ink-soft);color:var(--ink);border-radius:4px;padding:1px 6px;font-weight:500}
+.keep{display:flex;flex-direction:column;gap:6px;background:var(--bg);border-radius:10px;padding:10px}
+.keep-title{font-size:12px;font-weight:700;color:var(--ink)}
+.keep-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kin{display:flex;gap:6px}
+.kin input{background:var(--card)}
+.all{border:1px solid var(--line);background:var(--card);border-radius:9px;padding:0 10px;font-size:12px;color:var(--ink);white-space:nowrap}
+.add{border:1px dashed var(--ink);background:transparent;color:var(--ink);border-radius:12px;padding:12px;font-weight:700}
+
+.sheet{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.grp{padding:8px 14px;background:var(--ink-soft);color:var(--ink);font-size:12px;font-weight:700;letter-spacing:.06em}
+.line{display:grid;grid-template-columns:22px 1fr auto;gap:4px 10px;padding:10px 14px;border-top:1px solid var(--line);align-items:center}
+.line.off{opacity:.45}
+.line input[type=checkbox]{width:18px;height:18px;padding:0;accent-color:var(--ink)}
+.line .nm{font-weight:500;min-width:0}
+.line .nm small{display:block;color:var(--muted);font-size:11px;font-family:var(--f-mono)}
+.line .amt{font-family:var(--f-mono);font-weight:600;text-align:right}
+.line .price{grid-column:2/4;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.line .price input{width:90px;padding:5px 7px;font-size:14px}
+.lump{display:grid;grid-template-columns:1fr auto 28px;gap:8px;padding:8px 14px;border-top:1px solid var(--line);align-items:center}
+.lump .ln{font-family:var(--f-body);text-align:left;padding:6px 8px;font-size:14px}
+.lamt{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted)}
+.lamt input{width:100px;padding:6px 7px;font-size:14px}
+.lx{width:28px;height:28px;border:0;background:transparent;color:var(--muted);font-size:16px;border-radius:8px}
+.ladd{display:block;width:100%;border:0;border-top:1px solid var(--line);background:transparent;color:var(--ink);padding:10px;font-weight:700;font-size:14px}
+.line .price{flex-wrap:wrap}
+.line .price .qty{width:70px}
+.foot{padding:12px 14px;border-top:2px solid var(--fg);display:flex;flex-direction:column;gap:6px}
+.fr{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px}
+.fr .num{font-weight:600}
+.fr input{width:64px;padding:4px 6px;font-size:14px}
+.fr.grand{font-size:17px;font-weight:700;color:var(--shu)}
+.note{font-size:12px;color:var(--muted)}
+.settings{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.settings .note{grid-column:1/-1}
+details summary{cursor:pointer;font-weight:700;font-size:15px;margin-bottom:8px}
+.reset{border:1px solid var(--line);background:transparent;border-radius:9px;padding:8px 12px;font-size:13px;color:var(--muted)}
+.ck{width:24px;height:24px;padding:0;border:2px solid var(--ink);border-radius:6px;background:var(--card);display:grid;place-items:center;touch-action:manipulation}
+.ck[aria-checked="true"]{background:var(--ink)}
+.ck[aria-checked="true"]::after{content:"";width:6px;height:11px;border:solid var(--card);border-width:0 2.5px 2.5px 0;transform:translateY(-1px) rotate(45deg)}
+.line{grid-template-columns:24px 1fr auto}
+.line .nm{cursor:pointer}
+.both{display:flex;align-items:center;gap:10px;font-size:13px}
+.both span{cursor:pointer}
+.both .ml{cursor:pointer}
+.netrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.netlabel{font-size:12px;color:var(--muted);margin-right:2px}
+.netbtn{font-size:12px;text-decoration:none;color:var(--ink);border:1px solid var(--ink);border-radius:999px;padding:3px 10px}
+.netadd{font-size:12px;border:1px dashed var(--line);background:transparent;border-radius:999px;padding:3px 10px;color:var(--fg)}
+.sbox{position:relative}
+.sbox input{padding-right:40px}
+.sclear{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:28px;height:28px;border:0;border-radius:50%;background:var(--line);color:var(--fg);font-size:16px;line-height:1;padding:0;display:grid;place-items:center}
+.pcat.fold{display:flex;align-items:center;gap:10px;width:100%;border:0;border-bottom:1px solid var(--line);text-align:left;font-size:14px;letter-spacing:.02em;padding:12px max(16px,env(safe-area-inset-left,0px));cursor:pointer}
+.pcat.fold .pm{flex:none;width:22px;height:22px;border-radius:6px;background:var(--card);color:var(--ink);display:grid;place-items:center;font-size:15px;font-weight:700}
+.pcat.fold .fn{flex:1}
+.pcat.fold .fc{font-size:11px;font-weight:500;color:var(--muted)}
+.pcat.fold .fc b{color:var(--shu);font-weight:700}
+.matsHead{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:var(--ink-soft);color:var(--ink);border:0;border-radius:10px;padding:10px 12px;font-weight:700;font-size:14px}
+.matsHead .pm{flex:none;width:22px;height:22px;border-radius:6px;background:var(--card);display:grid;place-items:center;font-size:15px}
+.matsHead .fn{flex:1}
+.matsHead .fc{font-size:11px;font-weight:500;color:var(--muted)}
+.errbar{position:fixed;left:0;right:0;top:0;z-index:80;display:flex;gap:10px;align-items:flex-start;background:var(--shu);color:#fff;
+  padding:calc(10px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px));box-shadow:0 4px 16px rgba(0,0,0,.25)}
+.errbar[hidden]{display:none!important}
+.errtxt{flex:1;display:flex;flex-direction:column;gap:2px;font-size:13px;min-width:0}
+.errtxt b{font-size:15px}
+.errtxt small{opacity:.85;font-family:var(--f-mono);font-size:11px;word-break:break-all}
+#errClose{flex:none;border:1px solid rgba(255,255,255,.7);background:transparent;color:#fff;border-radius:8px;padding:6px 10px;font-size:13px}
+.topbar{display:flex;align-items:flex-start;gap:12px}
+.menu-btn{flex:none;width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:var(--card);display:grid;place-items:center;padding:0}
+.menu-btn span{display:block;width:18px;height:2px;background:var(--fg);border-radius:2px;box-shadow:0 6px 0 var(--fg),0 -6px 0 var(--fg)}
+.warn{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--shu-soft);color:var(--shu);border-radius:10px;padding:8px 12px;font-size:13px;font-weight:500}
+.warn button{border:1px solid var(--shu);background:transparent;color:var(--shu);border-radius:8px;padding:4px 10px;font-size:12px;white-space:nowrap}
+.mats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mats .f.wide{grid-column:1/-1}
+.pick{display:flex;align-items:center;justify-content:space-between;gap:6px;text-align:left;width:100%;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:7px 9px;font-size:14px}
+.pick .pn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pick .pn small{color:var(--muted);margin-left:4px;font-size:11px}
+.pick .chev{color:var(--muted);flex:none}
+.pick.none .pn{color:var(--muted)}
+.line .amt.unset{color:var(--shu);font-family:var(--f-body);font-size:12px;font-weight:500}
+.xline{display:grid;grid-template-columns:1fr auto 28px;gap:4px 10px;padding:10px 14px;border-top:1px solid var(--line);align-items:center}
+.xline .nm{min-width:0;font-weight:500}
+.xline .nm small{display:block;color:var(--muted);font-size:11px}
+.xline .ctl{grid-column:1/3;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.xline .ctl input{width:80px;padding:5px 7px;font-size:14px}
+.xline .amt{font-family:var(--f-mono);font-weight:600;text-align:right}
+.xline .amt.unset{color:var(--shu);font-family:var(--f-body);font-size:12px;font-weight:500}
+
+.jobs{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+.jobs::-webkit-scrollbar{display:none}
+.job{flex:none;max-width:12em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:7px 12px;font-size:13px}
+.job[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--card);font-weight:700}
+.job.new{border-style:dashed;color:var(--ink)}
+.jobhead{display:flex;flex-direction:column;gap:8px}
+.jobhead #jobName{font-family:var(--f-body);text-align:left;font-size:18px;font-weight:700;background:var(--card)}
+.jobact{display:flex;gap:8px;flex-wrap:wrap}
+.act.paper{flex:none;width:auto;padding:9px 8px;font-size:13px}
+.totbar{position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--card);border-top:1px solid var(--line);box-shadow:0 -2px 10px rgba(0,0,0,.06);padding:8px max(14px,env(safe-area-inset-right,0px)) calc(8px + env(safe-area-inset-bottom,0px)) max(14px,env(safe-area-inset-left,0px))}
+.tb-in{max-width:720px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.tb-l{display:flex;flex-direction:column;min-width:0}
+.tb-label{font-size:11px;color:var(--muted);letter-spacing:.06em}
+.tb-meta{font-size:clamp(10px,2.8vw,12px);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb-big{font-size:clamp(22px,6.5vw,28px);font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--shu,#c0392b)}
+.tb-big small{font-size:13px;margin-left:2px}
+.wrap{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))!important}
+.impcard{border:1px solid var(--line);border-radius:12px;background:var(--card);padding:clamp(8px,2.5vw,12px);display:flex;flex-direction:column;gap:6px}
+.improw{display:flex;gap:8px;align-items:center}
+.redhint{color:#c62828;font-weight:700;font-size:clamp(11px,3.1vw,13px);margin:0;line-height:1.4}
+@media (prefers-color-scheme: dark){.redhint{color:#ff6b6b}}
+.qbtn{flex:none;width:32px;height:32px;border-radius:50%;border:2px solid currentColor;background:transparent;color:inherit;font-weight:700;font-size:15px;padding:0;line-height:1}
+.impguide{border:1px solid var(--line);border-radius:8px;padding:4px 8px;font-size:clamp(11px,3.2vw,13px)}
+.impguide table{border-collapse:collapse;width:100%}
+.impguide td{padding:5px 4px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}
+.impguide .gr{font-size:16px;font-weight:700;width:1.5em;text-align:center}
+.filebtn{position:relative;flex:1;min-width:0;display:flex;align-items:center;justify-content:center;border-radius:10px;padding:9px 10px;font-weight:700;font-size:clamp(13px,3.6vw,15px);background:var(--ink);color:var(--card);cursor:pointer;white-space:nowrap}
+.filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.impunit{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px}
+.impunit select{width:auto;min-width:5em;padding:4px 8px;font-size:13px;flex:none}
+.impunit label{font-size:12px;color:inherit}
+.imprm{border:1px solid var(--line);border-radius:10px;padding:6px 8px;margin-top:6px;display:flex;flex-direction:column;gap:4px}
+.imprm.off{opacity:.5}
+.imptop{display:flex;gap:6px;align-items:center}
+.imptop input{flex:1;min-width:0;font-weight:700;font-size:15px;text-align:left}
+.impgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(30%,96px),1fr));gap:4px}
+.impgrid label{font-size:10px}
+.impgrid input{font-size:14px;padding:6px;min-width:0;width:100%}
+.impreplace{display:flex;gap:6px;align-items:center;margin:6px 0;font-size:12px}
+.rgtools{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:12px;margin-top:4px}
+.rgtools select,.rgtools input{width:auto;min-width:0;padding:4px 6px;font-size:13px}
+.rgtools input[type=number]{width:4.5em}
+.rgzoom{margin-left:auto;display:flex;gap:4px}.rgzoom button{width:36px;height:32px;border:1px solid var(--line);border-radius:8px;background:var(--card);font-size:16px}
+.rgview{max-height:60vh;overflow:auto;border:1px solid var(--line);border-radius:8px;background:#fff;margin-top:6px;-webkit-overflow-scrolling:touch}
+.rgview svg{display:block;height:auto}
+.rgview line{stroke:#555;stroke-width:1;vector-effect:non-scaling-stroke}
+.rgview .rgoff line{stroke:#bbb;stroke-dasharray:2 2}
+.rgview .rgfill rect{fill:rgba(216,90,40,.42);stroke:none}
+.rgview svg{cursor:pointer}
+.rgview text{fill:#1f6fb2;font-weight:700;text-anchor:middle;dominant-baseline:middle;cursor:pointer;paint-order:stroke;stroke:#fff;stroke-width:3px;vector-effect:non-scaling-stroke}
+.rgview text.on{fill:#b23b0e}
+.rgsum{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;font-size:13px;margin-top:6px}
+.rgno{flex:none;min-width:1.8em;height:1.8em;border-radius:50%;background:#b23b0e;color:#fff;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center}
+.rggroups{margin-top:8px;font-size:12px}.rggroups summary{font-weight:700;padding:6px 0;cursor:pointer}
+.rgg{display:flex;gap:6px;align-items:center;padding:4px 0;border-bottom:1px solid var(--line)}
+.rgg .gn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rgg .gl{font-variant-numeric:tabular-nums;white-space:nowrap}
+.swp{display:inline-block;margin-left:6px;font-size:10px;font-weight:700;padding:0 5px;border-radius:4px;border:1px solid currentColor;opacity:.8}
+.line .chg{color:var(--muted);font-weight:400}
+.docbox{border:1px solid var(--line);border-radius:12px;background:var(--card);padding:4px 12px}
+.docbox summary{font-size:13px;font-weight:700;padding:8px 0;cursor:pointer}
+.docgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding-bottom:10px}
+.docgrid .wide{grid-column:1/-1}
+.docgrid input,.docgrid select,.docgrid textarea,.cogrid input,.cogrid textarea{font-family:var(--f-body);text-align:left;font-size:15px;width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg,#fff);color:inherit}
+.docgrid textarea,.cogrid textarea{min-height:64px;resize:vertical}
+.cogrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cogrid .wide{grid-column:1/-1}
+.act{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:9px 12px;font-size:13px}
+.act.strong{flex:1;background:var(--ink);border-color:var(--ink);color:var(--card);font-weight:700}
+.act.armed{background:var(--shu-soft);color:var(--shu);border-color:var(--shu)}
+.act:disabled{opacity:.6}
+.overlay{position:fixed;inset:0;z-index:50;background:rgba(10,12,14,.45);display:flex}
+.panel{background:var(--card);color:var(--fg);display:flex;flex-direction:column;width:100%;max-width:520px;height:100%;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+[hidden]{display:none!important}
+.overlay[hidden]{display:none!important}
+.overlay.sheet-mode{align-items:flex-end;justify-content:center}
+.overlay.sheet-mode .panel{height:82%;border-radius:16px 16px 0 0;padding-top:0}
+.ph{display:flex;align-items:center;gap:10px;padding:14px max(16px,env(safe-area-inset-left,0px)) 10px;border-bottom:1px solid var(--line)}
+.ph h3{margin:0;font-size:16px;flex:1}
+.close{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:6px 12px;font-size:14px}
+.psearch{padding:10px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--line)}
+.psearch input{font-family:var(--f-body);text-align:left}
+.chiprow{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
+.chip{flex:none;border:1px solid var(--line);background:var(--bg);border-radius:999px;padding:4px 11px;font-size:12px}
+.chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--card)}
+.plist{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.pcat{position:sticky;top:0;background:var(--ink-soft);color:var(--ink);font-size:11px;font-weight:700;letter-spacing:.06em;padding:6px max(16px,env(safe-area-inset-left,0px))}
+.popt{display:flex;flex-direction:column;align-items:flex-start;gap:1px;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:transparent;padding:11px max(16px,env(safe-area-inset-left,0px))}
+.popt small{color:var(--muted);font-size:12px}
+.popt.cur{background:var(--ink-soft)}
+.mrow{display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center;padding:10px max(16px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--line)}
+.mrow .nm{min-width:0;font-size:14px;font-weight:500}
+.mrow .nm small{display:block;color:var(--muted);font-size:11px;font-weight:400}
+.mrow .pin{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted)}
+.mrow .pin input{width:96px;padding:6px 7px;font-size:15px}
+.mrow .del{grid-column:1/-1;justify-self:start;border:0;background:transparent;color:var(--shu);font-size:12px;padding:0}
+.mrow.unset .pin input{border-color:var(--shu)}
+.tag{display:inline-block;margin-left:6px;font-size:10px;background:var(--ink-soft);color:var(--ink);border-radius:4px;padding:0 5px}
+.tag.est{background:var(--shu-soft);color:var(--shu)}
+.msec{padding:14px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--line)}
+.msec h4{margin:0;font-size:14px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.primary{background:var(--ink);color:var(--card);border:0;border-radius:10px;padding:10px;font-weight:700}
+.empty-list{padding:24px 16px;color:var(--muted);font-size:13px;text-align:center}
+</style>
+<style>
+/* 水道概算の追加分 */
+.seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.seg button{flex:1;border:0;background:var(--bg);padding:7px 4px;font-size:13px;white-space:nowrap}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--card);font-weight:700}
+.sysbadge{flex:none;font-size:12px;font-weight:700;border-radius:6px;padding:3px 8px;color:#fff}
+.sys-w{background:#2f7fc1}.sys-h{background:#d0573e}.sys-d{background:#6b6f76}.sys-v{background:#8a7a5c}.sys-r{background:#3c9a8c}
+.run{border-left:5px solid var(--line)}
+.run.s-w{border-left-color:#2f7fc1}.run.s-h{border-left-color:#d0573e}.run.s-d{border-left-color:#6b6f76}.run.s-v{border-left-color:#8a7a5c}.run.s-r{border-left-color:#3c9a8c}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.chk{display:flex;flex-wrap:wrap;gap:8px 16px}
+.quick{display:flex;flex-wrap:wrap;gap:6px}
+.quick button{border:1px solid var(--ink);color:var(--ink);background:transparent;border-radius:999px;padding:5px 12px;font-size:13px}
+.line .price .auto{font-size:11px;color:var(--ink);border:0;background:transparent;padding:0 2px;text-decoration:underline}
+.line .nm .rn{display:block;color:var(--muted);font-size:11px;font-family:var(--f-body)}
+.intro{background:var(--ink-soft);color:var(--ink);border-radius:12px;padding:10px 12px;font-size:13px;display:flex;gap:10px;align-items:flex-start;justify-content:space-between}
+.intro button{flex:none;border:1px solid var(--ink);background:transparent;color:var(--ink);border-radius:8px;padding:4px 10px;font-size:12px}
+.jf{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.jf .f label{font-size:10px}
+.cadd{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cadd .wide{grid-column:1/-1}
+
+/* ===== KAKUと同じ見た目（水道版） ===== */
+:root,:root:not([data-theme="light"]),:root[data-theme="dark"]{
+  --bg:#f4f1eb;--card:#fffefa;--fg:#20221f;--muted:#77796f;--line:#dfddd5;
+  --ink:#20221f;--ink-soft:#efebe3;--shu:#e65c32;--shu-soft:#fff0e9;--green:#496b58;
+  --f-display:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Hiragino Sans",Meiryo,sans-serif;
+  --f-body:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Hiragino Sans",Meiryo,sans-serif;
+  --f-mono:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN",sans-serif;color-scheme:light}
+body{background:var(--bg);color:var(--fg);font-size:14px;line-height:1.5}
+.top{height:58px;padding:0 16px;padding-top:env(safe-area-inset-top,0px);box-sizing:content-box;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);background:#f8f6f1;position:sticky;top:0;z-index:30}
+.brand{display:flex;align-items:center;gap:12px;font-weight:850;letter-spacing:.12em}
+.mark{width:30px;height:30px;background:var(--shu);color:#fff;display:grid;place-items:center;font-size:17px;font-weight:900;transform:rotate(-5deg)}
+.brand small{display:block;color:var(--muted);font-size:9px;letter-spacing:.18em;font-weight:600;margin-top:3px}
+.topright{display:flex;align-items:center;gap:8px}
+.btn{border:0;border-radius:7px;padding:11px 14px;background:var(--ink);color:#fff;font-weight:750;font-size:13px;white-space:nowrap}
+.btn.orange{background:var(--shu)}.btn.light{background:var(--card);color:var(--ink);border:1px solid var(--line)}.btn.ghost{background:transparent;color:var(--muted);padding:8px}
+.app{max-width:760px;margin:0 auto;padding:22px max(15px,env(safe-area-inset-left,0px)) calc(150px + env(safe-area-inset-bottom,0px)) max(15px,env(safe-area-inset-right,0px))}
+.eyebrow{font-size:10px;letter-spacing:.2em;color:var(--shu);font-weight:850}
+.headline{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin:8px 0 22px}
+.headline h1,.workhead h1{font-family:var(--f-body);font-size:27px;letter-spacing:-.04em;margin:0;font-weight:850}
+.workhead h1{font-size:24px;margin:4px 0 2px;word-break:break-all}
+.sub{color:var(--muted);font-size:12px;margin-top:6px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:22px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
+.stat label{display:block;color:var(--muted);font-size:9px;font-weight:700;letter-spacing:.08em}
+.stat strong{display:block;font-size:18px;margin-top:8px;letter-spacing:-.03em;word-break:break-all}
+.stat small{color:var(--muted);font-size:10px}
+.sectionhead{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 0 12px}
+.sectionhead h2{font-size:15px;margin:0;font-weight:850;display:block}
+.sectionhead h2 .note{font-weight:500;margin-left:4px}
+.dash .sectionhead{margin-top:6px}
+.project{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:13px;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px;cursor:pointer;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;transition:transform .15s,box-shadow .15s}
+.project.pressing{transform:scale(.97);box-shadow:0 0 0 2px var(--shu) inset}
+.project-left{display:flex;align-items:center;gap:13px;min-width:0}
+.project-icon{flex:none;width:42px;height:42px;border-radius:8px;background:#eeeae1;display:grid;place-items:center;font-size:18px}
+.project h3{font-size:14px;margin:0 0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.project p{margin:0;color:var(--muted);font-size:11px}
+.pright{display:flex;align-items:center;gap:12px;flex:none}
+.ptag{font-size:9px;background:#edf1e9;color:var(--green);padding:5px 8px;border-radius:4px;font-weight:800}
+.ptag.ex{background:var(--shu-soft);color:var(--shu)}
+.money{font-weight:850;font-size:14px;white-space:nowrap}
+.mini{font-size:11px;color:var(--muted)}
+.workspace{display:none}.workspace.show{display:block}.dash.hide{display:none}
+.back{border:0;background:none;padding:0;color:var(--muted);font-size:12px;font-weight:700;margin-bottom:14px}
+.workhead{margin-bottom:12px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:12px 0 16px;overflow-x:auto;scrollbar-width:none;position:sticky;top:calc(58px + env(safe-area-inset-top,0px));background:var(--bg);z-index:20}
+.tabs::-webkit-scrollbar{display:none}
+.tab{border:0;background:none;padding:12px 13px;color:var(--muted);font-size:13px;font-weight:750;white-space:nowrap;border-bottom:2px solid transparent}
+.tab.on{color:var(--shu);border-color:var(--shu)}
+.tpanel{display:none}.tpanel.on{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:13px}
+.card>.note{margin:8px 0 0}
+.stack{display:flex;flex-direction:column;gap:12px}
+.room{background:#fff;border-radius:9px;border:1px solid var(--line)}
+.add{display:block;width:100%;margin-top:12px;border:1px dashed #c8c4b9;background:#faf9f5;color:var(--ink);border-radius:9px;padding:13px;font-weight:750}
+input,select{background:#fff;border-radius:6px}
+.seg button[aria-pressed="true"]{background:var(--ink)}
+.quick{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+.quick button{border:1px solid var(--line);color:var(--ink);background:#fff;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:650}
+#quickSpecial button{border-color:var(--shu);color:var(--shu);background:var(--shu-soft)}
+.grp{background:var(--ink-soft);color:var(--ink)}
+.intro{background:var(--shu-soft);color:var(--fg);margin-bottom:10px}
+.intro button{border-color:var(--shu);color:var(--shu)}
+.warn{margin-bottom:10px}
+.jobhead{display:flex;flex-direction:column;gap:10px}
+.jobhead #jobName{font-size:17px;font-weight:700}
+.act.strong{background:var(--shu);border-color:var(--shu);color:#fff}
+.docbox{border:0;padding:0;background:transparent}
+.mobilebar{display:flex;position:fixed;bottom:0;left:0;right:0;background:#f8f6f1;border-top:1px solid var(--line);justify-content:space-around;padding:9px 5px calc(9px + env(safe-area-inset-bottom,0px));z-index:35}
+.mobilebar button{border:0;background:none;color:var(--muted);font-size:10px;display:grid;gap:3px;justify-items:center;min-width:60px}
+.mobilebar button.on{color:var(--ink);font-weight:800}
+.mobilebar span{font-size:17px}
+.totbar{position:fixed;left:12px;right:12px;bottom:calc(64px + env(safe-area-inset-bottom,0px));z-index:34;background:var(--ink);color:#fff;border-radius:12px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;box-shadow:0 10px 26px #20221f40;border:0;max-width:736px;margin:0 auto;cursor:pointer}
+.totbar[hidden]{display:none!important}
+.tb-l{display:flex;align-items:baseline;gap:10px;min-width:0;flex-direction:row}
+.tb-label{font-size:11px;color:#b9bbb2;letter-spacing:.04em;white-space:nowrap}
+.tb-big{font-size:22px;font-weight:850;color:#fff;letter-spacing:-.02em;white-space:nowrap}
+.tb-big small{font-size:12px;margin-left:2px;color:#d4d5ce}
+.tb-meta{font-size:11px;color:#d4d5ce;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.toast{position:fixed;bottom:calc(130px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:#20221f;color:#fff;padding:11px 18px;border-radius:30px;font-size:12px;z-index:90;opacity:0;pointer-events:none;transition:.2s;max-width:86vw;text-align:center}
+.toast.show{opacity:1}
+.overlay#askBox{align-items:center;justify-content:center;z-index:95}
+.askin{background:var(--card);border-radius:12px;padding:18px;width:min(340px,88vw);display:flex;flex-direction:column;gap:14px}
+.askin p{margin:0;font-size:14px;line-height:1.6;white-space:pre-line}
+.askbtn{display:flex;gap:8px;justify-content:flex-end}
+.lenrow{display:flex;gap:6px;align-items:flex-end}
+.lenrow .f{flex:1}
+.measure{flex:none;border:1px solid var(--line);background:#faf9f5;border-radius:6px;padding:8px 10px;font-size:12px;font-weight:700;color:var(--ink);white-space:nowrap}
+.layers{display:flex;flex-direction:column;gap:6px}
+.layers .lt{font-size:11px;color:var(--muted)}
+.lay{display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center}
+.laddb{align-self:flex-start;border:0;background:none;color:var(--muted);font-size:12px;font-weight:700;padding:4px 0}
+.hchk{display:flex;flex-wrap:wrap;gap:8px 16px}
+/* なぞって長さ */
+.trbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0}
+.trview{position:relative;overflow:auto;max-height:62vh;border:1px solid var(--line);border-radius:8px;background:#e9e6de;-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y}
+.trview svg{display:block}
+.trhint{font-size:13px;font-weight:700;margin:6px 0}
+.trlen{font-size:22px;font-weight:850}
+.trfile{position:relative;display:inline-flex;align-items:center;justify-content:center;border:1px dashed #c8c4b9;border-radius:10px;padding:28px 14px;background:#faf9f5;text-align:center;width:100%;flex-direction:column;gap:4px}
+.trfile input{position:absolute;inset:0;opacity:0}
+.trrow{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--line);font-size:13px}
+.helpsec{border-bottom:1px solid var(--line);padding:4px 0}.helpsec summary{font-weight:700;padding:10px 0;cursor:pointer}.helpsec p{margin:0 0 10px;font-size:13px;line-height:1.7}
+@media(min-width:761px){.app{padding-top:30px}.stat{padding:17px 19px}.stat strong{font-size:22px}}
+.jobact .act{white-space:nowrap}
+.estmark{margin-left:6px;font-size:10px;font-weight:700;color:var(--shu);background:var(--shu-soft);border-radius:4px;padding:1px 5px}
+.tb-l{gap:8px}.tb-meta{max-width:42%;font-size:10px}
+@media(max-width:400px){.tb-big{font-size:20px}}
+
+/* 合計バー：原価と見積金額の2段、利益%をその場で変える */
+.totbar{flex-direction:column;align-items:stretch;gap:4px;padding:9px 12px 8px;cursor:default}
+.tb-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.tb-cost{font-size:12px;color:#d4d5ce;border-bottom:1px solid #ffffff22;padding-bottom:5px;cursor:pointer}
+.tb-cv{font-weight:750;color:#fff;font-size:14px}.tb-cv small{font-size:11px;color:#d4d5ce;margin-left:2px}
+.tb-main .tb-l{display:flex;flex-direction:column;gap:0;cursor:pointer;min-width:0}
+.tb-main .tb-label{font-size:10px}
+.mk{display:flex;align-items:center;gap:4px;flex:none;background:#ffffff14;border-radius:9px;padding:3px}
+.mkb{width:34px;height:34px;border:0;border-radius:7px;background:#ffffff22;color:#fff;font-size:18px;font-weight:700;padding:0}
+.mkl{display:flex;align-items:center;gap:3px;font-size:11px;color:#d4d5ce;font-weight:700}
+.mkl input{width:46px;padding:5px 4px;font-size:16px;font-weight:800;text-align:center;border:0;border-radius:6px;background:#fff;color:#20221f}
+.tb-meta{max-width:none;font-size:10px;color:#b9bbb2;cursor:pointer}
+.app{padding-bottom:calc(200px + env(safe-area-inset-bottom,0px))}
+.toast{bottom:calc(180px + env(safe-area-inset-bottom,0px))}
+.foot .fr.cost{color:var(--muted);font-size:13px}
+</style>
+
+<header class="top">
+  <div class="brand"><div class="mark">水</div><div>SUIDO<small>PLUMBING ESTIMATE</small></div></div>
+  <div class="topright"><button class="btn light" id="newJobTop">＋ 新規現場</button><button class="btn light" id="menuBtn" aria-label="メニュー（単価・設定・使い方）">☰</button></div>
+</header>
+<main class="app">
+  <!-- 現場ボード -->
+  <section class="dash" id="dash">
+    <div class="eyebrow" id="dashDay">PROJECT CONTROL</div>
+    <div class="headline"><div><h1>現場ボード</h1><div class="sub">現場ごとの水道工事の見積もりをまとめて管理。</div></div><button class="btn orange" id="newJobDash">＋ 現場をつくる</button></div>
+    <div class="stats">
+      <div class="stat"><label>登録現場</label><strong id="stCount">00</strong><small>保存済みの現場</small></div>
+      <div class="stat"><label>見積合計</label><strong id="stSum">¥0</strong><small>税抜・全現場</small></div>
+      <div class="stat"><label>最終更新</label><strong>今日</strong><small>この端末に保存</small></div>
+    </div>
+    <div class="sectionhead"><h2>最近の現場</h2><span class="mini">SELECT PROJECT →</span></div>
+    <div id="jobList"></div>
+    <p class="mini" id="jobListHint">現場を長押しすると削除できます。</p>
+    <p class="mini" id="storeNote"></p>
+  </section>
+
+  <!-- 見積ワーク -->
+  <section class="workspace" id="ws">
+    <button class="back" id="backBtn">← 現場ボード</button>
+    <div class="workhead"><div><div class="eyebrow">ESTIMATE WORKSPACE</div><h1 id="wsTitle">現場</h1><div class="sub" id="wsMeta"></div></div></div>
+    <div class="intro" id="exNote" hidden><span>最初は使い方が分かるように<b>例</b>が入っています。自分の現場を入れる時は、現場ボードの「＋ 現場をつくる」から始めてください。</span><button id="exClear">例を消す</button></div>
+    <div class="warn" id="warn" hidden><span id="warnText"></span><button id="warnBtn">単価を入れる</button></div>
+    <div class="tabs" role="tablist">
+      <button class="tab on" data-tab="work">見積ワーク</button><button class="tab" data-tab="sheet">見積明細</button><button class="tab" data-tab="draw">図面・写真</button><button class="tab" data-tab="info">出力・宛名</button>
+    </div>
+
+    <div class="tpanel on" id="tp-work">
+      <section class="card" aria-label="配管">
+        <div class="sectionhead"><h2>配管 <span class="note">系統・管の種類・長さ（m）</span></h2></div>
+        <div id="runs" class="stack"></div>
+        <button class="add" id="addRun">＋ 配管を追加</button>
+        <p class="note">継手と支持金具は長さから目安の数を出します。多い・少ないは各配管の「継手の多さ」か、見積明細で数を直してください。</p>
+      </section>
+      <section class="card" aria-label="器具">
+        <div class="sectionhead"><h2>器具の取付・交換 <span class="note">トイレ・水栓・給湯器・桝など</span></h2></div>
+        <div id="fixes" class="stack"></div>
+        <button class="add" id="addFix">＋ 器具を追加</button>
+      </section>
+      <section class="card" aria-label="屋外の掘削">
+        <div class="sectionhead"><h2>屋外の掘削・埋め戻し <span class="note">引込み・屋外排水など</span></h2></div>
+        <div id="digs" class="stack"></div>
+        <button class="add" id="addDig">＋ 掘る所を追加</button>
+      </section>
+      <section class="card" aria-label="床・壁の解体と復旧" id="restCard" hidden>
+        <div class="sectionhead"><h2>床・壁の解体と復旧 <span class="note">配管のために開ける所</span></h2></div>
+        <div id="rests" class="stack"></div>
+        <button class="add" id="addRest">＋ 開ける所を追加</button>
+      </section>
+      <section class="card" aria-label="室内の土間のカッター・はつり" id="hatsuCard" hidden>
+        <div class="sectionhead"><h2>室内の土間のカッター・はつり <span class="note">トイレの排水の付け替えなど</span></h2></div>
+        <div id="hatsus" class="stack"></div>
+        <button class="add" id="addHatsu">＋ はつる所を追加</button>
+      </section>
+      <section class="card" aria-label="申請・検査・修理">
+        <div class="sectionhead"><h2>追加する工事・申請・修理など</h2></div>
+        <div class="quick" id="quickSpecial"></div>
+        <div class="quick" id="quick"></div>
+        <p class="note">押すと一覧から選べます。選んだ項目は見積明細の「追加した項目」に入ります。</p>
+      </section>
+    </div>
+
+    <div class="tpanel" id="tp-sheet">
+      <section class="card" aria-label="工事ごとの数量と金額">
+        <div class="sectionhead"><h2>工事ごとの数量と金額</h2></div>
+        <div class="sheet" id="sheet"></div>
+        <p class="note" style="margin-top:8px">チェックを外すとその行は計算から外れます。数量は手で直せます（「自動」で元に戻ります）。単価が空の行は金額に入りません。単価はどの現場でも共通です。</p>
+      </section>
+    </div>
+
+    <div class="tpanel" id="tp-draw">
+      <section class="card" id="traceCard"></section>
+    </div>
+
+    <div class="tpanel" id="tp-info">
+      <section class="card jobhead" aria-label="現場">
+        <div class="f"><label for="jobName">現場名</label><input id="jobName" placeholder="例）山田様邸 給排水改修" autocomplete="off"></div>
+        <div class="jobact">
+          <button id="pdfBtn" class="act strong">見積書PDF</button>
+          <select id="paperSel" class="act paper" aria-label="用紙と向き"></select>
+          <button id="csvBtn" class="act">CSV</button>
+          <button id="dupBtn" class="act">複製</button>
+          <button id="delBtn" class="act">消す</button>
+        </div>
+        <span class="note" id="jobMsg" role="status"></span>
+      </section>
+      <section class="card"><details class="docbox" id="docBox" open><summary>見積書の情報（宛名・工事名・工期など）</summary><div class="docgrid" id="docGrid"></div></details></section>
+    </div>
+  </section>
+</main>
+
+<nav class="mobilebar" aria-label="切り替え">
+  <button data-go="board"><span>▦</span>現場</button><button data-go="work"><span>⌁</span>見積ワーク</button><button data-go="draw"><span>▧</span>図面</button><button data-go="info"><span>⇩</span>出力</button>
+</nav>
+
+<div class="totbar" id="totbar" hidden>
+  <div class="tb-row tb-cost" data-go-sheet><span class="tb-label">原価（税抜）</span><span class="tb-cv"><span id="costTop">0</span><small>円</small></span></div>
+  <div class="tb-row tb-main"><div class="tb-l" data-go-sheet><span class="tb-label">見積金額（税込）</span><span class="tb-big"><span id="grandTop">0</span><small>円</small></span></div>
+    <div class="mk" aria-label="原価に乗せる利益"><button type="button" class="mkb" data-mk="-5" aria-label="5%下げる">－</button><label class="mkl">利益<input id="mkIn" type="number" inputmode="numeric" min="0" max="300" step="1">%</label><button type="button" class="mkb" data-mk="5" aria-label="5%上げる">＋</button></div></div>
+  <div class="tb-meta" id="metaTop" data-go-sheet></div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+<div class="overlay" id="askBox" hidden><div class="askin" role="dialog" aria-modal="true"><p id="askText"></p><div class="askbtn"><button class="btn light" id="askNo">やめる</button><button class="btn orange" id="askYes">削除する</button></div></div></div>
+<div id="jobs" hidden></div><span id="jobCount" hidden></span>
+
+<div class="errbar" id="errbar" role="alert" hidden>
+  <div class="errtxt"><b>計算でエラーが出ました</b><span>今表示されている金額は正しくない可能性があります。この画面をくらちゃんに見せてください。</span><small id="errDetail"></small></div>
+  <button type="button" id="errClose" aria-label="エラー表示を閉じる">閉じる</button>
+</div>
+
+<div class="overlay" id="picker" hidden>
+  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="pkTitle">
+    <div class="ph"><h3 id="pkTitle">選ぶ</h3><button class="close" id="pkClose">閉じる</button></div>
+    <div class="psearch"><div class="sbox"><input id="pkQ" type="text" enterkeyhint="search" placeholder="検索（例：HIVP、20、エルボ）" autocomplete="off"><button type="button" class="sclear" data-for="pkQ" aria-label="検索の文字を全部消す" hidden>×</button></div></div>
+    <div class="plist" id="pkList"></div>
+  </div>
+</div>
+
+<div class="overlay" id="menu" hidden>
+  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="mnTitle">
+    <div class="ph"><h3 id="mnTitle">メニュー</h3><button class="close" id="mnClose">閉じる</button></div>
+    <div class="psearch">
+      <div class="sbox"><input id="mnQ" type="text" enterkeyhint="search" placeholder="品目を検索（例：VU100、トイレ）" autocomplete="off"><button type="button" class="sclear" data-for="mnQ" aria-label="検索の文字を全部消す" hidden>×</button></div>
+      <div class="netrow" id="mnNet" hidden></div>
+      <div class="chiprow" id="mnChips"></div>
+    </div>
+    <div class="plist" id="mnList"></div>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const yen=n=>Math.round(n).toLocaleString("ja-JP");
+const r2=n=>(Math.round(n*100)/100).toLocaleString("ja-JP",{maximumFractionDigits:2});
+const esc=t=>String(t??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const uid=()=>Math.random().toString(36).slice(2,9);
+const today=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
+const num=v=>{const n=parseFloat(v);return isFinite(n)?n:0};
+
+/* ================= 品目 ================= */
+const SYS={w:"給水",h:"給湯",d:"排水",v:"通気",r:"雨水"};
+const SYS_GRP={w:"給水設備工事",h:"給湯設備工事",d:"排水設備工事",v:"排水設備工事",r:"雨水設備工事"};
+const PLACE={in:"屋内（隠ぺい）",ex:"露出",bur:"屋外（地中）"};
+const G_OUT="屋外配管・土工",G_FIX="器具取付・交換工事";
+
+/* 継手の種類と、配管1mあたりの目安の数（設定で変えられる） */
+const FAM={
+  ts:{n:"TS継手",j:[["el","エルボ",0.4],["te","チーズ",0.15],["so","ソケット",0.25]]},
+  ht:{n:"HT継手",j:[["el","エルボ",0.4],["te","チーズ",0.15],["so","ソケット",0.25]]},
+  flex:{n:"樹脂管用継手",j:[["el","エルボ",0.15],["te","チーズ",0.08],["so","ソケット",0.08]]},
+  sgp:{n:"ねじ込み継手（管端コア付）",j:[["el","エルボ",0.4],["te","チーズ",0.15],["so","ソケット",0.25]]},
+  sus:{n:"プレス継手",j:[["el","エルボ",0.35],["te","チーズ",0.15],["so","ソケット",0.2]]},
+  pe:{n:"PE管用継手",j:[["el","エルボ",0.05],["te","チーズ",0.03],["so","ソケット",0.05]]},
+  dv:{n:"DV継手",j:[["el","大曲がりエルボ",0.2],["e45","45°エルボ",0.15],["y","45°Y",0.12],["so","ソケット",0.25]]},
+  fdp:{n:"耐火DV継手",j:[["el","大曲がりエルボ",0.2],["e45","45°エルボ",0.15],["y","45°Y",0.12],["so","ソケット",0.25]]},
+};
+/* [記号, 継手, 名前, 使う系統, 呼び径] */
+const PIPE_DEF=[
+  ["hivp","ts","HIVP管（耐衝撃性塩ビ管）","w",[13,16,20,25,30,40,50]],
+  ["htvp","ht","HTVP管（耐熱性塩ビ管）","h",[13,16,20,25,30,40]],
+  ["px","flex","架橋ポリエチレン管","wh",[10,13,16,20]],
+  ["pb","flex","ポリブテン管","wh",[10,13,16,20]],
+  ["sgp","sgp","硬質塩ビライニング鋼管（SGP-VA）","w",[15,20,25,32,40,50]],
+  ["sus","sus","水道用ステンレス鋼管","wh",[13,20,25,30,40,50]],
+  ["pe","pe","水道用ポリエチレン管（1種2層）","w",[13,20,25,30,40,50]],
+  ["vp","dv","VP管（硬質塩ビ管）","dvr",[30,40,50,65,75,100,125,150]],
+  ["vu","dv","VU管（薄肉塩ビ管）","dvr",[40,50,65,75,100,125,150,200]],
+  ["fdp","fdp","耐火二層管","dvr",[40,50,65,75,100,125,150]],
+];
+const HOON_D=[10,13,16,20,25,30,40,50];
+
+const CATS=[["pipe","管"],["fit","継手"],["sup","支持金具・保温材"],["body","器具（本体）"],["part","接続部材"],["lab","手間（工事代）"],["out","屋外・土工"],["app","申請・検査・諸費用"],["rep","修理・点検"],["int","室内の解体・復旧"],["disp","処分"],["etc","その他（自分で追加）"]];
+const CAT_NAME=Object.fromEntries(CATS);
+const C=(cat,id,name,spec,u,x)=>Object.assign({cat,id,name,spec:spec||"",u},x||{});
+const BUILTIN=[];
+PIPE_DEF.forEach(([k,fam,name,use,ds])=>ds.forEach(d=>{
+  BUILTIN.push(C("pipe","p-"+k+d,name,"呼び径 "+d,"m",{pipe:k,fam,use,d}));
+}));
+PIPE_DEF.forEach(([k,fam,name,use,ds])=>ds.forEach(d=>FAM[fam].j.forEach(([jk,jn])=>{
+  BUILTIN.push(C("fit","j-"+k+d+"-"+jk,jn+"（"+FAM[fam].n+"）",name.replace(/（.*）/,"")+" 呼び径 "+d,"個"));
+})));
+HOON_D.forEach(d=>BUILTIN.push(C("sup","h-"+d,"保温材（給水・給湯管用）","呼び径 "+d,"m")));
+BUILTIN.push(
+  C("sup","s-w","配管支持金具（給水・給湯）","吊りバンド・サドルなど","個"),
+  C("sup","s-d","配管支持金具（排水・通気・雨水）","吊りバンド・サドルなど","個"),
+
+  C("body","b-wc1","洋式便器（組み合わせ・普及品）","","台"),C("body","b-wc2","タンクレストイレ","","台"),C("body","b-wcs","温水洗浄便座","","台"),
+  C("body","b-wb600","洗面化粧台","間口600","台"),C("body","b-wb750","洗面化粧台","間口750","台"),
+  C("body","b-kf","キッチン水栓（シングルレバー）","","個"),C("body","b-kfd","キッチン水栓（食洗機分岐付）","","個"),
+  C("body","b-bf","浴室水栓（サーモスタット混合）","","個"),C("body","b-lf","洗面水栓（シングルレバー）","","個"),
+  C("body","b-sf","単水栓（横水栓）","","個"),C("body","b-dwv","食洗機用分岐水栓","","個"),
+  C("body","b-wf","洗濯機用水栓（緊急止水弁付）","","個"),C("body","b-pan","洗濯機防水パン","640","台"),
+  C("body","b-gh16","ガス給湯器 オート","16号","台"),C("body","b-gh20","ガス給湯器 オート","20号","台"),C("body","b-gh24","ガス給湯器 オート","24号","台"),
+  C("body","b-eco370","エコキュート","370L","台"),C("body","b-eco460","エコキュート","460L","台"),
+  C("body","b-hw","手洗器","","台"),C("body","b-ur","小便器","","台"),C("body","b-sk","掃除流し（SK）","","台"),
+  C("body","b-ss","散水栓（ボックス付）","","か所"),C("body","b-rs","立水栓（ユニット）","","か所"),
+  C("body","b-stop","止水栓","","個"),
+  C("body","b-ms","汚水桝（塩ビ小口径）","φ150","個"),C("body","b-mr","雨水桝（塩ビ・泥溜め付）","φ150","個"),
+  C("body","b-mb","量水器ボックス（メーターボックス）","13〜20mm用","個"),
+  C("body","b-hd4","ヘッダー（給水・給湯）","4口","個"),C("body","b-hd6","ヘッダー（給水・給湯）","6口","個"),
+
+  C("part","pt-wc","便器の接続部材","フランジ・給水管・パッキンなど","式"),
+  C("part","pt-wcs","便座の接続部材","分岐金具など","式"),
+  C("part","pt-wb","洗面台の接続部材","給水給湯管・排水ホースなど","式"),
+  C("part","pt-f","水栓の取付部材","フレキ・パッキン・シールなど","式"),
+  C("part","pt-pan","防水パンの排水トラップ","","個"),
+  C("part","pt-gh","給湯器の接続部材","配管・保温・リモコン線など","式"),
+  C("part","pt-eco","エコキュートの接続部材","配管・保温・脚部カバーなど","式"),
+  C("part","pt-ki","キッチンの接続部材","止水栓・排水ホースなど","式"),
+  C("part","pt-ub","ユニットバスの接続部材","","式"),
+
+  C("lab","l-pw","給水配管（手間）","","m"),C("lab","l-ph","給湯配管（手間）","","m"),C("lab","l-pd","排水配管（手間）","","m"),
+  C("lab","l-pv","通気配管（手間）","","m"),C("lab","l-pr","雨水配管（手間）","","m"),C("lab","l-pbur","屋外埋設配管（手間）","","m"),
+  C("lab","l-prm","既設配管の撤去（手間）","","m"),
+  C("lab","l-wc-on","トイレ取付","","台"),C("lab","l-wc-off","トイレ撤去","","台"),
+  C("lab","l-wcs-on","温水洗浄便座取付","","台"),C("lab","l-wcs-off","温水洗浄便座撤去","","台"),
+  C("lab","l-wb-on","洗面化粧台取付","","台"),C("lab","l-wb-off","洗面化粧台撤去","","台"),
+  C("lab","l-f-on","水栓取付","","か所"),C("lab","l-f-off","水栓撤去","","か所"),
+  C("lab","l-dw-on","食洗機分岐水栓取付","","か所"),
+  C("lab","l-pan-on","防水パン設置","","台"),C("lab","l-pan-off","防水パン撤去","","台"),
+  C("lab","l-gh-on","給湯器取付","","台"),C("lab","l-gh-off","給湯器撤去","","台"),
+  C("lab","l-eco-on","エコキュート設置（基礎は別）","","台"),C("lab","l-eco-off","電気温水器・エコキュート撤去","","台"),
+  C("lab","l-ki-on","キッチン給排水接続","","か所"),C("lab","l-ki-off","キッチン給排水切り離し","","か所"),
+  C("lab","l-ub-on","ユニットバス給排水接続","","か所"),C("lab","l-ub-off","浴室給排水切り離し","","か所"),
+  C("lab","l-hw-on","手洗器取付","","台"),C("lab","l-hw-off","手洗器撤去","","台"),
+  C("lab","l-ur-on","小便器取付","","台"),C("lab","l-ur-off","小便器撤去","","台"),
+  C("lab","l-sk-on","掃除流し取付","","台"),C("lab","l-sk-off","掃除流し撤去","","台"),
+  C("lab","l-ss-on","散水栓・立水栓取付","","か所"),C("lab","l-ss-off","散水栓・立水栓撤去","","か所"),
+  C("lab","l-stop-on","止水栓取付","","個"),
+  C("lab","l-ms-on","桝設置","","個"),C("lab","l-ms-off","桝撤去","","個"),
+  C("lab","l-mb-on","量水器ボックス設置","","個"),C("lab","l-mb-off","量水器ボックス撤去","","個"),
+  C("lab","l-hd-on","ヘッダー取付","","個"),
+  C("lab","l-disp","撤去した器具の処分","","台"),
+
+  C("out","o-dig","掘削","","m³"),C("out","o-sand","管まわりの砂（山砂）","","m³"),
+  C("out","o-bsoil","埋め戻し（掘った土）","","m³"),C("out","o-bsand","埋め戻し（山砂）","","m³"),C("out","o-brc","埋め戻し（再生砕石）","","m³"),
+  C("out","o-zan","残土処分","","m³"),C("out","o-tape","埋設表示シート","","m"),
+  C("out","o-cut","舗装カッター","","m"),
+  C("out","o-asrm","アスファルト撤去・処分","","㎡"),C("out","o-as","アスファルト復旧","t=50","㎡"),
+  C("out","o-corm","コンクリート撤去・処分","","㎡"),C("out","o-co","土間コンクリート復旧","t=100","㎡"),
+  C("out","o-base","路盤（再生砕石）","t=100","㎡"),
+  C("out","o-machine","重機回送費","","回"),
+
+  C("app","a-shinsei","給水装置工事 申請手数料","市町村で金額がちがう","件"),
+  C("app","a-design","設計審査手数料","","件"),C("app","a-kensa","竣工検査手数料","","件"),
+  C("app","a-kanyu13","水道加入金（分担金）","13mm","件"),C("app","a-kanyu20","水道加入金（分担金）","20mm","件"),C("app","a-kanyu25","水道加入金（分担金）","25mm","件"),
+  C("app","a-meter","量水器（メーター）設置・貸与","","件"),
+  C("app","a-gesui","排水設備 申請（下水道）","","件"),C("app","a-zu","申請図面の作成","","件"),
+  C("app","a-road","道路占用・使用許可の申請","","件"),C("app","a-guard","交通誘導員","","人日"),
+  C("app","a-suiatsu","給水管 水圧試験","","回"),C("app","a-tsusui","排水 通水試験","","回"),
+
+  C("rep","r-shutcho","出張費","","回"),C("rep","r-leak","漏水調査","","回"),
+  C("rep","r-wash","排水管 高圧洗浄","","回"),C("rep","r-tsumari","つまり除去","","回"),
+  C("rep","r-cart","水栓のパッキン・カートリッジ交換","","か所"),C("rep","r-ball","ボールタップ交換","","個"),
+  C("rep","r-trap","排水トラップ交換","","個"),C("rep","r-leakfix","漏水箇所の修理","","か所"),
+);
+
+/* 室内の解体・復旧（配管のために開けて戻す所）。k=床F・壁W・天井C、w=廃材の種類、t=厚み(m) */
+BUILTIN.push(
+  C("int","i-dF-cf","床の解体 クッションフロア","","㎡",{k:"F",w:"mix"}),
+  C("int","i-dF-fl","床の解体 フローリング","","㎡",{k:"F",w:"wood"}),
+  C("int","i-dF-ply","床の解体 下地合板","","㎡",{k:"F",w:"wood"}),
+  C("int","i-dF-tile","床の解体 タイル（モルタル共）","","㎡",{k:"F",w:"gara",t:0.04}),
+  C("int","i-dF-co","床の解体 土間コンクリート","厚100","㎡",{k:"F",w:"gara",t:0.1}),
+  C("int","i-dW-cloth","壁の解体 クロスだけ","","㎡",{k:"W",w:"mix",t:0.005}),
+  C("int","i-dW-board","壁の解体 ボード（クロス共）","","㎡",{k:"W",w:"gyp"}),
+  C("int","i-dW-tile","壁の解体 タイル","","㎡",{k:"W",w:"gara",t:0.03}),
+  C("int","i-dW-cb","壁の解体 CBブロック","厚100","㎡",{k:"W",w:"gara",t:0.1}),
+  C("int","i-dW-lath","壁の解体 ラス下地モルタル（ラス共）","","㎡",{k:"W",w:"gara",t:0.03}),
+  C("int","i-dC-board","天井の解体 ボード（クロス共）","","㎡",{k:"C",w:"gyp"}),
+  C("int","i-rF-ply","床の復旧 下地合板 張り","","㎡",{k:"F",r:1}),
+  C("int","i-rF-cf","床の復旧 クッションフロア 張り","","㎡",{k:"F",r:1}),
+  C("int","i-rF-fl","床の復旧 フローリング 張り","","㎡",{k:"F",r:1}),
+  C("int","i-rF-tile","床の復旧 タイル 張り","","㎡",{k:"F",r:1}),
+  C("int","i-rF-mo","床の復旧 モルタル 補修","","㎡",{k:"F",r:1}),
+  C("int","i-rW-board","壁の復旧 ボード 張り","","㎡",{k:"W",r:1}),
+  C("int","i-rW-cloth","壁の復旧 クロス 張り","","㎡",{k:"W",r:1}),
+  C("int","i-rW-tile","壁の復旧 タイル 張り","","㎡",{k:"W",r:1}),
+  C("int","i-rW-mo","壁の復旧 モルタル 補修","","㎡",{k:"W",r:1}),
+  C("int","i-rW-cb","壁の復旧 CBブロック 積み","厚100","㎡",{k:"W",r:1}),
+  C("int","i-rC-board","天井の復旧 ボード 張り","","㎡",{k:"C",r:1}),
+  C("int","i-rC-cloth","天井の復旧 クロス 張り","","㎡",{k:"C",r:1}),
+  C("int","i-tenken","点検口 取付","450角","か所",{k:"FWC",r:1,each:1}),
+
+  C("out","h-cut","土間カッター（コンクリート）","","m"),
+  C("out","h-hatsu","土間はつり（コンクリート）","","㎡"),
+  C("out","h-co","土間コンクリート 打設（復旧）","","㎡"),
+
+  C("disp","d-toki","陶器くずの処分","便器・洗面器など","台"),
+  C("disp","d-mix1","混合廃棄物の処分","洗面台など","台"),
+  C("disp","d-pla1","廃プラの処分","防水パンなど","台"),
+  C("disp","d-elec","小型家電・金属くずの処分","便座・給湯器など","台"),
+  C("disp","d-big","大型機器の処分","エコキュート・電気温水器","台"),
+  C("disp","d-pipe-pla","撤去した配管の処分","塩ビ・樹脂管","m"),
+  C("disp","d-pipe-met","撤去した配管の処分","鋼管・ステンレス","m"),
+  C("disp","d-gara","がれき類の処分","コンクリート・タイル・モルタル・ブロック","m³"),
+  C("disp","d-gyp","石膏ボードの処分","","m³"),
+  C("disp","d-wood","木くずの処分","","m³"),
+  C("disp","d-mix","混合廃棄物の処分（混載）","","m³"),
+);
+/* 目安の単価（2026年11月にネットの相場・公共の単価表・メーカー価格から出した数字。自分で入れた単価が優先されます） */
+const DEF_PRICES={"p-hivp13":325,"p-hivp16":453,"p-hivp20":540,"p-hivp25":760,"p-hivp30":915,"p-hivp40":1318,"p-hivp50":1820,"p-htvp13":520,"p-htvp16":720,"p-htvp20":870,"p-htvp25":1220,"p-htvp30":1460,"p-htvp40":2100,"p-px10":220,"p-px13":263,"p-px16":350,"p-px20":480,"p-pb10":230,"p-pb13":270,"p-pb16":350,"p-pb20":480,"p-vp30":888,"p-vp40":1130,"p-vp50":1613,"p-vp65":2298,"p-vp75":3238,"p-vp100":4223,"p-vp125":6500,"p-vp150":8500,"p-vu40":663,"p-vu50":713,"p-vu65":1348,"p-vu75":1438,"p-vu100":1760,"p-vu125":3970,"p-vu150":4490,"p-vu200":7500,"p-sgp15":1300,"p-sgp20":1600,"p-sgp25":2300,"p-sgp32":3000,"p-sgp40":3500,"p-sgp50":4800,"p-sus13":1200,"p-sus20":1700,"p-sus25":2300,"p-sus30":3000,"p-sus40":3700,"p-sus50":4800,"p-pe13":250,"p-pe20":350,"p-pe25":500,"p-pe30":700,"p-pe40":950,"p-pe50":1400,"p-fdp40":1500,"p-fdp50":1800,"p-fdp65":2600,"p-fdp75":3000,"p-fdp100":4200,"p-fdp125":6500,"p-fdp150":8000,"j-hivp13-el":40,"j-hivp13-te":50,"j-hivp13-so":30,"j-hivp16-el":50,"j-hivp16-te":70,"j-hivp16-so":40,"j-hivp20-el":70,"j-hivp20-te":100,"j-hivp20-so":60,"j-hivp25-el":100,"j-hivp25-te":130,"j-hivp25-so":80,"j-hivp30-el":120,"j-hivp30-te":170,"j-hivp30-so":100,"j-hivp40-el":180,"j-hivp40-te":250,"j-hivp40-so":150,"j-hivp50-el":250,"j-hivp50-te":340,"j-hivp50-so":200,"j-htvp13-el":70,"j-htvp13-te":90,"j-htvp13-so":50,"j-htvp16-el":90,"j-htvp16-te":120,"j-htvp16-so":70,"j-htvp20-el":120,"j-htvp20-te":160,"j-htvp20-so":90,"j-htvp25-el":160,"j-htvp25-te":220,"j-htvp25-so":120,"j-htvp30-el":210,"j-htvp30-te":280,"j-htvp30-so":160,"j-htvp40-el":320,"j-htvp40-te":420,"j-htvp40-so":240,"j-px10-el":620,"j-px10-te":900,"j-px10-so":550,"j-px13-el":900,"j-px13-te":1300,"j-px13-so":800,"j-px16-el":1200,"j-px16-te":1750,"j-px16-so":1050,"j-px20-el":1650,"j-px20-te":2400,"j-px20-so":1450,"j-pb10-el":620,"j-pb10-te":900,"j-pb10-so":550,"j-pb13-el":900,"j-pb13-te":1300,"j-pb13-so":800,"j-pb16-el":1200,"j-pb16-te":1750,"j-pb16-so":1050,"j-pb20-el":1650,"j-pb20-te":2400,"j-pb20-so":1450,"j-sgp15-el":470,"j-sgp15-te":600,"j-sgp15-so":400,"j-sgp20-el":700,"j-sgp20-te":900,"j-sgp20-so":600,"j-sgp25-el":960,"j-sgp25-te":1250,"j-sgp25-so":820,"j-sgp32-el":1350,"j-sgp32-te":1750,"j-sgp32-so":1150,"j-sgp40-el":1850,"j-sgp40-te":2400,"j-sgp40-so":1600,"j-sgp50-el":2500,"j-sgp50-te":3250,"j-sgp50-so":2150,"j-sus13-el":820,"j-sus13-te":1200,"j-sus13-so":660,"j-sus20-el":1500,"j-sus20-te":2200,"j-sus20-so":1200,"j-sus25-el":2050,"j-sus25-te":3000,"j-sus25-so":1650,"j-sus30-el":2650,"j-sus30-te":3900,"j-sus30-so":2100,"j-sus40-el":3950,"j-sus40-te":5800,"j-sus40-so":3150,"j-sus50-el":5400,"j-sus50-te":7950,"j-sus50-so":4350,"j-pe13-el":660,"j-pe13-te":880,"j-pe13-so":550,"j-pe20-el":1200,"j-pe20-te":1600,"j-pe20-so":1000,"j-pe25-el":1650,"j-pe25-te":2200,"j-pe25-so":1350,"j-pe30-el":2100,"j-pe30-te":2800,"j-pe30-so":1750,"j-pe40-el":3150,"j-pe40-te":4200,"j-pe40-so":2650,"j-pe50-el":4350,"j-pe50-te":5750,"j-pe50-so":3600,"j-vp30-el":200,"j-vp30-e45":150,"j-vp30-y":290,"j-vp30-so":70,"j-vp40-el":290,"j-vp40-e45":220,"j-vp40-y":440,"j-vp40-so":110,"j-vp50-el":400,"j-vp50-e45":300,"j-vp50-y":600,"j-vp50-so":150,"j-vp65-el":580,"j-vp65-e45":430,"j-vp65-y":870,"j-vp65-so":220,"j-vp75-el":710,"j-vp75-e45":530,"j-vp75-y":1050,"j-vp75-so":260,"j-vp100-el":1050,"j-vp100-e45":790,"j-vp100-y":1600,"j-vp100-so":400,"j-vp125-el":1450,"j-vp125-e45":1100,"j-vp125-y":2150,"j-vp125-so":540,"j-vp150-el":1850,"j-vp150-e45":1400,"j-vp150-y":2800,"j-vp150-so":700,"j-vu40-el":290,"j-vu40-e45":220,"j-vu40-y":440,"j-vu40-so":110,"j-vu50-el":400,"j-vu50-e45":300,"j-vu50-y":600,"j-vu50-so":150,"j-vu65-el":580,"j-vu65-e45":430,"j-vu65-y":870,"j-vu65-so":220,"j-vu75-el":710,"j-vu75-e45":530,"j-vu75-y":1050,"j-vu75-so":260,"j-vu100-el":1050,"j-vu100-e45":790,"j-vu100-y":1600,"j-vu100-so":400,"j-vu125-el":1450,"j-vu125-e45":1100,"j-vu125-y":2150,"j-vu125-so":540,"j-vu150-el":1850,"j-vu150-e45":1400,"j-vu150-y":2800,"j-vu150-so":700,"j-vu200-el":2800,"j-vu200-e45":2100,"j-vu200-y":4200,"j-vu200-so":1050,"j-fdp40-el":1100,"j-fdp40-e45":950,"j-fdp40-y":1850,"j-fdp40-so":660,"j-fdp50-el":1500,"j-fdp50-e45":1300,"j-fdp50-y":2500,"j-fdp50-so":900,"j-fdp65-el":2150,"j-fdp65-e45":1900,"j-fdp65-y":3600,"j-fdp65-so":1300,"j-fdp75-el":2650,"j-fdp75-e45":2300,"j-fdp75-y":4400,"j-fdp75-so":1600,"j-fdp100-el":3950,"j-fdp100-e45":3450,"j-fdp100-y":6600,"j-fdp100-so":2400,"j-fdp125-el":5400,"j-fdp125-e45":4700,"j-fdp125-y":9000,"j-fdp125-so":3250,"j-fdp150-el":7000,"j-fdp150-e45":6050,"j-fdp150-y":11650,"j-fdp150-so":4200,"s-w":150,"s-d":300,"h-10":140,"h-13":150,"h-16":170,"h-20":200,"h-25":240,"h-30":280,"h-40":350,"h-50":450,"b-wc1":70000,"b-wc2":200000,"b-wcs":30000,"b-wb600":50000,"b-wb750":70000,"b-kf":20000,"b-kfd":45000,"b-bf":25000,"b-lf":15000,"b-sf":3000,"b-wf":4000,"b-pan":10000,"b-gh16":100000,"b-gh20":115000,"b-gh24":130000,"b-eco370":250000,"b-eco460":300000,"b-hw":35000,"b-ur":50000,"b-sk":40000,"b-ss":8000,"b-rs":20000,"b-stop":3000,"b-ms":6000,"b-mr":7000,"b-mb":5000,"b-hd4":12000,"b-hd6":16000,"b-dwv":15000,"pt-wc":5000,"pt-wcs":2000,"pt-wb":5000,"pt-f":2000,"pt-pan":3000,"pt-gh":10000,"pt-eco":20000,"pt-ki":5000,"pt-ub":10000,"l-pw":2000,"l-ph":2000,"l-pd":2500,"l-pv":2500,"l-pr":2500,"l-pbur":1200,"l-prm":800,"l-wc-on":25000,"l-wc-off":8000,"l-wcs-on":10000,"l-wcs-off":3000,"l-wb-on":20000,"l-wb-off":8000,"l-f-on":12000,"l-f-off":3000,"l-dw-on":10000,"l-pan-on":15000,"l-pan-off":5000,"l-gh-on":45000,"l-gh-off":10000,"l-eco-on":100000,"l-eco-off":30000,"l-ki-on":15000,"l-ki-off":8000,"l-ub-on":30000,"l-ub-off":15000,"l-hw-on":20000,"l-hw-off":5000,"l-ur-on":30000,"l-ur-off":8000,"l-sk-on":25000,"l-sk-off":8000,"l-ss-on":15000,"l-ss-off":5000,"l-stop-on":5000,"l-ms-on":15000,"l-ms-off":8000,"l-mb-on":18000,"l-mb-off":5000,"l-hd-on":10000,"l-disp":5000,"o-dig":15000,"o-sand":8000,"o-bsoil":12000,"o-bsand":15000,"o-brc":14000,"o-zan":12000,"o-tape":150,"o-cut":1400,"o-asrm":8000,"o-as":5700,"o-corm":7000,"o-co":7000,"o-base":1800,"o-machine":20000,"h-cut":1200,"h-hatsu":5000,"h-co":7000,"a-kanyu13":96800,"a-kanyu20":228800,"a-kanyu25":357500,"a-zu":20000,"a-road":15000,"a-guard":26000,"a-suiatsu":5000,"a-tsusui":5000,"r-shutcho":3000,"r-leak":15000,"r-wash":18000,"r-tsumari":12000,"r-cart":8000,"r-ball":8000,"r-trap":8000,"r-leakfix":15000,"i-dF-cf":900,"i-dF-fl":1500,"i-dF-ply":2200,"i-dF-tile":4000,"i-dF-co":5000,"i-dW-cloth":650,"i-dW-board":1400,"i-dW-tile":4000,"i-dW-cb":5000,"i-dW-lath":3500,"i-dC-board":1800,"i-rF-ply":2950,"i-rF-cf":2100,"i-rF-fl":5200,"i-rF-tile":12600,"i-rF-mo":3500,"i-rW-board":1700,"i-rW-cloth":1700,"i-rW-tile":9500,"i-rW-mo":3500,"i-rW-cb":8000,"i-rC-board":1600,"i-rC-cloth":1700,"i-tenken":12000,"d-toki":3000,"d-mix1":5000,"d-pla1":2000,"d-elec":3000,"d-big":15000,"d-pipe-pla":100,"d-pipe-met":50,"d-gara":15000,"d-gyp":30000,"d-wood":15000,"d-mix":47000};
+
+/* 器具：本体の候補、取付・撤去の手間、接続部材、処分するかどうか */
+const FX=[
+  {k:"wc",n:"トイレ（便器）",b:["b-wc1","b-wc2"],on:"l-wc-on",off:"l-wc-off",pt:"pt-wc",disp:1},
+  {k:"wcs",n:"温水洗浄便座",b:["b-wcs"],on:"l-wcs-on",off:"l-wcs-off",pt:"pt-wcs",disp:1},
+  {k:"wb",n:"洗面化粧台",b:["b-wb600","b-wb750"],on:"l-wb-on",off:"l-wb-off",pt:"pt-wb",disp:1},
+  {k:"kf",n:"キッチン水栓",b:["b-kf","b-kfd"],on:"l-f-on",off:"l-f-off",pt:"pt-f"},
+  {k:"bf",n:"浴室水栓",b:["b-bf"],on:"l-f-on",off:"l-f-off",pt:"pt-f"},
+  {k:"lf",n:"洗面水栓",b:["b-lf"],on:"l-f-on",off:"l-f-off",pt:"pt-f"},
+  {k:"sf",n:"単水栓",b:["b-sf"],on:"l-f-on",off:"l-f-off",pt:"pt-f"},
+  {k:"wf",n:"洗濯機用水栓",b:["b-wf"],on:"l-f-on",off:"l-f-off",pt:"pt-f"},
+  {k:"dw",n:"食洗機の分岐水栓",b:["b-dwv"],on:"l-dw-on",off:null,pt:null},
+  {k:"pan",n:"洗濯機防水パン",b:["b-pan"],on:"l-pan-on",off:"l-pan-off",pt:"pt-pan",disp:1},
+  {k:"gh",n:"ガス給湯器",b:["b-gh16","b-gh20","b-gh24"],on:"l-gh-on",off:"l-gh-off",pt:"pt-gh",disp:1},
+  {k:"eco",n:"エコキュート",b:["b-eco370","b-eco460"],on:"l-eco-on",off:"l-eco-off",pt:"pt-eco",disp:1},
+  {k:"ki",n:"キッチン（給排水の接続）",b:[],on:"l-ki-on",off:"l-ki-off",pt:"pt-ki"},
+  {k:"ub",n:"ユニットバス（給排水の接続）",b:[],on:"l-ub-on",off:"l-ub-off",pt:"pt-ub"},
+  {k:"hw",n:"手洗器",b:["b-hw"],on:"l-hw-on",off:"l-hw-off",pt:"pt-f",disp:1},
+  {k:"ur",n:"小便器",b:["b-ur"],on:"l-ur-on",off:"l-ur-off",pt:"pt-wc",disp:1},
+  {k:"sk",n:"掃除流し（SK）",b:["b-sk"],on:"l-sk-on",off:"l-sk-off",pt:"pt-f",disp:1},
+  {k:"ss",n:"散水栓・立水栓",b:["b-ss","b-rs"],on:"l-ss-on",off:"l-ss-off",pt:"pt-f"},
+  {k:"stop",n:"止水栓",b:["b-stop"],on:"l-stop-on",off:"l-f-off",pt:null},
+  {k:"hd",n:"ヘッダー（給水・給湯）",b:["b-hd4","b-hd6"],on:"l-hd-on",off:null,pt:null},
+  {k:"ms",n:"汚水桝",b:["b-ms"],on:"l-ms-on",off:"l-ms-off",pt:null},
+  {k:"mr",n:"雨水桝",b:["b-mr"],on:"l-ms-on",off:"l-ms-off",pt:null},
+  {k:"mb",n:"量水器ボックス",b:["b-mb"],on:"l-mb-on",off:"l-mb-off",pt:null},
+];
+const FXM=Object.fromEntries(FX.map(f=>[f.k,f]));
+const MODES=[["swap","交換"],["new","新設"],["off","撤去だけ"]];
+
+const DEFAULT_OPTS={tax:10,loss:5,supW:0.8,supD:0.6,stdLen:4,keihi:10,jf:{}};
+const DEFAULT_LUMPS=()=>[{id:uid(),name:"養生",amt:0},{id:uid(),name:"運搬費",amt:0},{id:uid(),name:"現場管理費",amt:0}];
+
+let state={jobs:[],cur:"",prices:{},custom:[],opts:{...DEFAULT_OPTS},company:{}};
+const MAX_JOBS=30;
+const J=()=>state.jobs.find(j=>j.id===state.cur)||state.jobs[0];
+const ITEM_MAP=Object.fromEntries(BUILTIN.map(i=>[i.id,i]));
+function item(id){if(!id)return null;return ITEM_MAP[id]||state.custom.find(c=>c.id===id)||null}
+function allItems(){return BUILTIN.concat(state.custom)}
+function ownPrice(id){const v=state.prices[id];return v===undefined||v===null||v===""||!isFinite(+v)?null:+v}
+function isDefPrice(id){return ownPrice(id)===null&&state.opts.useDef!==false&&typeof DEF_PRICES!=="undefined"&&DEF_PRICES[id]!=null}
+function price(id){const o=ownPrice(id);if(o!==null)return o;return isDefPrice(id)?DEF_PRICES[id]:null}
+const label=it=>it?(it.name+(it.spec?" "+it.spec:"")):"";
+
+const DEF_PIPE={w:"p-hivp13",h:"p-px13",d:"p-vp50",v:"p-vp40",r:"p-vu75"};
+const DEF_PIPE_BUR={w:"p-pe20",h:"p-px13",d:"p-vu100",v:"p-vu100",r:"p-vu100"};
+function newRun(sys,name){sys=sys||"w";return {id:uid(),name:name||"",sys,place:"in",pipe:DEF_PIPE[sys],len:"",many:"1",hoon:sys==="h",rm:false}}
+function newFix(k){const f=FXM[k||"wc"];return {id:uid(),k:f.k,mode:"swap",body:f.b[0]||"",qty:1,where:""}}
+function newDig(name){return {id:uid(),name:name||"",len:"",w:0.4,dep:0.6,sand:0.2,back:"soil",pave:"none",pw:0.6,tape:true}}
+function newJob(name){return {id:uid(),name:name||"",date:today(),runs:[],fixes:[],digs:[],rests:[],hatsus:[],on:{},qo:{},extras:[],lumps:DEFAULT_LUMPS(),keihi:state.opts.keihi??10,doc:{}}}
+function exampleJob(){
+  const j=newJob("例）山田様邸 給排水改修");j.ex=true;
+  const a=newRun("w","1階 キッチン・洗面へ");a.len=12;
+  const b=newRun("h","給湯器から浴室・キッチンへ");b.len=10;
+  const c=newRun("d","キッチン・洗面の排水");c.len=6;
+  const d=newRun("d","トイレの排水");d.pipe="p-vp75";d.len=3;
+  const e=newRun("w","メーターから建物まで");e.place="bur";e.pipe="p-pe20";e.len=8;
+  j.runs=[a,b,c,d,e];
+  const f1=newFix("wc");f1.where="1階トイレ";
+  const f2=newFix("kf");f2.where="キッチン";
+  const f3=newFix("gh");f3.body="b-gh24";
+  j.fixes=[f1,f2,f3];
+  const g=newDig("給水の引込み");g.len=8;g.pave="as";
+  j.digs=[g];
+  return j;
+}
+
+/* ================= 計算 ================= */
+const jfac=(fam,jk,def)=>{const v=(state.opts.jf[fam]||{})[jk];return v===undefined||v===""?def:+v};
+function pipeQty(len){return len*(1+(+state.opts.loss||0)/100)}
+function hoonId(d){const x=HOON_D.find(h=>h>=d)||HOON_D[HOON_D.length-1];return "h-"+x}
+function runParts(r){
+  const out=[],len=num(r.len),p=item(r.pipe);if(len<=0)return out;
+  const g=r.place==="bur"?G_OUT:SYS_GRP[r.sys];
+  out.push([g,r.pipe,pipeQty(len)]);
+  if(p&&p.pipe){const m=num(r.many)||1;
+    FAM[p.fam].j.forEach(([jk,jn,def])=>{const n=Math.ceil(len*jfac(p.fam,jk,def)*m);if(n>0)out.push([g,"j-"+p.pipe+p.d+"-"+jk,n])});
+    if(r.hoon&&(r.sys==="w"||r.sys==="h"))out.push([g,hoonId(p.d),len]);
+  }
+  if(r.place!=="bur"){const per=(r.sys==="w"||r.sys==="h")?+state.opts.supW:+state.opts.supD;const n=Math.ceil(len*(per||0));if(n>0)out.push([g,(r.sys==="w"||r.sys==="h")?"s-w":"s-d",n])}
+  out.push([g,r.place==="bur"?"l-pbur":"l-p"+r.sys,len]);
+  if(r.rm){out.push([g,"l-prm",len]);out.push([g,p&&(p.fam==="sgp"||p.fam==="sus")?"d-pipe-met":"d-pipe-pla",len])}
+  return out;
+}
+function fixParts(x){
+  const f=FXM[x.k],q=num(x.qty),out=[];if(!f||q<=0)return out;
+  if(x.mode!=="off"){if(x.body)out.push([G_FIX,x.body,q]);if(f.pt)out.push([G_FIX,f.pt,q]);out.push([G_FIX,f.on,q])}
+  if(x.mode!=="new"&&f.off){out.push([G_FIX,f.off,q]);if(f.disp)out.push([G_FIX,FX_DISP[f.k]||"l-disp",q])}
+  return out;
+}
+function digCalc(g){
+  const L=num(g.len),W=num(g.w),D=num(g.dep),S=Math.min(num(g.sand),D);
+  const dig=L*W*D,sand=L*W*S,paved=g.pave==="as"||g.pave==="co";
+  const area=paved?L*Math.max(num(g.pw),W):0,baseVol=paved?L*W*0.15:0;
+  const back=Math.max(0,dig-sand-baseVol);
+  const zan=g.back==="soil"?Math.max(0,dig-back):dig;
+  return {L,dig,sand,back,zan,area,paved};
+}
+function digParts(g){
+  const c=digCalc(g),out=[];if(c.L<=0)return out;
+  out.push([G_OUT,"o-dig",c.dig]);
+  if(c.sand>0)out.push([G_OUT,"o-sand",c.sand]);
+  if(c.back>0)out.push([G_OUT,g.back==="sand"?"o-bsand":g.back==="rc"?"o-brc":"o-bsoil",c.back]);
+  if(c.zan>0)out.push([G_OUT,"o-zan",c.zan]);
+  if(g.tape)out.push([G_OUT,"o-tape",c.L]);
+  if(c.paved){out.push([G_OUT,"o-cut",c.L*2]);out.push([G_OUT,g.pave==="as"?"o-asrm":"o-corm",c.area]);out.push([G_OUT,"o-base",c.area]);out.push([G_OUT,g.pave==="as"?"o-as":"o-co",c.area])}
+  return out;
+}
+const GRP_ORDER=["給水設備工事","給湯設備工事","排水設備工事","雨水設備工事",G_OUT,"室内の土間（はつり）","室内の解体・復旧",G_FIX];
+function buildLines(){
+  const j=J(),L=[];
+  const add=(grp,itemId,qty,note)=>{if(!itemId||!(qty>0))return;const key=grp+"|"+itemId;let x=L.find(z=>z.key===key);
+    if(!x){x={key,grp,itemId,auto:0,notes:[]};L.push(x)}x.auto+=qty;if(note&&!x.notes.includes(note))x.notes.push(note)};
+  j.runs.forEach(r=>runParts(r).forEach(([g,id,q])=>add(g,id,q,r.name)));
+  j.fixes.forEach(x=>fixParts(x).forEach(([g,id,q])=>add(g,id,q,x.where)));
+  j.digs.forEach(d=>digParts(d).forEach(([g,id,q])=>add(g,id,q,d.name)));
+  (j.rests||[]).forEach(x=>restParts(x).forEach(([g,id,q])=>add(g,id,q,x.name)));
+  (j.hatsus||[]).forEach(h=>hatsuParts(h).forEach(([g,id,q])=>add(g,id,q,h.name)));
+  L.forEach(x=>{const o=j.qo[x.key];x.qty=(o!==undefined&&o!==""&&isFinite(+o))?+o:x.auto;x.over=x.qty!==x.auto});
+  L.sort((a,b)=>GRP_ORDER.indexOf(a.grp)-GRP_ORDER.indexOf(b.grp));
+  return L;
+}
+function totals(){
+  const j=J(),L=buildLines();let sub=0,un=0;
+  const mk=1+num(j.markup)/100,sp=p=>Math.round(p*mk);let sell=0;
+  L.forEach(x=>{if(j.on[x.key]===false||x.qty<=0)return;const p=price(x.itemId);if(p===null){un++;return}sub+=x.qty*p;sell+=Math.round(x.qty*sp(p))});
+  j.extras.forEach(e=>{const q=num(e.qty);if(q<=0)return;const p=price(e.item);if(p===null){un++;return}sub+=q*p;sell+=Math.round(q*sp(p))});
+  j.lumps.forEach(l=>{sub+=num(l.amt);sell+=sp(num(l.amt))});
+  const cost=sub;sub=sell;
+  const keihi=sub*num(j.keihi)/100,tax=Math.floor((sub+keihi)*num(state.opts.tax)/100);
+  return {L,cost,profit:sub-cost,sub,keihi,tax,grand:sub+keihi+tax,un};
+}
+
+/* ================= 画面：配管 ================= */
+function pickBtnHTML(id,none){const it=item(id);return it?`<span class="pn">${esc(it.name)}<small>${esc(it.spec)}</small></span><span class="chev">›</span>`:`<span class="pn">${esc(none||"選ぶ")}</span><span class="chev">›</span>`}
+function armDel(btn,fn){btn.onclick=()=>{if(!btn.classList.contains("armed")){btn.classList.add("armed");btn.textContent="本当に消す";setTimeout(()=>{btn.classList.remove("armed");btn.textContent="消す"},2500);return}fn()}}
+function runCalcText(r){
+  const len=num(r.len),p=item(r.pipe);if(len<=0)return "長さを入れると数量が出ます";
+  const parts=runParts(r);const q=pipeQty(len),std=+state.opts.stdLen||4;
+  const t=[`<span>管 <b>${r2(q)}</b>m（定尺${std}m × <b>${Math.ceil(q/std)}</b>本）</span>`];
+  parts.forEach(([g,id,n])=>{const it=item(id);if(!it||id===r.pipe||it.cat==="lab")return;
+    t.push(`<span>${esc(it.name.replace(/（.*）/,""))} <b>${r2(n)}</b>${esc(it.u)}</span>`)});
+  return t.join("");
+}
+function renderRuns(){
+  const box=$("runs");box.innerHTML="";const j=J();
+  if(!j.runs.length){box.innerHTML=`<p class="note" style="margin:0">配管がまだありません。「＋ 配管を追加」から、系統ごと・管の太さごとに入れてください。</p>`}
+  j.runs.forEach(r=>{
+    const d=document.createElement("div");d.className="room run s-"+r.sys;d.dataset.id=r.id;
+    d.innerHTML=`<div class="room-top"><span class="sysbadge sys-${r.sys}">${SYS[r.sys]}</span><input data-k="name" aria-label="配管の名前" placeholder="例）キッチンまで"><button class="rm">消す</button></div>
+      <div class="seg" data-seg="sys">${Object.entries(SYS).map(([k,n])=>`<button type="button" data-v="${k}" aria-pressed="${r.sys===k}">${n}</button>`).join("")}</div>
+      <div class="seg" data-seg="place">${Object.entries(PLACE).map(([k,n])=>`<button type="button" data-v="${k}" aria-pressed="${r.place===k}">${n}</button>`).join("")}</div>
+      <div class="f"><label>管の種類・太さ</label><button class="pick" data-pick>${pickBtnHTML(r.pipe)}</button></div>
+      <div class="dims" style="grid-template-columns:1fr 1fr">
+        <div class="f"><label>長さ（m）</label><div class="lenrow"><input data-k="len" data-m type="number" step="0.5" min="0" inputmode="decimal" placeholder="0"><button type="button" class="measure" data-measure>写真で測る</button></div></div>
+        <div class="f"><label>継手の多さ</label><select data-k="many"><option value="0.6">少ない（まっすぐ）</option><option value="1">ふつう</option><option value="1.5">多い（曲がりが多い）</option></select></div>
+      </div>
+      <div class="chk">
+        ${(r.sys==="w"||r.sys==="h")?`<div class="both"><button type="button" class="ck" data-ck="hoon" role="checkbox" aria-checked="${!!r.hoon}"></button><span data-ckl="hoon">保温材を巻く</span></div>`:""}
+        <div class="both"><button type="button" class="ck" data-ck="rm" role="checkbox" aria-checked="${!!r.rm}"></button><span data-ckl="rm">既設配管の撤去も入れる</span></div>
+      </div>
+      <div class="room-calc"></div>`;
+    const calc=()=>{d.querySelector(".room-calc").innerHTML=runCalcText(r)};
+    d.querySelectorAll("[data-k]").forEach(i=>{i.value=r[i.dataset.k]??"";const ev=i.tagName==="SELECT"?"onchange":"oninput";i[ev]=()=>{r[i.dataset.k]=i.value;calc();update();save()}});
+    d.querySelectorAll("[data-seg]").forEach(sg=>sg.querySelectorAll("button").forEach(b=>b.onclick=()=>{
+      const k=sg.dataset.seg,v=b.dataset.v;if(r[k]===v)return;r[k]=v;
+      const p=item(r.pipe);
+      if(k==="sys"){if(!p||!p.use||!p.use.includes(r.sys))r.pipe=(r.place==="bur"?DEF_PIPE_BUR:DEF_PIPE)[r.sys];r.hoon=r.sys==="h"}
+      if(k==="place"&&v==="bur"&&(r.pipe===DEF_PIPE[r.sys]))r.pipe=DEF_PIPE_BUR[r.sys];
+      if(k==="place"&&v!=="bur"&&(r.pipe===DEF_PIPE_BUR[r.sys]))r.pipe=DEF_PIPE[r.sys];
+      renderRuns();update();save()}));
+    d.querySelector("[data-pick]").onclick=()=>openPicker({title:SYS[r.sys]+"の管を選ぶ",cur:r.pipe,filter:it=>it.cat==="pipe"&&(!it.use||it.use.includes(r.sys)),
+      onPick:id=>{r.pipe=id;renderRuns();update();save()}});
+    d.querySelectorAll("[data-ck]").forEach(b=>{const k=b.dataset.ck;const tg=e=>{e.preventDefault();r[k]=!r[k];b.setAttribute("aria-checked",String(r[k]));calc();update();save()};
+      b.onclick=tg;d.querySelector(`[data-ckl="${k}"]`).onclick=tg});
+    d.querySelector("[data-measure]").onclick=()=>{TR.target=r.id;setTab("draw")};
+    armDel(d.querySelector(".rm"),()=>{j.runs=j.runs.filter(z=>z!==r);renderRuns();update();save()});
+    calc();box.appendChild(d);
+  });
+}
+$("addRun").onclick=()=>{const j=J();const last=j.runs[j.runs.length-1];const r=newRun(last?last.sys:"w");if(last){r.place=last.place;r.pipe=last.pipe;r.hoon=last.hoon}j.runs.push(r);renderRuns();update();save();
+  setTimeout(()=>{const el=$("runs").lastElementChild;if(el){el.scrollIntoView({block:"center",behavior:"smooth"});const i=el.querySelector('[data-k="len"]');i&&i.focus()}},50)};
+
+/* ================= 画面：器具 ================= */
+function fixCalcText(x){
+  const parts=fixParts(x);if(!parts.length)return "数量を入れると明細に入ります";
+  return parts.map(([g,id,q])=>{const it=item(id);return `<span>${esc(it?it.name:"")} <b>${r2(q)}</b>${esc(it?it.u:"")}</span>`}).join("");
+}
+function renderFixes(){
+  const box=$("fixes");box.innerHTML="";const j=J();
+  if(!j.fixes.length){box.innerHTML=`<p class="note" style="margin:0">器具の交換・新設・撤去があれば「＋ 器具を追加」で入れてください。</p>`}
+  j.fixes.forEach(x=>{
+    const f=FXM[x.k];const d=document.createElement("div");d.className="room";
+    d.innerHTML=`<div class="room-top"><select data-k="k" aria-label="器具の種類" style="font-weight:700">${FX.map(z=>`<option value="${z.k}">${esc(z.n)}</option>`).join("")}</select><button class="rm">消す</button></div>
+      <div class="seg" data-seg="mode">${MODES.map(([k,n])=>`<button type="button" data-v="${k}" aria-pressed="${x.mode===k}">${n}</button>`).join("")}</div>
+      ${x.mode!=="off"&&f.b.length?`<div class="f"><label>本体（材料）</label><button class="pick${x.body?"":" none"}" data-pick>${pickBtnHTML(x.body,"本体なし（施主支給など）")}</button></div>`:""}
+      <div class="dims" style="grid-template-columns:2fr 1fr">
+        <div class="f"><label>場所</label><input data-k="where" placeholder="例）1階トイレ" autocomplete="off"></div>
+        <div class="f"><label>数</label><input data-k="qty" type="number" step="1" min="0" inputmode="numeric"></div>
+      </div>
+      <div class="room-calc"></div>`;
+    const calc=()=>{d.querySelector(".room-calc").innerHTML=fixCalcText(x)};
+    d.querySelectorAll("[data-k]").forEach(i=>{i.value=x[i.dataset.k]??"";const ev=i.tagName==="SELECT"?"onchange":"oninput";
+      i[ev]=()=>{x[i.dataset.k]=i.value;if(i.dataset.k==="k"){x.body=FXM[x.k].b[0]||"";renderFixes()}else calc();update();save()}});
+    d.querySelectorAll("[data-seg] button").forEach(b=>b.onclick=()=>{x.mode=b.dataset.v;renderFixes();update();save()});
+    const pk=d.querySelector("[data-pick]");
+    if(pk)pk.onclick=()=>openPicker({title:f.n+"の本体",cur:x.body,allowNone:"本体なし（施主支給など）",filter:it=>f.b.includes(it.id)||(it.cat==="body"&&it.custom),
+      onPick:id=>{x.body=id;renderFixes();update();save()}});
+    armDel(d.querySelector(".rm"),()=>{j.fixes=j.fixes.filter(z=>z!==x);renderFixes();update();save()});
+    calc();box.appendChild(d);
+  });
+}
+$("addFix").onclick=()=>{J().fixes.push(newFix("wc"));renderFixes();update();save();
+  setTimeout(()=>{const el=$("fixes").lastElementChild;el&&el.scrollIntoView({block:"center",behavior:"smooth"})},50)};
+
+/* ================= 画面：掘削 ================= */
+function renderDigs(){
+  const box=$("digs");box.innerHTML="";const j=J();
+  if(!j.digs.length){box.innerHTML=`<p class="note" style="margin:0">屋外で掘る所があれば「＋ 掘る所を追加」。長さ×幅×深さから掘削・砂・埋め戻し・残土・舗装の復旧を出します。</p>`}
+  j.digs.forEach(g=>{
+    const d=document.createElement("div");d.className="room";
+    d.innerHTML=`<div class="room-top"><input data-k="name" aria-label="場所の名前" placeholder="例）給水の引込み"><button class="rm">消す</button></div>
+      <div class="g3">
+        <div class="f"><label>長さ（m）</label><input data-k="len" data-m type="number" step="0.5" min="0" inputmode="decimal" placeholder="0"></div>
+        <div class="f"><label>幅（m）</label><input data-k="w" data-m type="number" step="0.05" min="0" inputmode="decimal"></div>
+        <div class="f"><label>深さ（m）</label><input data-k="dep" data-m type="number" step="0.05" min="0" inputmode="decimal"></div>
+        <div class="f"><label>管まわりの砂（m）</label><input data-k="sand" data-m type="number" step="0.05" min="0" inputmode="decimal"></div>
+        <div class="f" style="grid-column:span 2"><label>埋め戻し</label><select data-k="back"><option value="soil">掘った土を戻す</option><option value="sand">山砂（土は全部処分）</option><option value="rc">再生砕石（土は全部処分）</option></select></div>
+      </div>
+      <div class="dims" style="grid-template-columns:2fr 1fr">
+        <div class="f"><label>上の舗装</label><select data-k="pave"><option value="none">なし（土・砂利）</option><option value="as">アスファルト</option><option value="co">コンクリート</option></select></div>
+        <div class="f"><label>壊す幅（m）</label><input data-k="pw" data-m type="number" step="0.05" min="0" inputmode="decimal"></div>
+      </div>
+      <div class="both"><button type="button" class="ck" role="checkbox" aria-checked="${!!g.tape}"></button><span class="ml">埋設表示シートを入れる</span></div>
+      <div class="room-calc"></div>`;
+    const calc=()=>{const c=digCalc(g);d.querySelector(".room-calc").innerHTML=c.L<=0?"長さを入れると数量が出ます":
+      `<span>掘削 <b>${r2(c.dig)}</b>m³</span><span>砂 <b>${r2(c.sand)}</b>m³</span><span>埋め戻し <b>${r2(c.back)}</b>m³</span><span>残土 <b>${r2(c.zan)}</b>m³</span>${c.paved?`<span>舗装 <b>${r2(c.area)}</b>㎡</span><span>カッター <b>${r2(c.L*2)}</b>m</span>`:""}`;
+      d.querySelector('[data-k="pw"]').disabled=g.pave==="none"};
+    d.querySelectorAll("[data-k]").forEach(i=>{i.value=g[i.dataset.k]??"";const ev=i.tagName==="SELECT"?"onchange":"oninput";i[ev]=()=>{g[i.dataset.k]=i.value;calc();update();save()}});
+    const tg=e=>{e.preventDefault();g.tape=!g.tape;d.querySelector(".ck").setAttribute("aria-checked",String(g.tape));update();save()};
+    d.querySelector(".ck").onclick=tg;d.querySelector(".ml").onclick=tg;
+    armDel(d.querySelector(".rm"),()=>{j.digs=j.digs.filter(z=>z!==g);renderDigs();update();save()});
+    calc();box.appendChild(d);
+  });
+}
+$("addDig").onclick=()=>{J().digs.push(newDig("掘る所"+(J().digs.length+1)));renderDigs();update();save()};
+
+/* ================= 画面：申請・修理（ボタン） ================= */
+const QUICK=[["申請・検査・諸費用","app"],["修理・点検","rep"],["屋外・土工","out"],["器具（本体）","body"],["接続部材","part"],["継手","fit"],["管","pipe"],["自分で追加した品目","etc"]];
+function renderQuick(){
+  $("quick").innerHTML=QUICK.map(([n,c])=>`<button type="button" data-c="${c}">＋ ${n}</button>`).join("");
+  $("quick").querySelectorAll("button").forEach(b=>b.onclick=()=>addExtra(b.dataset.c));
+}
+function addExtra(cat){
+  openPicker({title:"追加する項目を選ぶ",filter:it=>it.cat===cat,onPick:id=>{if(!id)return;const j=J();const ex=j.extras.find(e=>e.item===id);
+    if(ex)ex.qty=num(ex.qty)+1;else j.extras.push({id:uid(),item:id,qty:1});update();save();flash("「"+label(item(id))+"」を明細に追加しました")}});
+}
+
+/* ================= 明細 ================= */
+function amtText(qty,p){return p===null?"単価なし":yen(qty*p)}
+function renderSheet(){
+  const j=J(),T=totals(),s=$("sheet");let h="",grp="";
+  T.L.forEach(x=>{
+    if(x.grp!==grp){grp=x.grp;h+=`<div class="grp">${esc(grp)}</div>`}
+    const it=item(x.itemId),p=price(x.itemId),on=j.on[x.key]!==false;
+    h+=`<div class="line${on?"":" off"}" data-key="${esc(x.key)}">
+      <button type="button" class="ck" role="checkbox" aria-checked="${on}" aria-label="計算に入れる"></button>
+      <div class="nm">${esc(it?it.name:"(不明な品目)")}<small>${esc(it?it.spec:"")}</small>${x.notes.length?`<span class="rn">${esc(x.notes.filter(Boolean).join("・"))}</span>`:""}</div>
+      <div class="amt${p===null?" unset":""}">${amtText(x.qty,p)}</div>
+      <div class="price"><input class="qty" type="number" step="any" min="0" inputmode="decimal" aria-label="数量" value="${r2(x.qty).replace(/,/g,"")}"> ${esc(it?it.u:"")}${x.over?` <button type="button" class="auto">自動（${r2(x.auto)}）</button>`:""} × <input class="pr" type="number" step="1" min="0" inputmode="numeric" aria-label="単価" placeholder="単価" value="${p===null?"":p}"> 円${isDefPrice(x.itemId)?'<span class="estmark">目安</span>':""}</div>
+    </div>`;
+  });
+  if(j.extras.length){h+=`<div class="grp">追加した項目</div>`;
+    j.extras.forEach(e=>{const it=item(e.item),p=price(e.item);
+      h+=`<div class="xline" data-ex="${e.id}"><div class="nm">${esc(it?it.name:"(消した品目)")}<small>${esc(it?(it.spec?it.spec+"・":"")+CAT_NAME[it.cat]:"")}</small></div>
+        <div class="amt${p===null?" unset":""}">${amtText(num(e.qty),p)}</div><button class="lx" aria-label="消す">×</button>
+        <div class="ctl"><input class="qty" type="number" step="any" min="0" inputmode="decimal" value="${esc(e.qty)}"> ${esc(it?it.u:"")} × <input class="pr" type="number" step="1" min="0" inputmode="numeric" placeholder="単価" value="${p===null?"":p}"> 円${isDefPrice(e.item)?'<span class="estmark">目安</span>':""}</div></div>`})}
+  h+=`<div class="grp">一式（金額を直接入れる）</div>`;
+  j.lumps.forEach(l=>{h+=`<div class="lump" data-lump="${l.id}"><input class="ln" value="${esc(l.name)}" aria-label="項目名"><span class="lamt"><input type="number" step="100" min="0" inputmode="numeric" value="${num(l.amt)||""}" placeholder="0" aria-label="金額"> 円</span><button class="lx" aria-label="消す">×</button></div>`});
+  h+=`<button class="ladd" id="addLump">＋ 一式を追加</button>`;
+  h+=`<div class="foot"><div class="fr cost"><span>原価 小計</span><span class="num" id="fCost"></span></div>
+    <div class="fr cost"><span>利益（原価に <b id="fMk"></b>% 乗せ）</span><span class="num" id="fProfit"></span></div>
+    <div class="fr"><span>見積 小計</span><span class="num" id="fSub"></span></div>
+    <div class="fr"><span>諸経費 <input id="fKeihi" type="number" step="1" min="0" inputmode="decimal" value="${num(j.keihi)}"> %</span><span class="num" id="fKeihiAmt"></span></div>
+    <div class="fr"><span>消費税（${num(state.opts.tax)}%）</span><span class="num" id="fTax"></span></div>
+    <div class="fr grand"><span>合計（税込）</span><span class="num" id="fGrand"></span></div></div>`;
+  s.innerHTML=h;
+  s.querySelectorAll(".line").forEach(row=>{
+    const key=row.dataset.key,x=T.L.find(z=>z.key===key);
+    const ck=row.querySelector(".ck");ck.onclick=()=>{const on=j.on[key]===false;if(on)delete j.on[key];else j.on[key]=false;ck.setAttribute("aria-checked",String(on));row.classList.toggle("off",!on);updateTotals();save()};
+    const qi=row.querySelector(".qty");qi.oninput=()=>{j.qo[key]=qi.value;refreshLine(row,key);updateTotals();save()};
+    qi.onchange=()=>{if(qi.value==="")delete j.qo[key];renderSheet();updateTotals();save()};
+    const au=row.querySelector(".auto");if(au)au.onclick=()=>{delete j.qo[key];renderSheet();updateTotals();save()};
+    const pi=row.querySelector(".pr");pi.oninput=()=>{setPrice(x.itemId,pi.value);refreshLine(row,key);updateTotals()};
+    pi.onchange=()=>{renderSheet();updateTotals()};
+  });
+  s.querySelectorAll(".xline").forEach(row=>{
+    const e=j.extras.find(z=>z.id===row.dataset.ex);
+    const qi=row.querySelector(".qty"),pi=row.querySelector(".pr"),am=row.querySelector(".amt");
+    const ref=()=>{const p=price(e.item);am.textContent=amtText(num(e.qty),p);am.classList.toggle("unset",p===null)};
+    qi.oninput=()=>{e.qty=qi.value;ref();updateTotals();save()};
+    pi.oninput=()=>{setPrice(e.item,pi.value);ref();updateTotals()};
+    row.querySelector(".lx").onclick=()=>{j.extras=j.extras.filter(z=>z!==e);renderSheet();updateTotals();save()};
+  });
+  s.querySelectorAll(".lump").forEach(row=>{
+    const l=j.lumps.find(z=>z.id===row.dataset.lump);
+    row.querySelector(".ln").oninput=ev=>{l.name=ev.target.value;save()};
+    row.querySelector(".lamt input").oninput=ev=>{l.amt=ev.target.value;updateTotals();save()};
+    row.querySelector(".lx").onclick=()=>{j.lumps=j.lumps.filter(z=>z!==l);renderSheet();updateTotals();save()};
+  });
+  $("addLump").onclick=()=>{j.lumps.push({id:uid(),name:"",amt:0});renderSheet();updateTotals();save();const ls=s.querySelectorAll(".lump .ln");ls.length&&ls[ls.length-1].focus()};
+  $("fKeihi").oninput=ev=>{j.keihi=ev.target.value;updateTotals();save()};
+}
+function refreshLine(row,key){
+  const x=buildLines().find(z=>z.key===key);if(!x)return;const p=price(x.itemId),am=row.querySelector(".amt");
+  am.textContent=amtText(x.qty,p);am.classList.toggle("unset",p===null);
+}
+function setPrice(id,v){if(v===""||v===null)delete state.prices[id];else state.prices[id]=+v;save()}
+function updateTotals(){
+  const T=totals(),j=J();
+  $("grandTop").textContent=yen(T.grand);$("costTop").textContent=yen(T.cost);
+  if(document.activeElement!==$("mkIn"))$("mkIn").value=num(j.markup);
+  $("metaTop").textContent=T.sub>0?`利益 ${yen(T.profit)}円（粗利率 ${(T.profit/T.sub*100).toFixed(1)}%）・諸経費 ${num(j.keihi)}%・税 ${num(state.opts.tax)}%`:`諸経費 ${num(j.keihi)}%・税 ${num(state.opts.tax)}%`;
+  if($("fCost")){$("fCost").textContent=yen(T.cost);$("fProfit").textContent=yen(T.profit);$("fMk").textContent=num(j.markup)}
+  if($("fSub")){$("fSub").textContent=yen(T.sub);$("fKeihiAmt").textContent=yen(T.keihi);$("fTax").textContent=yen(T.tax);$("fGrand").textContent=yen(T.grand)}
+  $("warn").hidden=!T.un;$("warnText").textContent=`単価が入っていない項目が ${T.un} 件あります（金額に入っていません）`;
+  $("exNote").hidden=!j.ex;
+}
+function update(){
+  try{renderSheet();updateTotals();$("errbar").hidden=true}catch(e){showErr(e)}
+}
+function showErr(e){$("errDetail").textContent=String(e&&e.stack||e).slice(0,400);$("errbar").hidden=false}
+window.addEventListener("error",ev=>showErr(ev.error||ev.message));
+$("errClose").onclick=()=>$("errbar").hidden=true;
+$("warnBtn").onclick=()=>{openMenu("");mnUnset=true;renderMenu()};
+
+/* ================= 選ぶ画面 ================= */
+let pk=null;
+function openPicker(o){pk=o;$("pkTitle").textContent=o.title||"選ぶ";$("pkQ").value="";$("picker").hidden=false;renderPicker();syncClear()}
+const norm=s=>String(s||"").toLowerCase().normalize("NFKC").replace(/[\s　]/g,"");
+function matchQ(it,q){if(!q)return true;const t=norm(it.name+it.spec+CAT_NAME[it.cat]+it.u);return q.split(/[\s　]+/).filter(Boolean).every(w=>t.includes(norm(w)))}
+function renderPicker(){
+  const q=$("pkQ").value.trim(),list=allItems().filter(it=>pk.filter(it)&&matchQ(it,q));let h="";
+  if(pk.allowNone)h+=`<button class="popt${!pk.cur?" cur":""}" data-id=""><span>${esc(pk.allowNone)}</span></button>`;
+  let last="";list.forEach(it=>{const g=it.cat==="pipe"?it.name:CAT_NAME[it.cat];if(g!==last){last=g;h+=`<div class="pcat">${esc(g)}</div>`}
+    const p=price(it.id);h+=`<button class="popt${pk.cur===it.id?" cur":""}" data-id="${esc(it.id)}"><span>${esc(it.cat==="pipe"?it.spec:it.name)}${it.cat!=="pipe"&&it.spec?` <small>${esc(it.spec)}</small>`:""}</span><small>${p===null?"単価なし":yen(p)+"円／"+esc(it.u)}</small></button>`});
+  if(!list.length)h+=`<div class="empty-list">見つかりません。メニューの「単価・設定」から自分の品目を追加できます。</div>`;
+  $("pkList").innerHTML=h;
+  $("pkList").querySelectorAll(".popt").forEach(b=>b.onclick=()=>{const f=pk.onPick,id=b.dataset.id;closePicker();f(id)});
+}
+function closePicker(){$("picker").hidden=true;pk=null}
+$("pkClose").onclick=closePicker;$("pkQ").oninput=()=>{renderPicker();syncClear()};
+function syncClear(){document.querySelectorAll(".sclear").forEach(b=>{b.hidden=!$(b.dataset.for).value})}
+document.querySelectorAll(".sclear").forEach(b=>b.onclick=()=>{const i=$(b.dataset.for);i.value="";i.dispatchEvent(new Event("input"));i.focus()});
+
+/* ================= メニュー（単価・設定） ================= */
+let mnCat="",mnUnset=false;
+function openMenu(q){$("menu").hidden=false;$("mnQ").value=q||"";mnCat="";mnUnset=false;renderMenu();syncClear()}
+function closeMenu(){$("menu").hidden=true;boot()}
+$("menuBtn").onclick=()=>openMenu("");$("mnClose").onclick=closeMenu;
+$("mnQ").oninput=()=>{renderMenu();syncClear()};
+const NET=[["Google",q=>"https://www.google.com/search?q="+encodeURIComponent(q+" 価格")],["モノタロウ",q=>"https://www.monotaro.com/s/?q="+encodeURIComponent(q)]];
+function usedIds(){const s=new Set();state.jobs.forEach(j=>{const keep=state.cur;state.cur=j.id;buildLines().forEach(x=>s.add(x.itemId));j.extras.forEach(e=>s.add(e.item));state.cur=keep});return s}
+function renderMenu(){
+  const q=$("mnQ").value.trim();
+  $("mnNet").hidden=!q;$("mnNet").innerHTML=q?`<span class="netlabel">ネットで値段を調べる</span>`+NET.map(([n,f])=>`<a class="netbtn" href="${f(q)}" target="_blank" rel="noopener">${n}</a>`).join(""):"";
+  const chips=[["","全部"],["__help","使い方"],["__unset","単価なし（使っている物）"],["__set","設定・会社情報"]].concat(CATS);
+  $("mnChips").innerHTML=chips.map(([k,n])=>`<button class="chip" data-c="${k}" aria-pressed="${(mnUnset&&k==="__unset")||(!mnUnset&&mnCat===k)}">${esc(n)}</button>`).join("");
+  $("mnChips").querySelectorAll(".chip").forEach(b=>b.onclick=()=>{const c=b.dataset.c;mnUnset=c==="__unset";mnCat=mnUnset?"":c;renderMenu()});
+  const L=$("mnList");L.innerHTML="";
+  if(mnCat==="__help"&&!q){L.appendChild(helpSection());return}
+  if(mnCat==="__set"&&!q){L.appendChild(optsSection());L.appendChild(companySection());L.appendChild(dataSection());return}
+  if(mnCat==="etc"&&!q)L.appendChild(customAddSection());
+  const used=mnUnset?usedIds():null;
+  const list=allItems().filter(it=>(!mnCat||mnCat==="__set"||it.cat===mnCat)&&matchQ(it,q)&&(!mnUnset||(used.has(it.id)&&price(it.id)===null)));
+  let last="";
+  list.slice(0,400).forEach(it=>{
+    const g=it.cat==="pipe"?it.name:CAT_NAME[it.cat];
+    if(g!==last){last=g;const c=document.createElement("div");c.className="pcat";c.textContent=g;L.appendChild(c)}
+    const p=price(it.id),r=document.createElement("div");r.className="mrow"+(p===null?" unset":"");
+    r.innerHTML=`<div class="nm">${esc(it.cat==="pipe"?it.spec:it.name)}${it.custom?`<span class="tag">自分で追加</span>`:""}${isDefPrice(it.id)?`<span class="tag est">目安</span>`:""}<small>${esc(it.cat==="pipe"?"":it.spec)}</small></div>
+      <label class="pin"><input type="number" step="1" min="0" inputmode="numeric" placeholder="単価" value="${p===null?"":p}" aria-label="${esc(label(it))}の単価">円/${esc(it.u)}</label>
+      ${it.custom?`<button class="del">この品目を消す</button>`:""}`;
+    const inp=r.querySelector("input");inp.oninput=()=>{setPrice(it.id,inp.value);r.classList.toggle("unset",inp.value==="");const tg=r.querySelector(".tag.est");if(tg)tg.remove()};
+    const del=r.querySelector(".del");if(del)del.onclick=()=>{if(del.dataset.armed){state.custom=state.custom.filter(c=>c!==it);delete state.prices[it.id];save();renderMenu()}else{del.dataset.armed=1;del.textContent="本当に消す（使っている見積もりからも消えます）"}};
+    L.appendChild(r);
+  });
+  if(list.length>400){const n=document.createElement("div");n.className="empty-list";n.textContent=`多いので最初の400件だけ出しています。検索で絞ってください。`;L.appendChild(n)}
+  if(!list.length&&!(mnCat==="etc"&&!q)){const n=document.createElement("div");n.className="empty-list";n.textContent=mnUnset?"単価が入っていない項目はありません。":"見つかりません。「その他（自分で追加）」から品目を作れます。";L.appendChild(n)}
+}
+function customAddSection(){
+  const s=document.createElement("div");s.className="msec";
+  s.innerHTML=`<h4>品目を自分で追加</h4><div class="cadd">
+    <div class="f wide"><label for="cuN">品名</label><input id="cuN" type="text" placeholder="例）ネジ込み 鋳鉄管継手" autocomplete="off"></div>
+    <div class="f"><label for="cuS">規格・型番</label><input id="cuS" type="text" placeholder="例）呼び径 20" autocomplete="off"></div>
+    <div class="f"><label for="cuU">単位</label><input id="cuU" type="text" placeholder="例）個・m・式" autocomplete="off"></div>
+    <div class="f"><label for="cuC">区分</label><select id="cuC">${CATS.map(([k,n])=>`<option value="${k}"${k==="etc"?" selected":""}>${esc(n)}</option>`).join("")}</select></div>
+    <div class="f"><label for="cuP">単価（円）</label><input id="cuP" type="number" min="0" inputmode="numeric"></div>
+    <button class="primary wide" id="cuAdd">追加する</button></div>
+    <p class="note">追加した品目は「申請・検査・修理など」のボタンや、器具の本体からも選べます。</p>`;
+  s.querySelector("#cuAdd").onclick=()=>{const n=s.querySelector("#cuN").value.trim();if(!n){s.querySelector("#cuN").focus();return}
+    const it={id:"c-"+uid(),cat:s.querySelector("#cuC").value,name:n,spec:s.querySelector("#cuS").value.trim(),u:s.querySelector("#cuU").value.trim()||"式",custom:true};
+    state.custom.push(it);const p=s.querySelector("#cuP").value;if(p!=="")state.prices[it.id]=+p;save();renderMenu()};
+  return s;
+}
+function optsSection(){
+  const s=document.createElement("div");s.className="msec";const o=state.opts;
+  const F=[["tax","消費税（%）",1],["keihi","新しい現場の諸経費（%）",1],["loss","管のロス（%）",1],["stdLen","管の定尺（m）",0.5],["supW","支持金具 給水・給湯（個/m）",0.1],["supD","支持金具 排水・雨水（個/m）",0.1]];
+  s.innerHTML=`<h4>目安の単価</h4><p class="note" style="margin:0">単価を入れていない品目には、ネットの相場や公共の単価表から出した「目安」の単価を使っています。自分で入れた単価が優先されます。地域や仕入れで変わるので、会社の単価に直して使ってください。</p><div class="both"><button type="button" class="ck" id="o-useDef" role="checkbox" aria-checked="${state.opts.useDef!==false}"></button><span id="o-useDefL">目安の単価を使う</span></div>
+    <h4>計算の設定</h4><div class="g2">${F.map(([k,n,st])=>`<div class="f"><label for="o-${k}">${n}</label><input id="o-${k}" type="number" step="${st}" min="0" inputmode="decimal"></div>`).join("")}</div>
+    <h4>継手の目安（配管1mあたりの個数）</h4><p class="note" style="margin:0">「継手の多さ：ふつう」の時の数です。少ない＝0.6倍、多い＝1.5倍。</p>
+    ${Object.entries(FAM).map(([fk,f])=>`<div><div class="keep-title" style="margin:4px 0">${esc(f.n)}</div><div class="jf">${f.j.map(([jk,jn,def])=>`<div class="f"><label>${esc(jn)}</label><input data-jf="${fk}|${jk}" type="number" step="0.01" min="0" inputmode="decimal" placeholder="${def}"></div>`).join("")}</div></div>`).join("")}`;
+  {const b=s.querySelector("#o-useDef"),tg=e=>{e.preventDefault();state.opts.useDef=state.opts.useDef===false;b.setAttribute("aria-checked",String(state.opts.useDef!==false));save()};b.onclick=tg;s.querySelector("#o-useDefL").onclick=tg}
+  F.forEach(([k])=>{const i=s.querySelector("#o-"+k);i.value=o[k];i.oninput=()=>{o[k]=i.value===""?DEFAULT_OPTS[k]:+i.value;save()}});
+  s.querySelectorAll("[data-jf]").forEach(i=>{const [fk,jk]=i.dataset.jf.split("|");const cur=(o.jf[fk]||{})[jk];i.value=cur===undefined?"":cur;
+    i.oninput=()=>{if(!o.jf[fk])o.jf[fk]={};if(i.value==="")delete o.jf[fk][jk];else o.jf[fk][jk]=+i.value;save()}});
+  return s;
+}
+function dataSection(){
+  const s=document.createElement("div");s.className="msec";
+  s.innerHTML=`<h4>データの引っ越し・控え</h4><p class="note" style="margin:0">単価と自分で追加した品目だけをファイルにします。別の携帯や別の人に渡せます。</p>
+    <div class="g2"><button class="act" id="pxOut">書き出す</button><label class="act" style="text-align:center;position:relative">読み込む<input id="pxIn" type="file" accept=".json,application/json" style="position:absolute;inset:0;opacity:0"></label></div><span class="note" id="pxMsg"></span>`;
+  const all=document.createElement("div");all.className="g2";
+  all.innerHTML=`<button class="act" id="allOut">全部（現場も）書き出す</button><label class="act" style="text-align:center;position:relative">全部を読み込む<input id="allIn" type="file" accept=".json,application/json" style="position:absolute;inset:0;opacity:0"></label>`;
+  s.insertBefore(all,s.querySelector("#pxMsg"));
+  const allNote=document.createElement("p");allNote.className="note";allNote.style.margin="0";allNote.textContent="「全部」は現場・単価・会社情報をまとめて保存します。読み込むと今のデータと入れ替わります。";s.insertBefore(allNote,all);
+  s.querySelector("#allOut").onclick=()=>deliverCSV("水道概算_全部_"+today().replace(/-/g,"")+".json",JSON.stringify({kind:"suido-all",v:1,...state}));
+  s.querySelector("#allIn").onchange=async ev=>{const f=ev.target.files[0];if(!f)return;try{const d=JSON.parse(await f.text());if(d.kind!=="suido-all")throw 0;
+    const before=state.jobs.length;apply(d);if(!state.jobs.length)throw 0;save();boot();s.querySelector("#pxMsg").textContent="読み込みました。現場 "+state.jobs.length+" 件";}catch(e){s.querySelector("#pxMsg").textContent="このファイルは読み込めませんでした。"}};
+  s.querySelector("#pxOut").onclick=()=>deliverCSV("水道概算_単価_"+today().replace(/-/g,"")+".json",JSON.stringify({kind:"suido-prices",prices:state.prices,custom:state.custom},null,1));
+  s.querySelector("#pxIn").onchange=async ev=>{const f=ev.target.files[0];if(!f)return;try{const d=JSON.parse(await f.text());if(d.kind!=="suido-prices")throw 0;
+    Object.assign(state.prices,d.prices||{});(d.custom||[]).forEach(c=>{if(!state.custom.some(x=>x.id===c.id))state.custom.push(c)});save();s.querySelector("#pxMsg").textContent="読み込みました。"}catch(e){s.querySelector("#pxMsg").textContent="このファイルは読み込めませんでした。"}};
+  return s;
+}
+
+/* ================= 会社情報・見積書 ================= */
+const CO_FIELDS=[["name","会社名・屋号",""],["rep","代表者名",""],["person","担当者",""],["zip","郵便番号","例）489-0000"],["addr","住所","",1],["tel","電話番号",""],["fax","FAX",""],["mail","メール","",1],["license","指定給水装置工事事業者 番号","例）第〇〇号",1],["invoice","インボイス登録番号","例）T1234567890123",1],["bank","振込先","例）〇〇銀行 〇〇支店 普通 1234567",1],["validDays","見積書の有効期限（日数）","30"],["pay","支払条件（いつもの）","例）工事完了後 翌月末 現金振込"],["memo","備考（いつもの）","",1,1]];
+function CO(){if(!state.company)state.company={};return state.company}
+function companySection(){
+  const s=document.createElement("div");s.className="msec";const c=CO();
+  s.innerHTML=`<h4>会社情報</h4><p class="note">見積書のPDFに載る情報です。空欄の項目は見積書に出ません。</p><div class="cogrid">${CO_FIELDS.map(([k,n,ph,wide,area])=>`<div class="f${wide?" wide":""}"><label for="co-${k}">${n}</label>${area?`<textarea id="co-${k}" placeholder="${esc(ph)}"></textarea>`:`<input id="co-${k}" ${k==="validDays"?'type="number" inputmode="numeric" min="0"':'type="text"'} placeholder="${esc(ph)}" autocomplete="off">`}</div>`).join("")}</div>`;
+  CO_FIELDS.forEach(([k])=>{const i=s.querySelector("#co-"+k);i.value=c[k]??"";i.oninput=()=>{c[k]=i.value;save()}});
+  return s;
+}
+const DOC_FIELDS=[["client","宛名（お客様）","例）山田 太郎"],["hon","敬称",""],["title","工事名","空欄なら現場名"],["place","工事場所",""],["term","工期","例）2026年11月中旬（約3日）",1],["no","見積番号",""],["date","見積日",""],["valid","有効期限","空欄なら会社情報の日数"],["pay","支払条件","空欄なら会社情報の内容",1],["memo","備考","空欄なら会社情報の内容",1,1]];
+function DOC(){const j=J();if(!j.doc)j.doc={};const d=j.doc;if(!d.no)d.no=(j.date||today()).replace(/-/g,"")+"-"+String(state.jobs.indexOf(j)+1).padStart(2,"0");if(!d.date)d.date=today();if(d.hon===undefined)d.hon="様";return d}
+function renderDoc(){
+  const d=DOC(),g=$("docGrid");
+  g.innerHTML=DOC_FIELDS.map(([k,n,ph,wide,area])=>`<div class="f${wide?" wide":""}"><label for="dc-${k}">${n}</label>${
+    k==="hon"?`<select id="dc-${k}"><option>様</option><option>御中</option><option>殿</option><option value="">（なし）</option></select>`
+    :area?`<textarea id="dc-${k}" placeholder="${esc(ph)}"></textarea>`
+    :`<input id="dc-${k}" type="${k==="date"?"date":"text"}" placeholder="${esc(ph)}" autocomplete="off">`}</div>`).join("");
+  DOC_FIELDS.forEach(([k])=>{const i=$("dc-"+k);i.value=d[k]??"";const ev=i.tagName==="SELECT"?"onchange":"oninput";i[ev]=()=>{d[k]=i.value;save();renderWsHead()}});
+}
+const _price=id=>price(id);
+function estRows(){
+  const j=J(),T=totals(),rows=[];const rn=v=>Math.round(v*100)/100;const mk=1+num(j.markup)/100;const price=id=>{const p=_price(id);return p===null?null:Math.round(p*mk)};
+  T.L.forEach(x=>{if(j.on[x.key]===false||x.qty<=0)return;const it=item(x.itemId),p=price(x.itemId);
+    rows.push({grp:x.grp,name:it?it.name:"",spec:it?it.spec:"",qty:rn(x.qty),u:it?it.u:"",price:p,amt:p===null?null:Math.round(x.qty*p),note:x.notes.filter(Boolean).join("・")})});
+  j.extras.forEach(e=>{const it=item(e.item),q=num(e.qty);if(!it||q<=0)return;const p=price(e.item);
+    rows.push({grp:it.cat==="app"?"申請・検査・諸費用":it.cat==="rep"?"修理・点検":"その他",name:it.name,spec:it.spec,qty:rn(q),u:it.u,price:p,amt:p===null?null:Math.round(q*p),note:""})});
+  j.lumps.forEach(l=>{if(!(num(l.amt)>0))return;const a=Math.round(num(l.amt)*mk);rows.push({grp:"一式",name:l.name||"一式",spec:"",qty:1,u:"式",price:a,amt:a,note:""})});
+  return rows;
+}
+const jpDate=s=>{if(!s)return"";const m=String(s).match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);return m?`${m[1]}年${+m[2]}月${+m[3]}日`:s};
+function validText(d){if(d.valid)return d.valid;const n=+CO().validDays||30;const t=new Date((d.date||today())+"T00:00:00");t.setDate(t.getDate()+n);return `${t.getFullYear()}年${t.getMonth()+1}月${t.getDate()}日（見積日から${n}日）`}
+const PAPERS={"A4縦":[595.2,841.8],"A4横":[841.8,595.2],"B4縦":[728.5,1031.8],"B4横":[1031.8,728.5],"A3横":[1190.5,841.8],"B5縦":[515.9,728.5]};
+const paperKey=()=>PAPERS[CO().paper]?CO().paper:"A4縦";
+function estimateHTML(){
+  const j=J(),T=totals(),d=DOC(),c=CO(),rows=estRows();const [PW,PH]=PAPERS[paperKey()];const land=PW>PH;
+  const e=t=>esc(t??"").replace(/\n/g,"<br>");
+  const groups=[];rows.forEach(r=>{let g=groups.find(x=>x.grp===r.grp);if(!g){g={grp:r.grp,rows:[],sum:0};groups.push(g)}g.rows.push(r);g.sum+=r.amt||0});
+  const taxRate=num(state.opts.tax),base=Math.round(T.sub+T.keihi);
+  const coBlock=`<div class="co">${c.name?`<div class="coname">${e(c.name)}</div>`:""}${c.rep?`<div>代表 ${e(c.rep)}</div>`:""}${(c.zip||c.addr)?`<div>${c.zip?"〒"+e(c.zip)+" ":""}${e(c.addr)}</div>`:""}${(c.tel||c.fax)?`<div>${c.tel?"TEL "+e(c.tel):""}${c.tel&&c.fax?"　":""}${c.fax?"FAX "+e(c.fax):""}</div>`:""}${c.mail?`<div>${e(c.mail)}</div>`:""}${c.license?`<div>指定給水装置工事事業者 ${e(c.license)}</div>`:""}${c.invoice?`<div>登録番号 ${e(c.invoice)}</div>`:""}${c.person?`<div>担当 ${e(c.person)}</div>`:""}<div class="seal"><span>印</span></div></div>`;
+  const info=[["工事名",d.title||j.name],["工事場所",d.place],["工期",d.term],["有効期限",validText(d)],["支払条件",d.pay||c.pay]].filter(x=>x[1]);
+  const pay=c.bank?`<tr><th>振込先</th><td>${e(c.bank)}</td></tr>`:"";
+  const memo=d.memo||c.memo,un=rows.some(r=>r.amt===null);
+  let html=`<div class="page"><h1>御 見 積 書</h1>
+    <div class="meta">見積番号　${e(d.no)}<br>見積日　${jpDate(d.date)}</div>
+    <div class="top"><div class="left">
+      <div class="client">${e(d.client)||"　　　　　　　　"} ${e(d.hon)}</div>
+      <p>下記のとおり御見積申し上げます。</p>
+      <div class="amount"><span>御見積金額</span><b>￥${yen(T.grand)}－</b><small>（税込）</small></div>
+      <table class="info">${info.map(([k,v])=>`<tr><th>${k}</th><td>${e(v)}</td></tr>`).join("")}${pay}</table>
+    </div>${coBlock}</div>
+    <table class="sum"><thead><tr><th>工事区分</th><th class="r">金額（円）</th></tr></thead><tbody>
+      ${groups.map(g=>`<tr><td>${e(g.grp)}</td><td class="r">${yen(g.sum)}</td></tr>`).join("")}
+      <tr class="sub"><td>小計</td><td class="r">${yen(T.sub)}</td></tr>
+      ${T.keihi?`<tr><td>諸経費（${num(j.keihi)}%）</td><td class="r">${yen(T.keihi)}</td></tr>`:""}
+      <tr class="sub"><td>${taxRate}%対象 合計（税抜）</td><td class="r">${yen(base)}</td></tr>
+      <tr><td>消費税（${taxRate}%）</td><td class="r">${yen(T.tax)}</td></tr>
+      <tr class="tot"><td>合計（税込）</td><td class="r">${yen(T.grand)}</td></tr>
+    </tbody></table>
+    ${memo?`<div class="memo"><b>備考</b><br>${e(memo)}</div>`:""}
+    ${un?`<p class="warnp">※ 単価が未設定の項目は、金額に含まれていません。</p>`:""}
+  </div>`;
+  const lines=[];groups.forEach(g=>{lines.push({h:g.grp});g.rows.forEach(r=>lines.push({r}));lines.push({s:g})});
+  const PER=Math.max(8,Math.floor(29*(PH-76)/(841.8-76)));let no=0;
+  for(let i=0;i<lines.length;i+=PER){
+    const part=lines.slice(i,i+PER);
+    html+=`<div class="page"><h2>見積明細書${lines.length>PER?`（${Math.floor(i/PER)+1}/${Math.ceil(lines.length/PER)}）`:""}</h2><div class="sub2">${e(d.title||j.name)}　見積番号 ${e(d.no)}</div>
+      <table class="det"><thead><tr><th>No</th><th>品名</th><th>規格・型番</th><th class="r">数量</th><th>単位</th><th class="r">単価</th><th class="r">金額</th><th>備考</th></tr></thead><tbody>
+      ${part.map(x=>x.h?`<tr class="grp"><td colspan="8">■ ${e(x.h)}</td></tr>`
+        :x.s?`<tr class="gsum"><td></td><td colspan="5">${e(x.s.grp)} 小計</td><td class="r">${yen(x.s.sum)}</td><td></td></tr>`
+        :`<tr><td class="c">${++no}</td><td>${e(x.r.name)}</td><td>${e(x.r.spec)}</td><td class="r">${x.r.qty.toLocaleString("ja-JP")}</td><td class="c">${e(x.r.u)}</td><td class="r">${x.r.price===null?"―":yen(x.r.price)}</td><td class="r">${x.r.amt===null?"未設定":yen(x.r.amt)}</td><td class="nt">${e(x.r.note)}</td></tr>`).join("")}
+      </tbody></table>
+      ${i+PER>=lines.length?`<table class="sum mini"><tbody><tr><td>小計</td><td class="r">${yen(T.sub)}</td></tr>${T.keihi?`<tr><td>諸経費（${num(j.keihi)}%）</td><td class="r">${yen(T.keihi)}</td></tr>`:""}<tr><td>消費税（${taxRate}%）</td><td class="r">${yen(T.tax)}</td></tr><tr class="tot"><td>合計（税込）</td><td class="r">${yen(T.grand)}</td></tr></tbody></table>`:""}
+    </div>`;
+  }
+  const css=`body{font-family:-apple-system,"Hiragino Mincho ProN","Hiragino Sans","Noto Sans JP",sans-serif;color:#111;margin:0;font-size:10pt}
+  .page{page-break-after:always;position:relative}.page:last-child{page-break-after:auto}
+  h1{text-align:center;font-size:22pt;letter-spacing:.3em;margin:0 0 6pt;border-bottom:3px double #111;padding-bottom:4pt}
+  h2{font-size:14pt;margin:0 0 2pt;text-align:center;letter-spacing:.2em}
+  .sub2{text-align:center;font-size:9pt;color:#444;margin-bottom:8pt}
+  .meta{text-align:right;font-size:9pt;line-height:1.6;margin-bottom:6pt}
+  .top{display:flex;gap:14pt;justify-content:space-between;align-items:flex-start}.left{flex:1;min-width:0}
+  .client{font-size:15pt;border-bottom:1px solid #111;padding:0 4pt 2pt;display:inline-block;min-width:60%}
+  .left p{margin:8pt 0 6pt;font-size:10pt}
+  .amount{border:2px solid #111;padding:6pt 10pt;display:flex;align-items:baseline;gap:10pt;margin-bottom:8pt}
+  .amount span{font-size:10pt}.amount b{font-size:19pt;letter-spacing:.04em}.amount small{font-size:9pt}
+  table{border-collapse:collapse;width:100%}
+  .info th{width:5.5em;text-align:left;font-weight:normal;color:#444;padding:3pt 4pt;border-bottom:1px solid #bbb;vertical-align:top;font-size:9pt}
+  .info td{padding:3pt 4pt;border-bottom:1px solid #bbb;font-size:9.5pt}
+  .co{width:190pt;font-size:9pt;line-height:1.55;position:relative;padding-top:4pt}
+  .coname{font-size:12pt;font-weight:bold;margin-bottom:2pt}
+  .seal{margin:6pt 0 0 auto;width:42pt;height:42pt;border:1px solid #999;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:9pt}
+  .sum{margin-top:12pt}.sum th,.sum td{border:1px solid #888;padding:4pt 6pt;font-size:9.5pt}
+  .sum th{background:#eee;font-weight:normal}.sum .sub td{background:#f6f6f6}.sum .tot td{font-weight:bold;font-size:11pt;background:#eee}
+  .sum.mini{width:55%;margin-left:auto}.r{text-align:right}.c{text-align:center}
+  .memo{margin-top:10pt;border:1px solid #888;padding:6pt 8pt;font-size:9pt;line-height:1.55;min-height:30pt}
+  .warnp{font-size:8.5pt;color:#a00}
+  .det th,.det td{border:1px solid #999;padding:3pt 4pt;font-size:8.5pt;vertical-align:top}
+  .det th{background:#eee;font-weight:normal;white-space:nowrap}.det td.nt{font-size:7.5pt;color:#444;max-width:90pt}
+  .det tr.grp td{background:#f3f3f3;font-weight:bold}.det tr.gsum td{font-weight:bold}`;
+  const lcss=land?`.top{gap:24pt}.co{width:230pt}.client{min-width:50%}.sum{width:70%}.memo{width:70%}`:"";
+  return `<!doctype html><html><head><meta charset="utf-8"><style>${css}${lcss}</style></head><body>${html}</body></html>`;
+}
+const safeName=s=>String(s).replace(/[\\/:*?"<>|\s]+/g,"_");
+function pdfName(){const d=DOC();return "御見積書_"+safeName(d.client||d.title||J().name||"見積もり")+"_"+(d.date||today()).replace(/-/g,"")+".pdf"}
+$("pdfBtn").onclick=async()=>{
+  const T=totals();if(!estRows().length){flash("明細がまだありません。");return}
+  if(T.un)flash("単価が未設定の項目があります（金額に含まれません）");
+  const b=$("pdfBtn");b.disabled=true;
+  try{const [w,h]=PAPERS[paperKey()];await deliverPDF(pdfName(),estimateHTML(),{w,h})}catch(e){flash("PDFを作れませんでした。もう一度押してください。")}finally{b.disabled=false}
+};
+
+/* ================= CSV ================= */
+function csvText(){
+  const j=J(),T=totals(),q=v=>{v=v===null||v===undefined?"":String(v);return /[",\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+  const rows=[["現場名",j.name||""],["作成日",j.date||""],["書き出し日",today()],[]];
+  if(j.runs.length){rows.push(["配管","系統","場所","管","長さ(m)","継手の多さ","保温","既設撤去"]);
+    j.runs.forEach(r=>rows.push([r.name,SYS[r.sys],PLACE[r.place],label(item(r.pipe)),r.len,{"0.6":"少ない","1":"ふつう","1.5":"多い"}[r.many]||r.many,r.hoon?"あり":"",r.rm?"あり":""]));rows.push([])}
+  if(j.fixes.length){rows.push(["器具","場所","工事","本体","数"]);
+    j.fixes.forEach(x=>rows.push([FXM[x.k].n,x.where,Object.fromEntries(MODES)[x.mode],label(item(x.body)),x.qty]));rows.push([])}
+  if(j.digs.length){rows.push(["掘る所","長さ(m)","幅(m)","深さ(m)","砂(m)","埋め戻し","舗装","掘削(m³)","残土(m³)"]);
+    j.digs.forEach(g=>{const c=digCalc(g);rows.push([g.name,g.len,g.w,g.dep,g.sand,{soil:"掘った土",sand:"山砂",rc:"再生砕石"}[g.back],{none:"なし",as:"アスファルト",co:"コンクリート"}[g.pave],r2(c.dig),r2(c.zan)])});rows.push([])}
+  rows.push(["区分","品名","規格・型番","数量","単位","単価","金額","備考"]);
+  estRows().forEach(r=>rows.push([r.grp,r.name,r.spec,r.qty,r.u,r.price===null?"":r.price,r.amt===null?"":r.amt,r.price===null?"単価未設定"+(r.note?"・"+r.note:""):r.note]));
+  rows.push([]);
+  rows.push(["","","","","","小計",Math.round(T.sub)]);
+  rows.push(["","","","","","諸経費("+num(j.keihi)+"%)",Math.round(T.keihi)]);
+  rows.push(["","","","","","消費税("+num(state.opts.tax)+"%)",Math.round(T.tax)]);
+  rows.push(["","","","","","合計",Math.round(T.grand)]);
+  return "﻿"+rows.map(r=>r.map(q).join(",")).join("\r\n")+"\r\n";
+}
+$("csvBtn").onclick=async()=>{const b=$("csvBtn");b.disabled=true;try{await deliverCSV(safeName(J().name||"見積もり")+"_"+today().replace(/-/g,"")+".csv",csvText())}finally{b.disabled=false}};
+
+/* ================= 現場の切り替え ================= */
+let flashT=null;
+function flash(t){toast(t);const el=$("jobMsg");el.textContent=t;clearTimeout(flashT);flashT=setTimeout(()=>el.textContent="",3500)}
+function renderJobs(){renderBoard();renderWsHead()}
+function renderJobsOld(){
+  const b=$("jobs");b.innerHTML="";
+  state.jobs.forEach(j=>{const x=document.createElement("button");x.className="job";x.setAttribute("aria-pressed",String(j.id===state.cur));x.textContent=j.name||"（名前なし）";
+    x.onclick=()=>{state.cur=j.id;save();boot()};b.appendChild(x)});
+  const n=document.createElement("button");n.className="job new";n.textContent="＋ 新しい現場";
+  n.onclick=()=>{if(state.jobs.length>=MAX_JOBS){flash(`現場は${MAX_JOBS}件までです。いらない現場を消してください。`);return}
+    const j=newJob("現場"+(state.jobs.length+1));state.jobs.push(j);state.cur=j.id;save();boot();$("jobName").focus();$("jobName").select()};
+  b.appendChild(n);$("jobCount").textContent=state.jobs.length>1?`${state.jobs.length}件`:"";
+  const cur=b.querySelector('[aria-pressed="true"]');cur&&cur.scrollIntoView({inline:"center",block:"nearest"});
+}
+$("jobName").oninput=()=>{J().name=$("jobName").value;save();renderJobs()};
+$("dupBtn").onclick=()=>{if(state.jobs.length>=MAX_JOBS){flash(`現場は${MAX_JOBS}件までです。`);return}
+  const c=JSON.parse(JSON.stringify(J()));c.id=uid();c.name=(c.name||"現場")+"（コピー）";c.ex=false;c.doc={...c.doc,no:""};c.date=today();
+  state.jobs.splice(state.jobs.indexOf(J())+1,0,c);state.cur=c.id;save();boot();flash("複製しました")};
+armDel($("delBtn"),()=>{removeJob(J().id);goBoard();toast("現場を削除しました")});
+$("exClear").onclick=()=>{const j=J();const i=state.jobs.indexOf(j);const n=newJob("現場1");state.jobs.splice(i,1,n);state.cur=n.id;save();boot()};
+
+
+/* ================= 室内の解体・復旧、室内の土間はつり ================= */
+const G_INT="室内の解体・復旧",G_HAT="室内の土間（はつり）";
+const REST_KIND={F:"床",W:"壁",C:"天井"};
+const REST_DEF={F:{demo:["i-dF-cf"],rest:["i-rF-ply","i-rF-cf"]},W:{demo:["i-dW-board"],rest:["i-rW-board","i-rW-cloth"]},C:{demo:["i-dC-board"],rest:["i-rC-board","i-rC-cloth"]}};
+const WASTE_ITEM={gara:"d-gara",gyp:"d-gyp",wood:"d-wood",mix:"d-mix"};
+const WASTE_PER_M2=0.03; /* 厚みの決まっていない物の、1㎡あたりの廃材量（m³） */
+function newRest(kind){kind=kind||"F";return {id:uid(),name:"",kind,a:"",b:"",n:1,demo:REST_DEF[kind].demo.slice(),rest:REST_DEF[kind].rest.slice()}}
+function newHatsu(name){return {id:uid(),name:name||"",wmm:"",l:"",n:1,t:100,d:0,cut:true,back:"sand",restore:true}}
+function restArea(x){return num(x.a)*num(x.b)*Math.max(1,num(x.n)||1)}
+function restParts(x){const A=restArea(x),out=[];if(A<=0)return out;const W={};
+  (x.demo||[]).forEach(id=>{const it=item(id);if(!it)return;out.push([G_INT,id,A]);const k=WASTE_ITEM[it.w]||"d-mix";W[k]=(W[k]||0)+A*(it.t||WASTE_PER_M2)});
+  (x.rest||[]).forEach(id=>{const it=item(id);if(!it)return;out.push([G_INT,id,it.each?Math.max(1,num(x.n)||1):A])});
+  Object.entries(W).forEach(([k,v])=>out.push([G_INT,k,v]));return out}
+function hatsuCalc(h){const w=num(h.wmm)/1000,l=num(h.l),n=Math.max(1,num(h.n)||1),a=w*l*n,t=num(h.t)/1000,d=num(h.d)/1000;
+  const dig=a*d,back=h.back==="none"?0:dig,zan=h.back==="soil"?0:dig;
+  return {a,cut:h.cut&&a>0?2*(w+l)*n:0,gara:a*t,dig,back,zan}}
+function hatsuParts(h){const c=hatsuCalc(h),out=[];if(c.a<=0)return out;
+  if(c.cut>0)out.push([G_HAT,"h-cut",c.cut]);out.push([G_HAT,"h-hatsu",c.a]);if(c.gara>0)out.push([G_HAT,"d-gara",c.gara]);
+  if(c.dig>0){out.push([G_HAT,"o-dig",c.dig]);if(c.back>0)out.push([G_HAT,h.back==="soil"?"o-bsoil":h.back==="rc"?"o-brc":"o-bsand",c.back]);if(c.zan>0)out.push([G_HAT,"o-zan",c.zan])}
+  if(h.restore)out.push([G_HAT,"h-co",c.a]);return out}
+/* 撤去した器具の処分：中身ごと */
+const FX_DISP={wc:"d-toki",ur:"d-toki",hw:"d-toki",sk:"d-toki",wcs:"d-elec",wb:"d-mix1",pan:"d-pla1",gh:"d-elec",eco:"d-big"};
+
+function layerHTML(list,kind,key,label){return `<div class="layers"><span class="lt">${label}</span>${(list||[]).map((id,k)=>`<div class="lay"><button class="pick" data-lay="${key}|${k}">${pickBtnHTML(id)}</button><button class="lx" data-laydel="${key}|${k}" aria-label="消す">×</button></div>`).join("")}<button class="laddb" data-layadd="${key}">＋ ${key==="demo"?"下の層も解体（タイルの下のブロックなど）":"復旧するものを足す"}</button></div>`}
+function renderRests(){
+  const box=$("rests"),j=J();box.innerHTML="";$("restCard").hidden=!j.rests.length;
+  j.rests.forEach(x=>{const d=document.createElement("div");d.className="room";
+    const lab2=x.kind==="W"?"高さ（m）":"奥行（m）";
+    d.innerHTML=`<div class="room-top"><input data-k="name" aria-label="場所の名前" placeholder="例）トイレの床"><button class="rm">消す</button></div>
+      <div class="seg" data-seg="kind">${Object.entries(REST_KIND).map(([k,n])=>`<button type="button" data-v="${k}" aria-pressed="${x.kind===k}">${n}</button>`).join("")}</div>
+      <div class="g3"><div class="f"><label>幅（m）</label><input data-k="a" data-m type="number" step="0.01" min="0" inputmode="decimal" placeholder="0"></div>
+        <div class="f"><label>${lab2}</label><input data-k="b" data-m type="number" step="0.01" min="0" inputmode="decimal" placeholder="0"></div>
+        <div class="f"><label>か所</label><input data-k="n" type="number" step="1" min="1" inputmode="numeric"></div></div>
+      ${layerHTML(x.demo,x.kind,"demo","解体するもの（上から順に）")}${layerHTML(x.rest,x.kind,"rest","復旧するもの")}
+      <div class="room-calc"></div>`;
+    const calc=()=>{const A=restArea(x);d.querySelector(".room-calc").innerHTML=A>0?`<span>面積 <b>${r2(A)}</b>㎡</span>`+restParts(x).filter(p=>/^d-/.test(p[1])).map(p=>`<span>${esc(item(p[1]).name.replace(/の処分.*/,""))} <b>${r2(p[2])}</b>m³</span>`).join(""):"幅と長さを入れると数量が出ます"};
+    d.querySelectorAll("[data-k]").forEach(i=>{i.value=x[i.dataset.k]??"";i.oninput=()=>{x[i.dataset.k]=i.value;calc();update();save()}});
+    d.querySelectorAll("[data-seg] button").forEach(b=>b.onclick=()=>{if(x.kind===b.dataset.v)return;x.kind=b.dataset.v;x.demo=REST_DEF[x.kind].demo.slice();x.rest=REST_DEF[x.kind].rest.slice();renderRests();update();save()});
+    const flt=(key)=>it=>it.cat==="int"&&(key==="rest"?!!it.r:!it.r)&&String(it.k||"").includes(x.kind);
+    d.querySelectorAll("[data-lay]").forEach(b=>b.onclick=()=>{const [key,k]=b.dataset.lay.split("|");openPicker({title:key==="demo"?"解体するもの":"復旧するもの",cur:x[key][+k],filter:flt(key),onPick:id=>{if(id){x[key][+k]=id;renderRests();update();save()}}})});
+    d.querySelectorAll("[data-laydel]").forEach(b=>b.onclick=()=>{const [key,k]=b.dataset.laydel.split("|");x[key].splice(+k,1);renderRests();update();save()});
+    d.querySelectorAll("[data-layadd]").forEach(b=>b.onclick=()=>{const key=b.dataset.layadd;openPicker({title:key==="demo"?"下の層も解体":"復旧するものを足す",filter:flt(key),onPick:id=>{if(id){x[key].push(id);renderRests();update();save()}}})});
+    armDel(d.querySelector(".rm"),()=>{j.rests=j.rests.filter(z=>z!==x);renderRests();update();save()});
+    calc();box.appendChild(d)});
+}
+function renderHatsus(){
+  const box=$("hatsus"),j=J();box.innerHTML="";$("hatsuCard").hidden=!j.hatsus.length;
+  j.hatsus.forEach(h=>{const d=document.createElement("div");d.className="room";
+    d.innerHTML=`<div class="room-top"><input data-k="name" aria-label="場所の名前" placeholder="例）トイレの排水"><button class="rm">消す</button></div>
+      <div class="g3"><div class="f"><label>幅（mm）</label><input data-k="wmm" type="number" step="10" min="0" inputmode="numeric" placeholder="例）600"></div>
+        <div class="f"><label>長さ（m）</label><input data-k="l" data-m type="number" step="0.1" min="0" inputmode="decimal" placeholder="0"></div>
+        <div class="f"><label>か所</label><input data-k="n" type="number" step="1" min="1" inputmode="numeric"></div>
+        <div class="f"><label>コンクリート厚（mm）</label><select data-k="t">${[60,80,100,120,150,180,200].map(v=>`<option value="${v}">${v}</option>`).join("")}</select></div>
+        <div class="f"><label>掘る深さ（mm）</label><input data-k="d" type="number" step="10" min="0" inputmode="numeric"></div>
+        <div class="f"><label>埋め戻し</label><select data-k="back"><option value="sand">山砂</option><option value="rc">再生砕石</option><option value="soil">掘った土</option><option value="none">しない</option></select></div></div>
+      <div class="hchk"><div class="both"><button type="button" class="ck" data-ck="cut" role="checkbox" aria-checked="${!!h.cut}"></button><span data-ckl="cut">カッターを入れる</span></div>
+        <div class="both"><button type="button" class="ck" data-ck="restore" role="checkbox" aria-checked="${!!h.restore}"></button><span data-ckl="restore">土間コンクリートを打って戻す</span></div></div>
+      <div class="room-calc"></div>`;
+    const calc=()=>{const c=hatsuCalc(h);d.querySelector(".room-calc").innerHTML=c.a>0?`<span>カッター <b>${r2(c.cut)}</b>m</span><span>はつり <b>${r2(c.a)}</b>㎡</span><span>ガラ <b>${r2(c.gara)}</b>m³</span>${c.dig>0?`<span>掘削 <b>${r2(c.dig)}</b>m³</span><span>残土 <b>${r2(c.zan)}</b>m³</span>`:""}`:"幅と長さを入れると数量が出ます"};
+    d.querySelectorAll("[data-k]").forEach(i=>{i.value=h[i.dataset.k]??"";const ev=i.tagName==="SELECT"?"onchange":"oninput";i[ev]=()=>{h[i.dataset.k]=i.value;calc();update();save()}});
+    d.querySelectorAll("[data-ck]").forEach(b=>{const k=b.dataset.ck;const tg=e=>{e.preventDefault();h[k]=!h[k];b.setAttribute("aria-checked",String(h[k]));calc();update();save()};b.onclick=tg;d.querySelector(`[data-ckl="${k}"]`).onclick=tg});
+    armDel(d.querySelector(".rm"),()=>{j.hatsus=j.hatsus.filter(z=>z!==h);renderHatsus();update();save()});
+    calc();box.appendChild(d)});
+}
+function addRest(){const j=J();j.rests.push(newRest("F"));renderRests();update();save();setTimeout(()=>{const el=$("rests").lastElementChild;el&&el.scrollIntoView({block:"center",behavior:"smooth"})},60)}
+function addHatsu(){const j=J();j.hatsus.push(newHatsu("はつる所"+(j.hatsus.length+1)));renderHatsus();update();save();setTimeout(()=>{const el=$("hatsus").lastElementChild;el&&el.scrollIntoView({block:"center",behavior:"smooth"})},60)}
+$("addRest").onclick=addRest;$("addHatsu").onclick=addHatsu;
+function renderQuickSpecial(){const j=J();const b=[];if(!j.rests.length)b.push(`<button type="button" data-sp="rest">＋ 床・壁の解体と復旧</button>`);if(!j.hatsus.length)b.push(`<button type="button" data-sp="hatsu">＋ 室内の土間のカッター・はつり</button>`);
+  $("quickSpecial").innerHTML=b.join("");$("quickSpecial").hidden=!b.length;$("quickSpecial").querySelectorAll("button").forEach(x=>x.onclick=()=>{x.dataset.sp==="rest"?addRest():addHatsu();renderQuickSpecial()})}
+
+/* ================= 画面の切り替え（現場ボード・見積ワーク） ================= */
+let VIEW="board",TAB="work";
+function toast(t){const el=$("toast");el.textContent=t;el.classList.add("show");clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove("show"),1900)}
+function ask(text,yes){$("askText").textContent=text;$("askBox").hidden=false;$("askYes").onclick=()=>{$("askBox").hidden=true;yes()};$("askNo").onclick=()=>{$("askBox").hidden=true}}
+function jobTotals(j){const keep=state.cur;state.cur=j.id;try{return totals()}catch(e){return{sub:0,grand:0}}finally{state.cur=keep}}
+function renderBoard(){
+  const days=["SUNDAY","MONDAY","TUESDAY","WEDNESDAY","THURSDAY","FRIDAY","SATURDAY"];$("dashDay").textContent=days[new Date().getDay()]+" / PROJECT CONTROL";
+  let sum=0;const html=state.jobs.map(j=>{const T=jobTotals(j);sum+=T.sub;const d=j.doc||{};
+    return `<div class="project" data-id="${j.id}"><div class="project-left"><div class="project-icon">⌂</div><div style="min-width:0"><h3>${esc(j.name||"名前なし")}</h3><p>${esc(d.client||"お客様未設定")} · ${esc(d.place||"住所未設定")}</p></div></div><div class="pright"><span class="ptag${j.ex?" ex":""}">${j.ex?"例":"編集中"}</span><span class="money">¥${yen(T.grand)}</span></div></div>`}).join("");
+  $("jobList").innerHTML=html;$("stCount").textContent=String(state.jobs.length).padStart(2,"0");$("stSum").textContent="¥"+yen(sum);
+  $("jobList").querySelectorAll(".project").forEach(el=>{const id=el.dataset.id;longPress(el,()=>{const j=state.jobs.find(x=>x.id===id);if(!j)return;
+      ask("「"+(j.name||"名前なし")+"」を削除しますか？\n削除すると元に戻せません。",()=>{removeJob(id);toast("現場を削除しました")})});
+    el.addEventListener("click",()=>openJob(id))});
+}
+function removeJob(id){const i=state.jobs.findIndex(j=>j.id===id);if(i<0)return;state.jobs.splice(i,1);try{localStorage.removeItem("suido-photo-"+id)}catch(e){}
+  if(!state.jobs.length)state.jobs.push(newJob("現場1"));if(!state.jobs.some(j=>j.id===state.cur))state.cur=state.jobs[0].id;save();boot()}
+/* 長押しの後に指を離した時の「開く」だけを止める（確認の画面のボタンは止めない） */
+let noClickUntil=0;document.addEventListener("click",e=>{if(Date.now()<noClickUntil&&!(e.target.closest&&e.target.closest("#askBox"))){noClickUntil=0;e.stopImmediatePropagation();e.preventDefault()}},true);
+function longPress(el,fn){let t=null,sx=0,sy=0;
+  const start=e=>{const q=e.touches?e.touches[0]:e;sx=q.clientX;sy=q.clientY;el.classList.add("pressing");clearTimeout(t);t=setTimeout(()=>{noClickUntil=Date.now()+900;el.classList.remove("pressing");fn()},600)};
+  const move=e=>{const q=e.touches?e.touches[0]:e;if(Math.hypot(q.clientX-sx,q.clientY-sy)>10){clearTimeout(t);el.classList.remove("pressing")}};
+  const end=()=>{clearTimeout(t);el.classList.remove("pressing")};
+  el.addEventListener("touchstart",start,{passive:true});el.addEventListener("touchmove",move,{passive:true});el.addEventListener("touchend",end);el.addEventListener("touchcancel",end);
+  el.addEventListener("mousedown",start);el.addEventListener("mousemove",e=>{if(e.buttons)move(e)});el.addEventListener("mouseup",end);el.addEventListener("mouseleave",end);el.addEventListener("contextmenu",e=>e.preventDefault())}
+function setView(v){VIEW=v;$("dash").classList.toggle("hide",v!=="board");$("ws").classList.toggle("show",v==="ws");$("totbar").hidden=v!=="ws";
+  document.querySelectorAll(".mobilebar button").forEach(b=>b.classList.toggle("on",v==="board"?b.dataset.go==="board":b.dataset.go===TAB||(TAB==="sheet"&&b.dataset.go==="work")))}
+function setTab(t){TAB=t;document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("on",b.dataset.tab===t));document.querySelectorAll(".tpanel").forEach(p=>p.classList.toggle("on",p.id==="tp-"+t));
+  if(t==="draw")renderTrace();setView("ws");window.scrollTo({top:0})}
+function openJob(id,tab){state.cur=id;save();VIEW="ws";boot();setTab(tab||"work")}
+function goBoard(){VIEW="board";boot();setView("board");window.scrollTo({top:0})}
+function newJobFlow(){if(state.jobs.length>=MAX_JOBS){toast(`現場は${MAX_JOBS}件までです。いらない現場を消してください。`);return}
+  const j=newJob("現場"+(state.jobs.length+1));state.jobs.push(j);openJob(j.id,"info");setTimeout(()=>{$("jobName").focus();$("jobName").select()},80);toast("現場名を入れてください")}
+document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>setTab(b.dataset.tab));
+document.querySelectorAll(".mobilebar button").forEach(b=>b.onclick=()=>{const g=b.dataset.go;if(g==="board")goBoard();else{if(VIEW!=="ws")openJob(state.cur,g);else setTab(g)}});
+$("backBtn").onclick=goBoard;$("newJobTop").onclick=newJobFlow;$("newJobDash").onclick=newJobFlow;
+document.querySelectorAll("[data-go-sheet]").forEach(el=>el.addEventListener("click",()=>setTab("sheet")));
+/* 原価に乗せる利益（%）：合計バーで変える */
+function setMarkup(v){const j=J();j.markup=Math.max(0,Math.min(300,Math.round(num(v))));save();if($("fCost"))renderSheet();updateTotals()}
+$("mkIn").addEventListener("input",()=>{const j=J();j.markup=$("mkIn").value===""?0:Math.max(0,Math.min(300,Math.round(num($("mkIn").value))));save();updateTotals()});
+$("mkIn").addEventListener("change",()=>{setMarkup($("mkIn").value)});
+document.querySelectorAll(".mkb").forEach(b=>b.addEventListener("click",e=>{e.stopPropagation();setMarkup(num(J().markup)+num(b.dataset.mk))}));
+function renderWsHead(){const j=J(),d=j.doc||{};$("wsTitle").textContent=j.name||"名前なし";$("wsMeta").textContent=(d.client||"お客様未設定")+" · "+(d.place||"住所未設定")}
+
+/* ================= 長さは mm で入れても m に直す ================= */
+document.addEventListener("change",e=>{const i=e.target;if(!i||!i.matches||!i.matches("input[data-m]"))return;const v=parseFloat(i.value);if(!(v>=50))return;
+  const m=Math.round(v)/1000;i.value=m;i.dispatchEvent(new Event("input",{bubbles:true}));toast("mm として "+m+" m にしました")},true);
+
+/* ================= 写真・図面の上でなぞって長さを測る ================= */
+const TR={job:"",img:null,w:0,h:0,scale:0,sp:[],pts:[],mode:"scale",z:1,ortho:true,target:"",mm:""};
+function trLoad(){const j=J();if(TR.job===j.id)return;Object.assign(TR,{job:j.id,img:null,w:0,h:0,sp:[],pts:[],mode:"scale",z:1,mm:""});TR.scale=num((j.tr||{}).scale);if(TR.scale)TR.mode="trace";
+  try{const s=localStorage.getItem("suido-photo-"+j.id);if(s){const o=JSON.parse(s);TR.img=o.img;TR.w=o.w;TR.h=o.h}}catch(e){}}
+function trFile(f){if(!f)return;if(!/^image\//.test(f.type)){toast("画像を選んでください（PDFは画面のスクショを撮ってから選んでください）");return}
+  const rd=new FileReader();rd.onload=()=>{const im=new Image();im.onload=()=>{const k=Math.min(1,2000/Math.max(im.width,im.height));const c=document.createElement("canvas");c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);
+    c.getContext("2d").drawImage(im,0,0,c.width,c.height);TR.img=c.toDataURL("image/jpeg",0.82);TR.w=c.width;TR.h=c.height;TR.sp=[];TR.pts=[];TR.scale=0;TR.mode="scale";TR.z=1;const j=J();j.tr={};save();
+    try{localStorage.setItem("suido-photo-"+j.id,JSON.stringify({img:TR.img,w:TR.w,h:TR.h}))}catch(e){}renderTrace()};im.src=rd.result};rd.readAsDataURL(f)}
+function trLenM(){let s=0;for(let i=1;i<TR.pts.length;i++)s+=Math.hypot(TR.pts[i][0]-TR.pts[i-1][0],TR.pts[i][1]-TR.pts[i-1][1]);return s*TR.scale}
+function renderTrace(){trLoad();const box=$("traceCard"),j=J();
+  if(!TR.img){box.innerHTML=`<div class="sectionhead"><h2>図面・写真でなぞって長さを測る</h2></div>
+    <label class="trfile"><b>写真・図面の画像を選ぶ</b><span class="mini">カメラで撮ってもOK。PDFは画面のスクショを撮ってから選んでください。</span><input type="file" accept="image/*" id="trIn"></label>
+    <p class="note">寸法の分かる所で縮尺を合わせてから、配管の通る所をタップでなぞると長さが出ます。測った長さは配管に入れられます。</p>`;
+    $("trIn").onchange=e=>trFile(e.target.files[0]);return}
+  const runs=j.runs,tgt=TR.target&&runs.some(r=>r.id===TR.target)?TR.target:"";
+  const len=trLenM(),hint=TR.mode==="scale"?(TR.sp.length<2?"① 長さの分かる所の両端を2か所タップしてください":"② この2点の間の長さを mm で入れて「縮尺を決める」を押してください"):(TR.pts.length?"配管の通る所を順にタップしてください（曲がる所ごとに）":"③ 配管の始まりの所をタップしてください");
+  box.innerHTML=`<div class="sectionhead"><h2>図面・写真でなぞって長さを測る</h2><label class="btn light" style="position:relative;overflow:hidden">画像を替える<input type="file" accept="image/*" id="trIn" style="position:absolute;inset:0;opacity:0"></label></div>
+    <div class="seg" id="trMode"><button type="button" data-v="scale" aria-pressed="${TR.mode==="scale"}">縮尺を合わせる${TR.scale?" ✓":""}</button><button type="button" data-v="trace" aria-pressed="${TR.mode==="trace"}" ${TR.scale?"":"disabled"}>なぞる</button></div>
+    <p class="trhint">${hint}</p>
+    ${TR.mode==="scale"&&TR.sp.length===2?`<div class="lenrow"><div class="f"><label>2点の間の長さ（mm）</label><input id="trMM" type="number" inputmode="numeric" min="1" value="${esc(TR.mm)}" placeholder="例）910"></div><button class="btn orange" id="trSet">縮尺を決める</button></div>`:""}
+    <div class="trbar"><button class="btn light" id="trUndo">1つ戻す</button><button class="btn light" id="trClr">やり直す</button><button class="btn light" id="trOrtho">${TR.ortho?"直角に合わせる：オン":"直角に合わせる：オフ"}</button><span style="flex:1"></span><button class="btn light" id="trOut" aria-label="小さく">－</button><button class="btn light" id="trIn2" aria-label="大きく">＋</button></div>
+    <div class="trview" id="trView"></div>
+    ${TR.mode==="trace"?`<div class="lenrow" style="margin-top:10px;align-items:center"><div><span class="mini">なぞった長さ</span><div class="trlen">${len.toFixed(2)} m</div></div></div>
+      <div class="lenrow" style="margin-top:8px"><div class="f"><label>入れる先</label><select id="trTo"><option value="">新しい配管として追加</option>${runs.map(r=>`<option value="${r.id}"${r.id===tgt?" selected":""}>${esc(SYS[r.sys]+"："+(r.name||label(item(r.pipe))))}</option>`).join("")}</select></div><button class="btn orange" id="trPut" ${len>0?"":"disabled"}>この長さを入れる</button></div>`:""}
+    <p class="note">画像はこの端末の中だけに置いています。測った長さは配管に入ります。</p>`;
+  $("trIn").onchange=e=>trFile(e.target.files[0]);
+  $("trMode").querySelectorAll("button").forEach(b=>b.onclick=()=>{TR.mode=b.dataset.v;renderTrace()});
+  if($("trSet"))$("trSet").onclick=()=>{const mm=num($("trMM").value);if(!(mm>0)){toast("長さを mm で入れてください");return}const px=Math.hypot(TR.sp[1][0]-TR.sp[0][0],TR.sp[1][1]-TR.sp[0][1]);if(px<3){toast("2点が近すぎます");return}
+    TR.scale=mm/1000/px;J().tr={scale:TR.scale};save();TR.mode="trace";TR.mm=String(mm);toast("縮尺を合わせました");renderTrace()};
+  if($("trMM"))$("trMM").oninput=e=>{TR.mm=e.target.value};
+  $("trUndo").onclick=()=>{if(TR.mode==="scale")TR.sp.pop();else TR.pts.pop();renderTrace()};
+  $("trClr").onclick=()=>{if(TR.mode==="scale")TR.sp=[];else TR.pts=[];renderTrace()};
+  $("trOrtho").onclick=()=>{TR.ortho=!TR.ortho;renderTrace()};
+  const zoom=k=>{const v=$("trView"),cx=(v.scrollLeft+v.clientWidth/2)/v.scrollWidth,cy=(v.scrollTop+v.clientHeight/2)/v.scrollHeight;TR.z=Math.min(6,Math.max(1,TR.z*k));trDraw();const v2=$("trView");v2.scrollLeft=cx*v2.scrollWidth-v2.clientWidth/2;v2.scrollTop=cy*v2.scrollHeight-v2.clientHeight/2};
+  $("trOut").onclick=()=>zoom(1/1.5);$("trIn2").onclick=()=>zoom(1.5);
+  if($("trPut"))$("trPut").onclick=()=>{const L=Math.round(trLenM()*100)/100;if(!(L>0))return;const to=$("trTo").value;let r=J().runs.find(x=>x.id===to);
+    if(!r){const last=J().runs[J().runs.length-1];r=newRun(last?last.sys:"w","なぞって測った配管");if(last){r.place=last.place;r.pipe=last.pipe;r.hoon=last.hoon}J().runs.push(r)}
+    r.len=L;TR.pts=[];TR.target="";save();renderRuns();update();toast(L+" m を配管に入れました");setTab("work");setTimeout(()=>{const el=[...$("runs").children].find(c=>c.dataset.id===r.id);el&&el.scrollIntoView({block:"center",behavior:"smooth"})},80)};
+  trDraw()}
+function trDraw(){const v=$("trView");if(!v)return;const W=v.clientWidth||340,fit=W/TR.w,dw=TR.w*fit*TR.z,dh=TR.h*fit*TR.z,u=TR.w/dw,R=11*u,sw=2.5*u,r=n=>Math.round(n*10)/10;
+  const pl=a=>a.map(p=>r(p[0])+","+r(p[1])).join(" ");
+  let g="";if(TR.sp.length){g+=`<polyline points="${pl(TR.sp)}" fill="none" stroke="#3d6fb6" stroke-width="${r(sw)}" stroke-dasharray="${r(8*u)} ${r(6*u)}"/>`;TR.sp.forEach(p=>g+=`<circle cx="${r(p[0])}" cy="${r(p[1])}" r="${r(R)}" fill="#3d6fb6" fill-opacity=".35" stroke="#3d6fb6" stroke-width="${r(sw)}"/>`)}
+  if(TR.pts.length){g+=`<polyline points="${pl(TR.pts)}" fill="none" stroke="#e65c32" stroke-width="${r(sw*1.6)}" stroke-linejoin="round"/>`;TR.pts.forEach((p,i)=>g+=`<circle cx="${r(p[0])}" cy="${r(p[1])}" r="${r(i===0?R*1.2:R)}" fill="${i===0?"#e65c32":"#fff"}" fill-opacity=".85" stroke="#e65c32" stroke-width="${r(sw)}"/>`)}
+  v.innerHTML=`<svg id="trSvg" width="${Math.round(dw)}" height="${Math.round(dh)}" viewBox="0 0 ${TR.w} ${TR.h}"><image href="${TR.img}" x="0" y="0" width="${TR.w}" height="${TR.h}"/>${g}</svg>`;
+  $("trSvg").addEventListener("click",ev=>{const s=ev.currentTarget,m=s.getScreenCTM();if(!m)return;const q=new DOMPoint(ev.clientX,ev.clientY).matrixTransform(m.inverse());let p=[q.x,q.y];
+    if(TR.mode==="scale"){if(TR.sp.length>=2)TR.sp=[];TR.sp.push(p);renderTrace();return}
+    const last=TR.pts[TR.pts.length-1];if(last&&TR.ortho){const dx=p[0]-last[0],dy=p[1]-last[1],a=Math.abs(Math.atan2(dy,dx)*180/Math.PI)%90;if(a<10||a>80)p=Math.abs(dx)>Math.abs(dy)?[p[0],last[1]]:[last[0],p[1]]}
+    TR.pts.push(p);renderTrace()})}
+window.addEventListener("resize",()=>{if(TAB==="draw"&&VIEW==="ws")trDraw()});
+
+/* ================= 使い方 ================= */
+const HELP=[
+ ["現場をつくる・消す",["現場ボードの「＋ 現場をつくる」で現場を作ります。現場名・宛名・工事場所は「出力・宛名」で入れます。","現場ボードで現場を長押しすると削除できます（確認が出ます。削除すると元に戻せません）。"]],
+ ["配管",["「＋ 配管を追加」で、系統（給水・給湯・排水・通気・雨水）、場所、管の種類と太さ、長さを入れます。継手と支持金具は長さから目安の数が出ます。","長さは m で入れてください。メジャーで測った 3640 のように mm で入れても、m に直します。","「写真で測る」を押すと、図面や写真の上でなぞって長さを測れます。"]],
+ ["図面・写真でなぞって測る",["「図面・写真」で画像を選びます（PDFはスクショを撮ってから）。","① 長さの分かる所の両端を2か所タップして、その長さを mm で入れ「縮尺を決める」。② 配管の通る所を順にタップすると長さが出ます。「直角に合わせる」がオンだと、縦横にまっすぐ吸い付きます。","「この長さを入れる」で、選んだ配管（または新しい配管）の長さになります。"]],
+ ["器具の取付・交換",["器具を選んで「交換・新設・撤去だけ」を選ぶと、本体・接続部材・取付・撤去が入ります。撤去した器具の処分は、中身ごと（陶器・家電・廃プラなど）に分けて入ります。"]],
+ ["床・壁の解体と復旧",["配管のために床や壁を開ける時は、「追加する工事」の「＋ 床・壁の解体と復旧」から足します。床・壁・天井を選んで、幅と長さ（壁は高さ）を入れます。","解体するものは上から順に重ねて足せます（タイル → CBブロック → ラス下地モルタル など）。復旧するものも足せます。廃材は中身ごとに分けて処分の行が入ります。"]],
+ ["室内の土間のカッター・はつり",["トイレの排水の付け替えなどで土間を壊す時は、「＋ 室内の土間のカッター・はつり」から足します。幅（mm）・長さ・コンクリート厚・掘る深さ・埋め戻しを選ぶと、カッター・はつり・ガラ・掘削・残土・埋め戻し・土間コン復旧が入ります。"]],
+ ["屋外の掘削",["長さ×幅×深さから、掘削・砂・埋め戻し・残土・埋設シートを出します。舗装を選ぶとカッター・撤去・路盤・復旧も入ります。"]],
+ ["原価と利益",["単価は原価（仕入れ値・職人さんの手間代）で入れてください。下の合計バーの上の段が原価、下の段が利益を乗せた見積金額（税込）です。","利益の % は合計バーの「－」「＋」（5%ずつ）か、数字を直接入れて変えます。現場ごとに覚えます。見積書PDFとCSVは、利益を乗せた単価で出ます。","粗利率は「売値のうち利益の割合」です。原価に30%乗せると、粗利率は約23%になります。"]],
+ ["見積明細・単価",["「見積明細」で数量と単価を直せます。単価はどの現場でも共通です。単価が空の行は金額に入りません。","単価はメニュー（☰）の一覧でもまとめて入れられます。"]],
+ ["見積書・CSV",["「出力・宛名」で宛名や工事名を入れて「見積書PDF」。CSVで明細を書き出せます。"]],
+];
+function helpSection(){const s=document.createElement("div");s.className="msec";s.innerHTML=`<h4>使い方</h4>`+HELP.map(([h,ps],k)=>`<details class="helpsec"${k===0?" open":""}><summary>${esc(h)}</summary>${ps.map(p=>`<p>${esc(p)}</p>`).join("")}</details>`).join("");return s}
+
+/* ================= 保存 ================= */
+const LS="suido-gaisan-v1";
+let saveT=null;
+function save(){clearTimeout(saveT);saveT=setTimeout(()=>{persist(JSON.parse(JSON.stringify({v:1,...state})))},600)}
+function apply(saved){
+  if(!saved||saved.v!==1||!Array.isArray(saved.jobs)||!saved.jobs.length)return;
+  saved=JSON.parse(JSON.stringify(saved));
+  state={jobs:saved.jobs,cur:saved.cur,prices:saved.prices||{},custom:saved.custom||[],opts:{...DEFAULT_OPTS,...(saved.opts||{})},company:saved.company||{}};
+  if(!state.opts.jf)state.opts.jf={};
+  state.jobs.forEach(j=>{["runs","fixes","digs","rests","hatsus","extras","lumps"].forEach(k=>{if(!Array.isArray(j[k]))j[k]=[]});if(!j.on)j.on={};if(!j.qo)j.qo={};if(!j.doc)j.doc={}});
+  if(!state.jobs.some(j=>j.id===state.cur))state.cur=state.jobs[0].id;
+}
+function persist(body){
+  if(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.store){window.webkit.messageHandlers.store.postMessage(JSON.stringify(body))}
+  else{try{localStorage.setItem(LS,JSON.stringify(body))}catch(e){}}
+}
+async function webDownloads(){try{return window.claude&&window.claude.use?await window.claude.use("downloads"):null}catch(e){return null}}
+function scopeCss(css){return css.replace(/(^|})\s*([^{}@]+)\{/g,(m,a,sel)=>a+sel.split(",").map(x=>{x=x.trim();return x==="body"?".estdoc":".estdoc "+x}).join(",")+"{")}
+/* ===== ブラウザ（ウェブ版）でのファイル保存：共有（iPhone）か、ダウンロード ===== */
+async function webSave(fn,data){
+  const dl=await webDownloads();
+  if(dl){try{await dl.save({filename:fn,data});flash("保存しました")}catch(e){flash(e&&e.code==="declined"?"保存をやめました":"保存できませんでした")}return}
+  const blob=data instanceof Blob?data:new Blob([data],{type:/\.csv$/i.test(fn)?"text/csv;charset=utf-8":"application/json"});
+  try{const f=new File([blob],fn,{type:blob.type});if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f]});return}}
+  catch(e){if(e&&e.name==="AbortError")return}
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=fn;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500);flash("保存しました")
+}
+/* 見積書：印刷の画面を出す（iPhoneは共有から「PDF」で保存、パソコンは「PDFに保存」） */
+async function webPDF(fn,html,pp){
+  const m=html.match(/<style>([\s\S]*?)<\/style>[\s\S]*?<body>([\s\S]*)<\/body>/);
+  /* 画面の見た目が混ざらないように、見積書は影のDOMの中に入れて印刷する */
+  let el=document.getElementById("printRoot");if(el)el.remove();el=document.createElement("div");el.id="printRoot";document.body.appendChild(el);
+  let ps=document.getElementById("printStyle");if(!ps){ps=document.createElement("style");ps.id="printStyle";document.head.appendChild(ps)}
+  ps.textContent="#printRoot{display:none}@page{size:"+pp.w+"pt "+pp.h+"pt;margin:28pt}@media print{html,body{background:#fff!important;padding:0!important;margin:0!important}body>*:not(#printRoot){display:none!important}#printRoot{display:block!important}}";
+  const sh=el.attachShadow({mode:"open"});sh.innerHTML="<style>:host{display:block;background:#fff;color:#111}"+m[1].replace(/(^|})\s*body\s*\{/g,"$1:host{")+"</style>"+m[2];
+  const old=document.title;document.title=fn.replace(/\.pdf$/i,"");flash("印刷の画面が出ます。「PDF」や「共有」から保存してください");
+  await new Promise(r=>setTimeout(r,350));window.print();setTimeout(()=>{document.title=old},1000)
+}
+
+function deliverPDF(fn,html,pp){
+  if(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.pdf){flash("PDFを作っています…");window.webkit.messageHandlers.pdf.postMessage({name:fn,html:html,w:pp.w,h:pp.h});return Promise.resolve()}
+  return webPDF(fn,html,pp);
+}
+function deliverCSV(fn,text){
+  if(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.share){window.webkit.messageHandlers.share.postMessage({name:fn,text:text});return Promise.resolve()}
+  return webSave(fn,text);
+}
+const IS_APP=!!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.store);
+function renderPaper(){const sel=$("paperSel");sel.innerHTML=Object.keys(PAPERS).map(k=>`<option>${k}</option>`).join("");sel.value=paperKey();sel.onchange=()=>{CO().paper=sel.value;save()}}
+function boot(){
+  try{renderJobs();$("jobName").value=J().name||"";renderDoc();renderPaper();renderRuns();renderFixes();renderDigs();renderRests();renderHatsus();renderQuick();renderQuickSpecial();update();setView(VIEW);if(VIEW==="ws"&&TAB==="draw")renderTrace()}catch(e){showErr(e)}
+}
+
+try{
+  if(window.__nativeState)apply(window.__nativeState);
+  else{const v=localStorage.getItem(LS);if(v)apply(JSON.parse(v))}
+}catch(_){}
+if(!state.jobs.length){const j=exampleJob();state.jobs=[j];state.cur=j.id}
+boot();
+if(location.protocol.startsWith("http")&&"serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(()=>{})}
+$("storeNote").textContent=IS_APP?"現場・単価・会社情報はこの携帯の中だけに保存されます。":"現場・単価・会社情報はこのブラウザの中だけに保存されます。履歴を消すと消えることがあるので、メニューの「設定・会社情報」から「全部書き出す」で控えを取っておくと安心です。";
+
+</script>
+</body></html>

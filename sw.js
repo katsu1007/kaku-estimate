@@ -1,6 +1,6 @@
 /* KAKU Service Worker — オフライン対応とキャッシュ管理
  * アプリを更新したら VERSION の数字を上げてください（古いキャッシュが自動で消えます）。 */
-const VERSION = "2026-11-03.3";
+const VERSION = "2026-11-03.4";
 const CACHE = "kaku-estimate-" + VERSION;
 
 /* 最初に必ず保存するもの（これが揃えばオフラインで起動できる） */
@@ -107,6 +107,7 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // 外部へのリクエストには触らない
+  if (url.pathname.includes("/suido/")) return; // 水道概算（別のアプリ）には触らない
 
   // 画面（index.html）はネット優先：つながる時は最新版、つながらない時は保存版
   if (req.mode === "navigate" || url.pathname.endsWith("/") || url.pathname.endsWith("/index.html")) {

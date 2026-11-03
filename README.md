@@ -92,3 +92,7 @@ GitHub Pages にそのまま置いて、iPhone の Safari で使える PWA（ホ
 ## ライセンス
 
 `vendor/pdfjs/` は Mozilla の pdf.js（Apache License 2.0）です。詳しくは `vendor/pdfjs/LICENSE` を見てください。
+
+## 水道概算（ウェブ版）
+
+`suido/` に水道工事の見積もりアプリ「水道概算」のウェブ版があります。URL は `https://katsu1007.github.io/kaku-estimate/suido/` です。データはその端末のブラウザの中だけに保存されます。
