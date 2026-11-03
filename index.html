@@ -388,7 +388,7 @@ function KAKU_renderEditor(){const box=document.getElementById('kakuPlan');if(!b
   const M=[['room','部屋'],['wall','壁の解体'],['cut','カッター'],['elec','電気'],['measure','測る']];
   const hint={room:'部屋にしたい区画をタップ（何個でも）→「1部屋にまとめる」。色の付いた区画はもう部屋になってます',wall:'解体する壁の線をタップ（何本でも）→ 品目と高さを選んで「解体に追加」',cut:'カッターを入れる四角の角を2か所タップ（線の端や線の上に吸い付きます）',measure:'2か所タップすると、その間の長さが出ます',elec:KF.tool==='fix'?'図面の便器・洗面台などに合わせて、照明とコンセントを自動で並べます':KP.where==='line'?'コンセントなどを並べる壁の線をタップ → 個数か間隔を入れて「並べる」':'照明などを並べる区画をタップ → 列×行か間隔を入れて「並べる」。均一に並びます'}[KAKU_mode];
   const v0=document.getElementById('pickView'),sl=v0?v0.scrollLeft:0,stp=v0?v0.scrollTop:0;
-  box.innerHTML=`<div class="pick">${KAKU_fix?'':'<div class="kfnote">この図面には、便器・洗面台などの器具の情報がありません（器具を読む機能が入る前に取り込んだ図面です）。図面ファイル（JWW・DXF）をもう一度選んで「図面から部屋を抽出」を押すと、器具も表示されます。</div>'}<div class="modes" role="tablist">${M.map(([k,t])=>`<button class="mode${KAKU_mode===k?' on':''}" onclick="KAKU_setMode('${k}')">${t}</button>`).join('')}</div>
+  box.innerHTML=`<div class="pick">${KAKU_fix?'':'<div class="kfnote">この図面には、便器・洗面台などの器具の情報がありません（器具を読む機能が入る前に取り込んだ図面です）。図面ファイル（JWW・DXF）をもう一度選んで「図面から部屋を抽出」を押すと、器具も表示されます。'+(KF.err?'<br><small>読み取りエラー：'+esc(KF.err)+'</small>':'')+'</div>'}<div class="modes" role="tablist">${M.map(([k,t])=>`<button class="mode${KAKU_mode===k?' on':''}" onclick="KAKU_setMode('${k}')">${t}</button>`).join('')}</div>
     <div class="hintrow"><p class="mini pickhint">${hint}${KAKU_mode==='cut'&&KAKU_sel.cut?'　<b>もう1か所タップ</b>':''}</p><div class="pickzoom"><button class="btn light" onclick="KAKU_pickZoom(1/1.4)" aria-label="小さく" ${z<=1?'disabled':''}>－</button><button class="btn light" onclick="KAKU_pickZoom(1.4)" aria-label="大きく" ${z>=8?'disabled':''}>＋</button></div></div>
     <div class="pickwrap"><div class="pickview" id="pickView" style="max-height:${Math.round(52*Math.min(z,1.7))}vh"><svg id="planSvg" class="m-${KAKU_mode}" viewBox="${r(V.x0-V.pad)} ${r(-(V.y1+V.pad))} ${r(V.w+2*V.pad)} ${r(V.h+2*V.pad)}" style="width:${100*z}%"><g class="pfaces">${polys}</g>${KF_svg(V)}<path class="plines" d="${d}"/>${walls}${wsel}${cuts}<g class="plabels">${labels}</g>${KP_svg(V)}${tmp}</svg></div></div>
     ${KAKU_panelHTML()}</div>`;
@@ -1192,9 +1192,9 @@ function KF_load(){KAKU_fix=null;KF.sel=null;KF.dot=null;if(!current)return;try{
 function KF_drop(id){try{localStorage.removeItem(KF_key(id))}catch(e){}}
 
 /* ---- 読む：図面の全部の線から、壁・寸法・電気以外のまとまりを拾う ---- */
-async function KF_fromFile(f){KAKU_fix=null;if(!f||!KAKU_plan)return;const ext=(f.name.split('.').pop()||'').toLowerCase();if(!/^(dxf|jww|jwc)$/.test(ext))return;
+async function KF_fromFile(f){KAKU_fix=null;KF.err='';if(!f||!KAKU_plan)return;const ext=(f.name.split('.').pop()||'').toLowerCase();if(!/^(dxf|jww|jwc)$/.test(ext))return;
   try{let R;if(ext==='dxf'){let s;try{s=new TextDecoder('utf-8',{fatal:true}).decode(await f.arrayBuffer())}catch(e){s=new TextDecoder('shift_jis').decode(await f.arrayBuffer())}R=KE_parseDXF(s)}else R=await KE_parseJWW(await f.arrayBuffer());
-    const fac=KE_scaleUnits(R);const rot=KF_angle(KAKU_plan);if(rot){const T=p=>{const q=KF_L([p[0]/1000,p[1]/1000],rot);return[q[0]*1000,q[1]*1000]};R.ents.forEach(e=>{['a','b','c','p'].forEach(k=>{if(e[k]&&e[k].length===2)e[k]=T(e[k])});if(e.pts)e.pts=e.pts.map(T);if(e.ell)e.ell=e.ell.map(T)})}KF_Pc=null;let roles={};try{const c=KE_classify(R.ents,R.ltab||{});Object.keys(c).forEach(k=>roles[k]=c[k].role)}catch(e){}KAKU_fix={rot};KAKU_fix=KF_build(R.ents,KF_P(),fac,roles);KAKU_fix.rot=rot;KF_save()}catch(e){console.error(e);KAKU_fix=null}}
+    const fac=KE_scaleUnits(R);const rot=KF_angle(KAKU_plan);if(rot){const T=p=>{const q=KF_L([p[0]/1000,p[1]/1000],rot);return[q[0]*1000,q[1]*1000]};R.ents.forEach(e=>{['a','b','c','p'].forEach(k=>{if(e[k]&&e[k].length===2)e[k]=T(e[k])});if(e.pts)e.pts=e.pts.map(T);if(e.ell)e.ell=e.ell.map(T)})}KF_Pc=null;let roles={};try{const c=KE_classify(R.ents,R.ltab||{});Object.keys(c).forEach(k=>roles[k]=c[k].role)}catch(e){}KAKU_fix={rot};KAKU_fix=KF_build(R.ents,KF_P(),fac,roles);KAKU_fix.rot=rot;KF_save()}catch(e){console.error(e);KAKU_fix=null;KF.err=String(e&&e.message||e)}}
 const KF_SKIP=/寸法|DIM|通り?芯|GRID|基準|文字|TEXT|ANNO|注記|ハッチ|HATCH|図枠|FRAME|^E-|電気|電灯|動力|コンセント|ELEC|DENKI|配線|WIRE|弱電|照明/i;
 /* 電気の器具と見られた層でも、名前が衛生・設備なら外さない */
 const KF_SAN=/衛生|設備|器具|機器|厨房|FIXT|SAN|PLUMB|EQ|WC|便|洗面/i;
@@ -1371,7 +1371,9 @@ function KF_items(p){const del=new Set(p.del||[]),mv=p.mv||{};return KF_raw(p).f
 function KF_pts(p){return KF_items(p).map(o=>o.p)}
 
 /* ---- 図に描く ---- */
-function KF_svg(V){if(!KAKU_fix)return'';const r=v=>Math.round(v*1000)/1000,el=KAKU_mode==='elec';let s=KAKU_fix.g?`<path class="kfg" transform="scale(.001)" d="${KAKU_fix.g}"/>`:'';
+/* 薄く描く線（保存はmmの整数）をmに直す。拡大縮小の変換を重ねない方が、iPhoneでも線の太さが正しく出る */
+const KF_gmc=new Map();function KF_gm(g){let v=KF_gmc.get(g);if(v==null){v=g.replace(/-?\d+/g,n=>String(+n/1000));KF_gmc.clear();KF_gmc.set(g,v)}return v}
+function KF_svg(V){if(!KAKU_fix)return'';const r=v=>Math.round(v*1000)/1000,el=KAKU_mode==='elec';let s=KAKU_fix.g?`<path class="kfg" d="${KF_gm(KAKU_fix.g)}"/>`:'';
   if(el)KAKU_fix.fx.forEach(x=>{if(x.t==='other')return;const b=x.b,on=KF.sel===x.id;s+=`<rect class="kfx kf-${x.t}${on?' on':''}${x.v?' v':''}" x="${r(b[0])}" y="${r(-b[3])}" width="${r(b[2]-b[0])}" height="${r(b[3]-b[1])}"/>`;if(x.t==='unknown'){const m=Math.min(b[2]-b[0],b[3]-b[1]);s+=`<text class="kfq" x="${r((b[0]+b[2])/2)}" y="${r(-(b[1]+b[3])/2+m*.3)}" font-size="${r(m*.8)}">?</text>`}
     if(x.back){const [nx,ny]=KF_SIDES[x.back];const ln=ny?`M${r(b[0])} ${r(-(ny>0?b[3]:b[1]))}H${r(b[2])}`:`M${r(nx>0?b[2]:b[0])} ${r(-b[3])}V${r(-b[1])}`;s+=`<path class="kfback" d="${ln}"/>`}});
   const deg=KF_rot()*180/Math.PI;if(deg)s=`<g transform="rotate(${-deg.toFixed(4)})">${s}</g>`;
