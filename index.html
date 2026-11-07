@@ -186,7 +186,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-08.2";
+var KAKU_VERSION="2026-11-08.3";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -1098,27 +1098,28 @@ function KP_kind(id){id=id||'';return /^e-sw3/.test(id)?'sw3':/^e-swh/.test(id)?
 function KP_sym(id,x,y,R,c,cls){const r=v=>Math.round(v*1000)/1000,k=KP_kind(id),t=(s,dx,dy,f)=>`<text x="${r(dx||0)}" y="${r(dy||0)}" font-size="${r(R*(f||1))}" fill="${c}" text-anchor="middle" dominant-baseline="central" font-weight="800">${s}</text>`;
   const ring=(rr)=>`<circle r="${r(R*(rr||1))}" fill="#fff" stroke="${c}"/>`;let b;
   switch(k){
-    /* スイッチ：黒丸。3路は「3」、ほたるは「H」を右肩に */
+    /* スイッチ：黒丸（JIS C 0303）。3路は「3」、位置表示灯（ほたる）は「H」を右肩に */
     case'sw':b=`<circle r="${r(R*.55)}" fill="${c}"/>`;break;
     case'sw3':b=`<circle r="${r(R*.55)}" fill="${c}"/>`+t('3',R*1.05,-R*.75,.95);break;
     case'swh':b=`<circle r="${r(R*.55)}" fill="${c}"/>`+t('H',R*1.05,-R*.75,.95);break;
-    /* コンセント：丸に2本線。2口は「2」、接地極付は「E」を右下に */
-    case'con':case'con2':case'conE':b=ring(.85)+`<path d="M${r(-R*.4)} ${r(-R*.32)}H${r(R*.4)}M${r(-R*.4)} ${r(R*.32)}H${r(R*.4)}" stroke="${c}" fill="none"/>`+(k==='con2'?t('2',R*1.15,R*.8,.95):k==='conE'?t('E',R*1.15,R*.8,.95):'');break;
-    /* 照明：ダウンライトは二重丸、シーリングライトは「CL」、引掛シーリングは丸に( )、そのほかの照明は丸に× */
-    case'dl':b=ring(1)+`<circle r="${r(R*.5)}" fill="none" stroke="${c}"/>`;break;
-    case'cl':b=ring(1.1)+t('CL',0,0,.85);break;
+    /* コンセント：丸に縦2本線。2口は「2」、接地極付は「E」を右下に */
+    case'con':case'con2':case'conE':b=ring(.85)+`<path d="M${r(-R*.28)} ${r(-R*.42)}V${r(R*.42)}M${r(R*.28)} ${r(-R*.42)}V${r(R*.42)}" stroke="${c}" fill="none"/>`+(k==='con2'?t('2',R*1.15,R*.8,.95):k==='conE'?t('E',R*1.15,R*.8,.95):'');break;
+    /* 照明：ダウンライトは丸に「DL」、シーリングライトは丸に「CL」、引掛シーリングは丸に( )、照明器具（一般）は丸 */
+    case'dl':b=ring(1.1)+t('DL',0,0,.8);break;
+    case'cl':b=ring(1.1)+t('CL',0,0,.8);break;
     case'ceil':b=ring(.9)+t('( )',0,0,.8);break;
-    case'light':b=ring(1)+`<path d="M${r(-R*.7)} ${r(-R*.7)}L${r(R*.7)} ${r(R*.7)}M${r(-R*.7)} ${r(R*.7)}L${r(R*.7)} ${r(-R*.7)}" stroke="${c}" fill="none"/>`;break;
+    case'light':b=ring(1);break;
     /* 換気扇：丸に∞ */
     case'fan':b=ring(1.05)+t('∞',0,0,1.1);break;
     /* ジョイントボックスは四角に×、アウトレットボックスは四角 */
     case'jb':b=`<rect x="${r(-R*.75)}" y="${r(-R*.75)}" width="${r(R*1.5)}" height="${r(R*1.5)}" fill="#fff" stroke="${c}"/><path d="M${r(-R*.75)} ${r(-R*.75)}L${r(R*.75)} ${r(R*.75)}M${r(-R*.75)} ${r(R*.75)}L${r(R*.75)} ${r(-R*.75)}" stroke="${c}"/>`;break;
     case'ob':b=`<rect x="${r(-R*.6)}" y="${r(-R*.6)}" width="${r(R*1.2)}" height="${r(R*1.2)}" fill="#fff" stroke="${c}"/>`;break;
-    /* 分電盤：長方形の半分を塗る */
-    case'panel':b=`<rect x="${r(-R*1.4)}" y="${r(-R*.6)}" width="${r(R*2.8)}" height="${r(R*1.2)}" fill="#fff" stroke="${c}"/><path d="M${r(-R*1.4)} ${r(-R*.6)}H0V${r(R*.6)}H${r(-R*1.4)}Z" fill="${c}"/>`;break;
-    case'lan':b=ring(1)+t('LAN',0,0,.6);break;
-    case'tv':b=ring(1)+t('TV',0,0,.75);break;
-    case'ic':b=ring(1)+t('IC',0,0,.8);break;
+    /* 分電盤：長方形を対角線で分けて片側を塗る */
+    case'panel':b=`<rect x="${r(-R*1.4)}" y="${r(-R*.6)}" width="${r(R*2.8)}" height="${r(R*1.2)}" fill="#fff" stroke="${c}"/><path d="M${r(-R*1.4)} ${r(-R*.6)}L${r(R*1.4)} ${r(R*.6)}H${r(-R*1.4)}Z" fill="${c}"/>`;break;
+    /* 弱電：テレビ端子は二重丸に「TV」、LANは丸に「LAN」、インターホン親機は四角に「親」 */
+    case'lan':b=ring(1.05)+t('LAN',0,0,.6);break;
+    case'tv':b=ring(1.05)+`<circle r="${r(R*.75)}" fill="none" stroke="${c}"/>`+t('TV',0,0,.6);break;
+    case'ic':b=`<rect x="${r(-R*.85)}" y="${r(-R*.85)}" width="${r(R*1.7)}" height="${r(R*1.7)}" fill="#fff" stroke="${c}"/>`+t('親',0,0,.9);break;
     default:b=ring(.8)}
   return`<g class="kpsym${cls?' '+cls:''}" transform="translate(${r(x)},${r(y)})">${b}</g>`}
 function KP_color(id){const ids=[...new Set((current.places||[]).map(p=>p.item))];const k=ids.indexOf(id);return KP_COL[(k<0?ids.length:k)%KP_COL.length]}
