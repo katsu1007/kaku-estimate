@@ -101,7 +101,7 @@ tr.pick td:first-child{border-left:3px solid var(--green)}
 .kproom{border-top:1px dashed var(--line);margin-top:12px;padding-top:10px;display:flex;flex-direction:column;gap:8px}.kph{font-size:13px}
 .kpsvg{width:100%;max-height:220px;background:#fbfaf7;border:1px solid var(--line);border-radius:8px}.kpshape polygon{fill:#fff;stroke:#20221f;stroke-width:2px;vector-effect:non-scaling-stroke}
 .kfg{fill:none;stroke:#8f918a;stroke-width:.8px;vector-effect:non-scaling-stroke;pointer-events:none}.kfx{fill:rgba(61,111,182,.07);stroke:#3d6fb6;stroke-width:1.2px;stroke-dasharray:4 3;vector-effect:non-scaling-stroke}.kfx.kf-toilet{stroke:#e65c32;fill:rgba(230,92,50,.08)}.kfx.kf-counter,.kfx.kf-sink{stroke:#2f7d6d;fill:rgba(47,125,109,.08)}.kfx.v{stroke-dasharray:2 2}.pgrid{fill:none;stroke:#3d8f6a;stroke-width:.9px;stroke-dasharray:14 4 2 4;vector-effect:non-scaling-stroke;pointer-events:none}.gridbtn{font-size:13px;padding:0 12px}.gridbtn.on{background:#3d8f6a;color:#fff;border-color:#3d8f6a}.pdash{fill:none;stroke:#6d7a8a;stroke-width:.9px;stroke-dasharray:6 4;vector-effect:non-scaling-stroke;pointer-events:none}.kfgd{stroke-dasharray:5 4}.menuver{margin:14px 4px 0;font-size:12px;color:#8a8c84;text-align:center}.kfnote{background:#fff4e6;border:1px solid #f0c48a;border-radius:10px;padding:10px 12px;margin:0 0 10px;font-size:13px;line-height:1.6;color:#7a4a12}.kfx.kf-unknown{stroke:#8a8c84;fill:rgba(138,140,132,.12);stroke-dasharray:3 2}.kfq{fill:#5b6470;font-weight:800;text-anchor:middle;pointer-events:none}.kfx.on{stroke-width:3px;stroke-dasharray:none;fill:rgba(230,92,50,.18)}.kfback{stroke:#20221f;stroke-width:3px;vector-effect:non-scaling-stroke;fill:none}.kfdotsel{fill:none;stroke:#20221f;stroke-width:2.5px;vector-effect:non-scaling-stroke}.kftool{margin:0 0 10px}.kfsel{border:1px solid var(--line,#ddd);border-radius:12px;padding:10px;margin:8px 0;display:grid;gap:8px}.kfsel label{display:grid;gap:4px;font-size:13px}
-.kpdrag{cursor:grab;touch-action:none}.kpdrag.drag{opacity:.75}.kpselring{fill:rgba(230,92,50,.14);stroke:#e65c32;stroke-width:2px;vector-effect:non-scaling-stroke;stroke-dasharray:4 3}.seg3{grid-template-columns:1fr 1fr 1fr}.seg3 button{font-size:12.5px;padding-left:3px;padding-right:3px}.kpdot{stroke:#fff;stroke-width:1.5px;vector-effect:non-scaling-stroke}.kpsym circle,.kpsym rect,.kpsym path{stroke-width:1.6px;vector-effect:non-scaling-stroke}.kpsym text{font-family:system-ui,sans-serif;pointer-events:none}.kpsym.kpnew{opacity:.75}.kpnew{fill:#fff;stroke:#e65c32;stroke-width:2.5px;vector-effect:non-scaling-stroke}
+.kpdrag{cursor:grab;touch-action:none}.kpdrag.drag{opacity:.75}.kpdrag.grp{opacity:.85;filter:drop-shadow(0 0 2px #e65c32)}.kpdrag.one{filter:drop-shadow(0 0 3px #1f6feb)}.kpselring{fill:rgba(230,92,50,.14);stroke:#e65c32;stroke-width:2px;vector-effect:non-scaling-stroke;stroke-dasharray:4 3}.seg3{grid-template-columns:1fr 1fr 1fr}.seg3 button{font-size:12.5px;padding-left:3px;padding-right:3px}.kpdot{stroke:#fff;stroke-width:1.5px;vector-effect:non-scaling-stroke}.kpsym circle,.kpsym rect,.kpsym path{stroke-width:1.6px;vector-effect:non-scaling-stroke}.kpsym text{font-family:system-ui,sans-serif;pointer-events:none}.kpsym.kpnew{opacity:.75}.kpnew{fill:#fff;stroke:#e65c32;stroke-width:2.5px;vector-effect:non-scaling-stroke}
 .rparts{display:flex;flex-direction:column;gap:6px;margin-top:8px}.rpart{display:grid;grid-template-columns:96px 1fr auto 1fr auto auto;gap:6px;align-items:center;font-size:12px}.rpart input,.rpart select{border:1px solid var(--line);border-radius:6px;padding:9px 6px;font-size:15px;min-width:0;background:#fff}.rpa{font-weight:700;white-space:nowrap}.rpadd{align-self:flex-start;font-size:12px}
 .rtotal{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:0 0 12px;background:#fff}.rtsum{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}.rtarea{font-size:24px}.rtlist{margin-top:6px;line-height:1.9}.rtlist i{font-style:normal;margin:0 6px;color:var(--muted)}
 @media(max-width:520px){.rpart{grid-template-columns:92px 1fr auto 1fr 32px}.rpart .rpa{grid-column:1/5;grid-row:2;text-align:right;margin-top:-2px}.rpart button{grid-column:5;grid-row:1}}
@@ -186,7 +186,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-08.10";
+var KAKU_VERSION="2026-11-09.1";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -1205,24 +1205,41 @@ function KP_tapPt(x,y,tol){const R=Math.min(tol,.35);let hit=null,bd=R;KP_ptPlac
 function KP_ptDel(id){current.places=(current.places||[]).filter(p=>p.id!==id);KP.ptSel=null;KP_sync();KAKU_renderEditor()}
 function KP_ptItem(id,v){const p=(current.places||[]).find(q=>q.id===id);if(p){p.item=v;KP_sync();KAKU_renderEditor()}}
 function KP_ptRemoveItem(item){current.places=(current.places||[]).filter(p=>!(p.where==='pt'&&p.item===item));KP.ptSel=null;KP_sync();KAKU_renderEditor();renderRooms()}
-/* 指でなぞって動かす（1個ずつ置いた物と、器具に合わせて自動で置いた物）。少しでも動いたらタップ扱いにしない */
+/* 指でなぞって動かす。
+   1個ずつ置いた物：その1個が動く。
+   器具に合わせて自動で置いた照明：縦になぞると横一列（行）が上下に、横になぞると縦一列（列）が左右にまとめて動く。
+   長押ししてからなぞると、その1個だけが動く。少しでも動いたらタップ扱いにしない */
+const KP_ROW_TOL=.3;
+/* 照明の行・列：同じ器具の、同じ区画の照明で、図面の向き（回転）にそろえた座標が近い物 */
+function KP_group(p,k,ax){const its=KF_items(p),me=its.find(o=>String(o.k)===String(k));if(!me)return[];const face=String(k).split(':')[0],r=-KF_rot();
+  const L=q=>KF_G(q,r);const m=L(me.p);return its.filter(o=>String(o.k).split(':')[0]===face&&Math.abs(L(o.p)[ax]-m[ax])<KP_ROW_TOL).map(o=>String(o.k))}
 function KP_dragSetup(v){const svg=v.querySelector('svg');if(!svg)return;let D=null;
   const pt=(cx,cy)=>{const m=svg.getScreenCTM();if(!m)return null;const q=new DOMPoint(cx,cy).matrixTransform(m.inverse());return[q.x,-q.y]};
   const can=g=>KAKU_mode==='elec'&&g&&(g.dataset.k!=null?KF.tool==='fix':KF.tool==='place'&&KP.where==='pt');
-  const start=(g,cx,cy)=>{if(!can(g))return false;const p=pt(cx,cy);if(!p)return false;D={g,cx,cy,p0:p,moved:false,d:[0,0]};return true};
-  const move=(cx,cy)=>{if(!D)return;if(!D.moved&&Math.hypot(cx-D.cx,cy-D.cy)<6)return;D.moved=true;const p=pt(cx,cy);if(!p)return;D.d=[p[0]-D.p0[0],p[1]-D.p0[1]];
-    D.g.setAttribute('transform',`translate(${D.d[0]},${-D.d[1]})`);D.g.classList.add('drag')};
-  const end=()=>{if(!D)return;const d=D;D=null;if(!d.moved)return;KAKU_noClickUntil=Date.now()+400;const p=(current.places||[]).find(q=>q.id===d.g.dataset.pid);if(!p)return;
+  const els=d=>d.keys?d.keys.map(k=>svg.querySelector(`g[data-pid="${d.g.dataset.pid}"][data-k="${CSS.escape(k)}"]`)).filter(Boolean):[d.g];
+  const clear=d=>{els(d).forEach(e=>{e.removeAttribute('transform');e.classList.remove('drag','grp')});d.g.classList.remove('one')};
+  const start=(g,cx,cy)=>{if(!can(g))return false;const p=pt(cx,cy);if(!p)return false;D={g,cx,cy,p0:p,moved:false,d:[0,0],one:g.dataset.k==null,keys:null};
+    /* 自動の照明：長押しで1個だけ動かすモード */
+    if(g.dataset.k!=null)D.t=setTimeout(()=>{if(D&&!D.moved){D.one=true;g.classList.add('one');KAKU_noClickUntil=Date.now()+900;if(navigator.vibrate)try{navigator.vibrate(30)}catch(_){}toast('この1個だけ動かします')}},450);return true};
+  const move=(cx,cy)=>{if(!D)return;if(!D.moved&&Math.hypot(cx-D.cx,cy-D.cy)<6)return;const p=pt(cx,cy);if(!p)return;let d=[p[0]-D.p0[0],p[1]-D.p0[1]];
+    if(!D.moved){D.moved=true;clearTimeout(D.t);
+      if(!D.one){const pl=(current.places||[]).find(q=>q.id===D.g.dataset.pid);const l=KF_G(d,-KF_rot());D.ax=Math.abs(l[1])>=Math.abs(l[0])?1:0;D.keys=pl?KP_group(pl,D.g.dataset.k,D.ax):[D.g.dataset.k];if(!D.keys.length)D.keys=[D.g.dataset.k];
+        toast(D.keys.length>1?(D.ax?'横一列（'+D.keys.length+'個）を上下に動かします':'縦一列（'+D.keys.length+'個）を左右に動かします'):'この1個を動かします')}}
+    /* 行・列で動かす時は、なぞった向きだけ動かす（図面の回転に合わせる） */
+    if(D.keys&&D.keys.length>1){const r=KF_rot(),l=KF_G(d,-r);l[D.ax?0:1]=0;d=KF_G(l,r)}
+    D.d=d;els(D).forEach(e=>{e.setAttribute('transform',`translate(${d[0]},${-d[1]})`);e.classList.add('drag');if(D.keys&&D.keys.length>1)e.classList.add('grp')})};
+  const end=()=>{if(!D)return;const d=D;D=null;clearTimeout(d.t);if(!d.moved){d.g.classList.remove('one');return}KAKU_noClickUntil=Date.now()+400;const p=(current.places||[]).find(q=>q.id===d.g.dataset.pid);if(!p){clear(d);return}
     const r3=v=>Math.round(v*1000)/1000;
     if(p.where==='pt'){p.p=[r3(p.p[0]+d.d[0]),r3(p.p[1]+d.d[1])];KP.ptSel=p.id}
-    else{const k=d.g.dataset.k,o=KF_items(p).find(o=>String(o.k)===k);if(!o)return;p.mv=p.mv||{};p.mv[k]=[r3(o.p[0]+d.d[0]),r3(o.p[1]+d.d[1])]}
+    else{const its=KF_items(p);p.mv=p.mv||{};(d.keys||[d.g.dataset.k]).forEach(k=>{const o=its.find(o=>String(o.k)===k);if(o)p.mv[k]=[r3(o.p[0]+d.d[0]),r3(o.p[1]+d.d[1])]})}
     KP_sync();KAKU_renderEditor()};
-  svg.addEventListener('touchstart',e=>{if(e.touches.length!==1){D=null;return}const g=e.target.closest&&e.target.closest('[data-pid]');if(g&&start(g,e.touches[0].clientX,e.touches[0].clientY))e.preventDefault()},{passive:false});
-  svg.addEventListener('touchmove',e=>{if(!D)return;if(e.touches.length!==1){if(D.g)D.g.removeAttribute('transform');D=null;return}e.preventDefault();move(e.touches[0].clientX,e.touches[0].clientY)},{passive:false});
-  svg.addEventListener('touchend',e=>{if(D&&!D.moved){const g=D.g;D=null;/* 動かさずに離した：タップとして扱う */const t=e.changedTouches[0];KAKU_noClickUntil=Date.now()+400;if(t)KAKU_tap({currentTarget:svg,clientX:t.clientX,clientY:t.clientY});e.preventDefault();return}end()});
-  svg.addEventListener('touchcancel',()=>{if(D&&D.g)D.g.removeAttribute('transform');D=null});
+  const cancel=()=>{if(D){clearTimeout(D.t);clear(D)}D=null};
+  svg.addEventListener('touchstart',e=>{if(e.touches.length!==1){cancel();return}const g=e.target.closest&&e.target.closest('[data-pid]');if(g&&start(g,e.touches[0].clientX,e.touches[0].clientY))e.preventDefault()},{passive:false});
+  svg.addEventListener('touchmove',e=>{if(!D)return;if(e.touches.length!==1){cancel();return}e.preventDefault();move(e.touches[0].clientX,e.touches[0].clientY)},{passive:false});
+  svg.addEventListener('touchend',e=>{if(D&&!D.moved){clearTimeout(D.t);const g=D.g,one=D.one&&g.dataset.k!=null;D=null;g.classList.remove('one');if(one){e.preventDefault();return}/* 動かさずに離した：タップとして扱う */const t=e.changedTouches[0];KAKU_noClickUntil=Date.now()+400;if(t)KAKU_tap({currentTarget:svg,clientX:t.clientX,clientY:t.clientY});e.preventDefault();return}end()});
+  svg.addEventListener('touchcancel',cancel);
   svg.addEventListener('mousedown',e=>{const g=e.target.closest&&e.target.closest('[data-pid]');if(g&&start(g,e.clientX,e.clientY))e.preventDefault()});
-  svg.addEventListener('mousemove',e=>{if(D)move(e.clientX,e.clientY)});svg.addEventListener('mouseup',end);svg.addEventListener('mouseleave',end)}
+  svg.addEventListener('mousemove',e=>{if(D)move(e.clientX,e.clientY)});svg.addEventListener('mouseup',()=>{if(D&&!D.moved){clearTimeout(D.t);D.g.classList.remove('one');D=null;return}end()});svg.addEventListener('mouseleave',()=>{if(D&&D.moved)end();else cancel()})}
 /* ---- 図面の「電気」モード ---- */
 function KP_svg(V){if(!current)return'';const r=v=>Math.round(v*1000)/1000,R=Math.min(V.fs*0.42,.13);let s='';
   (current.places||[]).forEach(p=>{if(p.where==='pt'&&p.p){const c=KP_color(p.item),on=KP.ptSel===p.id;s+=`<g data-pid="${p.id}" class="kpdrag${on?' on':''}">${on?`<circle cx="${r(p.p[0])}" cy="${r(-p.p[1])}" r="${r(R*1.9)}" class="kpselring"/>`:''}${KP_sym(p.item,p.p[0],-p.p[1],R,c)}</g>`;return}
@@ -1533,7 +1550,7 @@ function KF_panel(){const its=KP_items();if(!KF.light&&its.length)KF.light=(its.
     <div class="kpform"><label>照明${KF_isel('kfLight',KF.light,"KF.light=this.value")}</label><label>照明の間隔の目安 m<input type="number" inputmode="decimal" step=".1" min=".9" max="6" value="${KF.pitch}" onchange="KF.pitch=Math.max(.9,Math.min(6,+this.value||2))"></label><label>便器・洗面のコンセント${KF_isel('kfOut',KF.out,"KF.out=this.value")}</label></div>
     <div class="pickbtns"><button class="btn orange" onclick="KF_auto()">${sel?'選んだ'+sel+'区画に自動で並べる':'自動で並べる'}</button>${sel?`<button class="btn light" onclick="KF_virtual()">${sel===1?'この区画':'選んだ区画'}をトイレにする</button><button class="btn light" onclick="KAKU_sel.faces.clear();KAKU_renderEditor()">選択を解除</button>`:''}${auto.length?'<button class="btn light" onclick="KF_clear()">自動の分を消す</button>':''}</div>
     <p class="mini">照明は区画の形に合わせて、壁からの余白をそろえて並べます（細長い所は1列、小さい所は真ん中に1つ、L字は分けて並べます）。コンセントは便器の背面の横と洗面カウンターの奥に付けます。区画をタップして選ぶと、その区画だけに並べます。</p>
-    ${c.unknown?'<p class="mini"><b>？の器具は、形から種類を決められなかった物です。タップして種類を選んでください（選ぶまでコンセントは付きません）。</b></p>':''}<p class="mini">器具の四角をタップすると種類や向きを直せます。丸をタップして別の所をタップすると動かせます。便器が描いてないトイレは、区画を選んで「トイレにする」と扉の反対側に便器を置きます。</p></div>`}
+    ${c.unknown?'<p class="mini"><b>？の器具は、形から種類を決められなかった物です。タップして種類を選んでください（選ぶまでコンセントは付きません）。</b></p>':''}<p class="mini"><b>照明を指でなぞると、縦になぞれば横一列、横になぞれば縦一列がまとめて動きます。長押ししてからなぞると、その1個だけ動きます。</b></p><p class="mini">器具の四角をタップすると種類や向きを直せます。丸をタップして別の所をタップすると動かせます。便器が描いてないトイレは、区画を選んで「トイレにする」と扉の反対側に便器を置きます。</p></div>`}
 function KF_setType(id,t){const x=KAKU_fix.fx.find(f=>f.id===id);if(!x)return;x.t=t;KF_orient(x,KF_P());KF_save();KP_sync();KAKU_renderEditor()}
 function KF_turn(id){const x=KAKU_fix.fx.find(f=>f.id===id);if(!x)return;const o=['N','E','S','W'];x.back=o[(o.indexOf(x.back)+1)%4];x.side=KF_freeSide(x,KF_P());KF_save();KP_sync();KAKU_renderEditor()}
 function KF_flip(id){const x=KAKU_fix.fx.find(f=>f.id===id);if(!x)return;x.side=-(x.side||1);(current.places||[]).forEach(p=>{if(p.auto==='outlet'&&p.mv)delete p.mv[id]});KF_save();KP_sync();KAKU_renderEditor()}
