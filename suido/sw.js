@@ -1,5 +1,5 @@
 /* 水道概算 ウェブ版：ネットがなくても開けるように保存する。更新したら VERSION を上げる */
-const VERSION = "2026-11-03.1";
+const VERSION = "2026-11-08.1";
 const CACHE = "suido-" + VERSION;
 const FILES = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting())); });
