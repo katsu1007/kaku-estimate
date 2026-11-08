@@ -1462,7 +1462,7 @@ window.addEventListener("resize",()=>{if(TAB==="draw"&&VIEW==="ws")trDraw()});
 const HELP=[
  ["現場をつくる・消す",["現場ボードの「＋ 現場をつくる」で現場を作ります。現場名・宛名・工事場所は「出力・宛名」で入れます。","現場ボードで現場を長押しすると削除できます（確認が出ます。削除すると元に戻せません）。"]],
  ["配管",["「＋ 配管を追加」で、系統（給水・給湯・排水・通気・雨水）、場所、管の種類と太さ、長さを入れます。継手と支持金具は長さから目安の数が出ます。","長さは m で入れてください。メジャーで測った 3640 のように mm で入れても、m に直します。","「写真で測る」を押すと、図面や写真の上でなぞって長さを測れます。"]],
- ["CAD図面から器具を数える",["「図面・写真」で DXF か JWW の平面図を選ぶと、便器・小便器・洗面カウンター・手洗器などを見つけて数えます。","図面の四角をタップすると種類を直せます。「？（判定保留）」は見分けがつかなかった物なので、種類を選んでください。器具でない物は「器具ではない」にしてください。","洗面カウンターにボウルが複数ある時は、ボウルの数で入れるか台数で入れるか選べます。","数の表の右の欄で、入れる先の器具を変えられます（例：手洗器・流しを掃除流し（SK）に）。","「この数を器具に入れる」を押すと、見積ワークの器具に「図面から」として入ります。本体の種類はそこで選び直してください。","図面はこの端末の中で読むだけで、外には送りません。"]],
+ ["CAD図面から器具を数える",["「図面・写真」で DXF か JWW の平面図を選ぶと、便器・小便器・洗面カウンター・手洗器などを見つけて数えます。","見つかっていない器具は、図面の何もない所をタップして「ここに足す」で足せます。","図面の四角をタップすると種類を直せます。「？（判定保留）」は見分けがつかなかった物なので、種類を選んでください。器具でない物は「器具ではない」にしてください。","洗面カウンターにボウルが複数ある時は、ボウルの数で入れるか台数で入れるか選べます。","数の表の右の欄で、入れる先の器具を変えられます（例：手洗器・流しを掃除流し（SK）に）。","「この数を器具に入れる」を押すと、見積ワークの器具に「図面から」として入ります。本体の種類はそこで選び直してください。","図面はこの端末の中で読むだけで、外には送りません。"]],
  ["図面・写真でなぞって測る",["「図面・写真」で画像を選びます（PDFはスクショを撮ってから）。","① 長さの分かる所の両端を2か所タップして、その長さを mm で入れ「縮尺を決める」。② 配管の通る所を順にタップすると長さが出ます。「直角に合わせる」がオンだと、縦横にまっすぐ吸い付きます。","「この長さを入れる」で、選んだ配管（または新しい配管）の長さになります。"]],
  ["器具の取付・交換",["器具を選んで「交換・新設・撤去だけ」を選ぶと、本体・接続部材・取付・撤去が入ります。撤去した器具の処分は、中身ごと（陶器・家電・廃プラなど）に分けて入ります。"]],
  ["床・壁の解体と復旧",["配管のために床や壁を開ける時は、「追加する工事」の「＋ 床・壁の解体と復旧」から足します。床・壁・天井を選んで、幅と長さ（壁は高さ）を入れます。","解体するものは上から順に重ねて足せます（タイル → CBブロック → ラス下地モルタル など）。復旧するものも足せます。廃材は中身ごとに分けて処分の行が入ります。"]],
@@ -1909,18 +1909,18 @@ const cadTo=t=>(CAD.to&&CAD.to[t])||CAD_KEY[t];
 const CAD_TYPES=["toilet","urinal","counter","sink","slop","kitchen","bath","unknown","other"];
 const CAD_COL={toilet:"#3d6fb6",urinal:"#2c8a7a",counter:"#b0702a",sink:"#8a5bb5",slop:"#5b6fb5",kitchen:"#b5475b",bath:"#4a8a3a",unknown:"#c0392b",other:"#9a9a9a"};
 const CAD={job:"",name:"",segs:null,bb:null,fx:null,sel:0,busy:false,err:"",mode:"swap",wb:"bowl",z:1,to:{}};
-function cadLoad(){const j=J();if(CAD.job===j.id)return;Object.assign(CAD,{job:j.id,name:"",segs:null,bb:null,fx:null,sel:0,busy:false,err:"",mode:"swap",wb:"bowl",to:{}});
+function cadLoad(){const j=J();if(CAD.job===j.id)return;Object.assign(CAD,{job:j.id,name:"",segs:null,bb:null,fx:null,sel:0,add:null,busy:false,err:"",mode:"swap",wb:"bowl",to:{}});
   if(j.cad&&Array.isArray(j.cad.fx)){CAD.name=j.cad.name||"";CAD.fx=j.cad.fx;CAD.mode=j.cad.mode||"swap";CAD.wb=j.cad.wb||"bowl";CAD.to=j.cad.to||{}}}
 function cadSave(){const j=J();j.cad={name:CAD.name,fx:CAD.fx,mode:CAD.mode,wb:CAD.wb,to:CAD.to};save()}
 async function cadFile(f){if(!f)return;CAD.busy=true;CAD.err="";renderCad();
-  try{const r=await SFX.read(f);CAD.name=f.name;CAD.segs=r.segs;CAD.bb=r.bb;CAD.rot=r.rot;CAD.fx=r.fx;CAD.sel=0;CAD.z=1;cadSave();
+  try{const r=await SFX.read(f);CAD.name=f.name;CAD.segs=r.segs;CAD.bb=r.bb;CAD.rot=r.rot;CAD.fx=r.fx;CAD.sel=0;CAD.add=null;CAD.z=1;cadSave();
     toast(r.fx.length?`器具を ${r.fx.filter(x=>x.t!=="other").length} 個 見つけました`:"器具が見つかりませんでした")}
   catch(e){console.error(e);CAD.err=String(e&&e.message||e)}
   CAD.busy=false;renderCad()}
 function cadCounts(){const c={bowl:0};(CAD.fx||[]).forEach(x=>{if(x.t==="other")return;c[x.t]=(c[x.t]||0)+1;if(x.t==="counter")c.bowl+=Math.max(1,x.bw||0)});return c}
 /* 器具に入れる数（洗面カウンターは、ボウルの数か台数か選べる） */
 function cadQty(c,t){return t==="counter"&&CAD.wb==="bowl"?c.bowl:(c[t]||0)}
-function renderCad(){cadLoad();const box=$("cadCard");if(!box)return;
+function renderCad(){cadLoad();const box=$("cadCard");if(!box)return;const ov=$("cadView"),sc=ov?[ov.scrollLeft,ov.scrollTop]:null;
   const pick=`<input type="file" accept=".dxf,.jww,.jwc" id="cadIn" style="position:absolute;inset:0;opacity:0">`;
   if(!CAD.fx){box.innerHTML=`<div class="sectionhead"><h2>CAD図面から器具を数える</h2></div>
     <label class="trfile"><b>${CAD.busy?"読み込み中…":"DXF・JWW の図面を選ぶ"}</b><span class="mini">平面図の便器・小便器・洗面台・手洗器などを数えて、器具に入れます。</span><input type="file" accept=".dxf,.jww,.jwc" id="cadIn"></label>
@@ -1931,8 +1931,9 @@ function renderCad(){cadLoad();const box=$("cadCard");if(!box)return;
   const rows=Object.keys(CAD_KEY).filter(t=>c[t]).map(t=>`<tr><td><i class="cadsw" style="background:${CAD_COL[t]}"></i>${esc(cadT(t))}</td><td><select data-to="${t}" aria-label="${esc(cadT(t))}の入れ先">${CAD_TO.map(k=>`<option value="${k}"${k===cadTo(t)?" selected":""}>${esc(FXM[k].n)}</option>`).join("")}</select></td><td class="num">${t==="counter"?`${c[t]}台${c.bowl!==c[t]?`<br><span class="mini">ボウル ${c.bowl}個</span>`:""}`:c[t]}</td></tr>`).join("");
   box.innerHTML=`<div class="sectionhead"><h2>CAD図面から器具を数える</h2><label class="btn light" style="position:relative;overflow:hidden">${CAD.busy?"読み込み中…":"図面を替える"}${pick}</label></div>
     <p class="mini" style="margin:0 0 6px">${esc(CAD.name)}</p>
-    ${CAD.segs?`<div class="trbar"><span class="mini" style="flex:1">四角をタップすると種類を直せます。右の欄で、入れる先の器具を変えられます。</span><button class="btn light" id="cadOut" aria-label="小さく">－</button><button class="btn light" id="cadZin" aria-label="大きく">＋</button></div><div class="cadview" id="cadView">${cadSvg()}</div>`:`<p class="note">図面の絵は保存していません。もう一度見る時は「図面を替える」で同じ図面を選んでください。</p>`}
+    ${CAD.segs?`<div class="trbar"><span class="mini" style="flex:1">四角をタップすると種類を直せます。見つかっていない器具は、何もない所をタップして足せます。</span><button class="btn light" id="cadOut" aria-label="小さく">－</button><button class="btn light" id="cadZin" aria-label="大きく">＋</button></div><div class="cadview" id="cadView">${cadSvg()}</div>`:`<p class="note">図面の絵は保存していません。もう一度見る時は「図面を替える」で同じ図面を選んでください。</p>`}
     ${sel?`<div class="cadsel"><b>${sel.id}番</b><select id="cadT" aria-label="器具の種類">${CAD_TYPES.map(t=>`<option value="${t}"${t===sel.t?" selected":""}>${esc(cadT(t))}</option>`).join("")}</select><button class="btn light" id="cadX">閉じる</button></div>`:""}
+    ${CAD.add?`<div class="cadsel"><b>ここに足す</b><select id="cadAddT" aria-label="足す器具の種類">${CAD_TYPES.filter(t=>t!=="unknown"&&t!=="other").map(t=>`<option value="${t}"${t==="sink"?" selected":""}>${esc(cadT(t))}</option>`).join("")}</select><button class="btn orange" id="cadAddGo">足す</button><button class="btn light" id="cadAddX">やめる</button></div>`:""}
     ${rows?`<table class="cadtbl"><tbody>${rows}</tbody></table>`:`<p class="note">数えられる器具がありません。</p>`}
     ${c.unknown?`<p class="note warn">？（判定保留）が ${c.unknown} 個あります。図面の赤い四角をタップして種類を選んでください。</p>`:""}
     ${c.counter&&c.bowl!==c.counter?`<div class="f" style="margin-top:8px"><label>洗面カウンターの数え方</label><div class="seg" id="cadWb"><button type="button" data-v="bowl" aria-pressed="${CAD.wb==="bowl"}">ボウルの数（${c.bowl}）</button><button type="button" data-v="unit" aria-pressed="${CAD.wb!=="bowl"}">台数（${c.counter}）</button></div></div>`:""}
@@ -1940,9 +1941,13 @@ function renderCad(){cadLoad();const box=$("cadCard");if(!box)return;
     <button class="btn orange" id="cadPut" style="width:100%;margin-top:10px" ${rows?"":"disabled"}>この数を器具に入れる</button>
     <p class="note">「図面から」と書いた器具に入れます。もう一度押すと数を上書きします（自分で足した器具はそのままです）。</p>`;
   $("cadIn").onchange=e=>cadFile(e.target.files[0]);
+  if(sc&&$("cadView")){$("cadView").scrollLeft=sc[0];$("cadView").scrollTop=sc[1]}
   const zoom=k=>{const v=$("cadView"),cx=(v.scrollLeft+v.clientWidth/2)/v.scrollWidth,cy=(v.scrollTop+v.clientHeight/2)/v.scrollHeight;CAD.z=Math.min(8,Math.max(1,CAD.z*k));v.innerHTML=cadSvg();v.scrollLeft=cx*v.scrollWidth-v.clientWidth/2;v.scrollTop=cy*v.scrollHeight-v.clientHeight/2};
   if($("cadOut")){$("cadOut").onclick=()=>zoom(1/1.5);$("cadZin").onclick=()=>zoom(1.5)}
-  const v=$("cadView");if(v)v.onclick=e=>{const g=e.target.closest("[data-fx]");CAD.sel=g?+g.dataset.fx:0;renderCad()};
+  const v=$("cadView");if(v)v.onclick=e=>{const g=e.target.closest("[data-fx]");CAD.add=null;
+    if(g)CAD.sel=+g.dataset.fx;else if(CAD.sel)CAD.sel=0;else{/* 何もない所：ここに器具を足す */const sv=v.querySelector("svg"),m=sv.getScreenCTM();if(m){const p=new DOMPoint(e.clientX,e.clientY).matrixTransform(m.inverse());CAD.add={x:p.x,y:-p.y}}}renderCad()};
+  if($("cadAddGo"))$("cadAddGo").onclick=()=>{const t=$("cadAddT").value,a=CAD.add,id=Math.max(0,...CAD.fx.map(x=>x.id))+1;CAD.fx.push({id,t,b:[a.x-.25,a.y-.25,a.x+.25,a.y+.25],man:1});CAD.add=null;CAD.sel=0;cadSave();renderCad();toast(cadT(t)+"を足しました")};
+  if($("cadAddX"))$("cadAddX").onclick=()=>{CAD.add=null;renderCad()};
   if($("cadT"))$("cadT").onchange=e=>{sel.t=e.target.value;cadSave();renderCad()};
   if($("cadX"))$("cadX").onclick=()=>{CAD.sel=0;renderCad()};
   $("cadMode").querySelectorAll("button").forEach(b=>b.onclick=()=>{CAD.mode=b.dataset.v;cadSave();renderCad()});
@@ -1954,8 +1959,9 @@ function cadSvg(){/* 器具のある所を中心に（離れた所の線で小�
   let g=`<path d="${d}" fill="none" stroke="#8a8f99" stroke-width="${r(sw)}"/>`;
   const fs=Math.max(.25,Math.max(W,H)/60);
   CAD.fx.forEach(x=>{const q=x.b,col=CAD_COL[x.t]||"#999",on=x.id===CAD.sel;
-    g+=`<g data-fx="${x.id}" style="cursor:pointer"><rect x="${r(q[0]-.05)}" y="${r(-q[3]-.05)}" width="${r(q[2]-q[0]+.1)}" height="${r(q[3]-q[1]+.1)}" fill="${col}" fill-opacity="${on?.45:.18}" stroke="${col}" stroke-width="${r(sw*(on?4:2.5))}"/>`+
+    g+=`<g data-fx="${x.id}" style="cursor:pointer"><rect x="${r(q[0]-.05)}" y="${r(-q[3]-.05)}" width="${r(q[2]-q[0]+.1)}" height="${r(q[3]-q[1]+.1)}" fill="${col}" fill-opacity="${on?.45:.18}" stroke="${col}" stroke-width="${r(sw*(on?4:2.5))}"${x.man?` stroke-dasharray="${r(sw*6)} ${r(sw*4)}"`:""}/>`+
       `<text x="${r((q[0]+q[2])/2)}" y="${r(-(q[1]+q[3])/2+fs*.35)}" font-size="${r(fs)}" text-anchor="middle" fill="${col}" font-weight="700">${x.t==="unknown"?"？":x.id}</text></g>`});
+  if(CAD.add)g+=`<circle cx="${r(CAD.add.x)}" cy="${r(-CAD.add.y)}" r="${r(fs*.5)}" fill="none" stroke="#e0531f" stroke-width="${r(sw*4)}"/>`;
   return `<svg style="width:${Math.round(CAD.z*100)}%" viewBox="${r(b[0]-pad)} ${r(-b[3]-pad)} ${r(W)} ${r(H)}" preserveAspectRatio="xMidYMid meet">${g}</svg>`}
 function cadPut(){const j=J(),c=cadCounts();let n=0;const Q={};
   Object.keys(CAD_KEY).forEach(t=>{const q=cadQty(c,t);if(q){const k=cadTo(t);Q[k]=(Q[k]||0)+q}});
