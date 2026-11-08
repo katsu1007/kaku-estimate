@@ -395,6 +395,38 @@ input,select{background:#fff;border-radius:6px}
 p.note.warn{color:#a34a17}
 .cadtbl select{font-size:14px;padding:6px 4px;max-width:100%}
 </style>
+<style id="suido-theme">html[data-sk=dark] #errClose{border:1px solid rgba(42,52,70,0.7)!important}html[data-sk=dark] .rgview{background:#151b27!important}html[data-sk=dark] .rgview line{stroke:#556074!important}html[data-sk=dark] .rgview .rgoff line{stroke:#2a3446!important}html[data-sk=dark] .rgview .rgfill rect{fill:rgba(47,127,245,0.42)!important}html[data-sk=dark] .rgview text{stroke:#2a3446!important}html[data-sk=dark] .docgrid input,html[data-sk=dark] .docgrid select,html[data-sk=dark] .docgrid textarea,html[data-sk=dark] .cogrid input,html[data-sk=dark] .cogrid textarea{background:var(--bg,#151b27)!important}html[data-sk=dark] .overlay{background:rgba(7,10,16,0.45)!important}html[data-sk=dark] .sys-h{background:#2f7ff5!important}html[data-sk=dark] .run.s-h{border-left-color:#2f7ff5!important}html[data-sk=dark] .run.s-d{border-left-color:#556074!important}html[data-sk=dark] .run.s-v{border-left-color:#556074!important}html[data-sk=dark] .top{background:#1b2331!important}html[data-sk=dark] .project-icon{background:#1b2331!important}html[data-sk=dark] .ptag{background:#1b2331!important}html[data-sk=dark] .room{background:#151b27!important}html[data-sk=dark] .add{border:1px dashed #2a3446!important;background:#151b27!important}html[data-sk=dark] input,html[data-sk=dark] select{background:#151b27!important}html[data-sk=dark] .quick button{background:#151b27!important}html[data-sk=dark] .mobilebar{background:#1b2331!important}html[data-sk=dark] .toast{background:#070a10!important}html[data-sk=dark] .measure{background:#151b27!important}html[data-sk=dark] .trview{background:#1b2331!important}html[data-sk=dark] .trfile{border:1px dashed #2a3446!important;background:#151b27!important}html[data-sk=dark] .tb-cost{border-bottom:1px solid rgba(42,52,70,0.133)!important}html[data-sk=dark] .mk{background:rgba(21,27,39,0.078)!important}html[data-sk=dark] .mkb{background:rgba(21,27,39,0.133)!important}html[data-sk=dark] .mkl input{background:#151b27!important;color:#e7ecf4!important}html[data-sk=dark] .cadview{border:1px solid #2a3446!important;background:#151b27!important}html[data-sk=dark] .cadtbl td{border-bottom:1px solid #2a3446!important}/* ---- 暗い画面（KAKUの暗い画面と同じ色） ---- */
+html:root[data-sk=dark]{--bg:#0d1119;--card:#151b27;--fg:#e7ecf4;--muted:#98a3b3;--line:#2a3446;--ink:#e7ecf4;--ink-soft:#1b2331;--shu:#2f7ff5;--shu-soft:#16233a;--green:#5fbf8f;color-scheme:dark;background:#0d1119}
+html[data-sk=dark] body{background:radial-gradient(1200px 600px at 20% -10%,#14203a 0,#0d1119 60%) fixed,#0d1119!important;color:#e7ecf4}
+html[data-sk=dark] .top{background:rgba(13,17,25,.86)!important;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+html[data-sk=dark] .mark{background:linear-gradient(135deg,#2f7ff5,#5cc8ff)!important;box-shadow:0 0 18px #2f7ff566}
+html[data-sk=dark] .btn.orange{background:linear-gradient(180deg,#3b8bff,#1f6fe8)!important;border-color:#3b8bff!important;color:#fff!important;box-shadow:0 6px 18px #2f7ff540}
+html[data-sk=dark] .btn.light,html[data-sk=dark] .btn.ghost{background:#1b2331!important;color:#e7ecf4!important;border-color:#2a3446!important}
+html[data-sk=dark] input,html[data-sk=dark] select,html[data-sk=dark] textarea{background:#151b27!important;color:#e7ecf4!important;border-color:#2a3446!important}
+html[data-sk=dark] .cadview{background-color:#0a0e15!important;background-image:linear-gradient(#ffffff08 1px,transparent 1px),linear-gradient(90deg,#ffffff08 1px,transparent 1px);background-size:22px 22px;border-color:#2a3446!important}
+html[data-sk=dark] .cadview svg>path{stroke:#cfd7e3!important}
+html[data-sk=dark] .cadview svg g[data-fx] rect{filter:drop-shadow(0 0 2px currentColor)}
+html[data-sk=dark] .cadview svg g[data-fx]{color:#ffc940}
+.skbtn{font-size:17px}
+/* 明るい画面で「黒い背景に白い文字」だった所：暗い画面では青か濃い紺にする */
+html[data-sk=dark] .totbar{background:linear-gradient(180deg,#1a2740,#111a2b)!important;color:#fff!important;border:1px solid #2f4366!important;box-shadow:0 10px 30px #000a!important}
+html[data-sk=dark] .chip[aria-pressed="true"],html[data-sk=dark] .seg button[aria-pressed="true"],html[data-sk=dark] .job[aria-pressed="true"],html[data-sk=dark] .ck[aria-checked="true"],html[data-sk=dark] .act.strong,html[data-sk=dark] .primary{background:#2f7ff5!important;color:#fff!important;border-color:#2f7ff5!important}
+html[data-sk=dark] .btn,html[data-sk=dark] .filebtn{background:#26324a;color:#fff;border-color:#33425f}
+html[data-sk=dark] .menu-btn span{background:#e7ecf4}
+</style>
+<script>
+/* 画面の明るさ（自動・暗い・明るい）。iPhoneの設定に合わせるのが最初の設定 */
+(function(){const K='suido-theme';const get=()=>{try{return localStorage.getItem(K)||'auto'}catch(e){return'auto'}};
+  const L={auto:'iPhoneの設定に合わせる',dark:'暗い画面',light:'明るい画面'};
+  function apply(){const m=get(),dark=m==='dark'||(m==='auto'&&window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.setAttribute('data-sk',dark?'dark':'light');const mt=document.querySelector('meta[name=theme-color]');if(mt)mt.setAttribute('content',dark?'#0d1119':'#f8f6f1');
+    const b=document.getElementById('skThemeBtn');if(b){b.textContent=m==='auto'?'◐':m==='dark'?'☾':'☀';b.setAttribute('aria-label','画面の明るさ：'+L[m])}}
+  window.skThemeCycle=function(){const o=['auto','dark','light'],m=o[(o.indexOf(get())+1)%3];try{localStorage.setItem(K,m)}catch(e){}apply();if(typeof toast==='function')toast('画面の明るさ：'+L[m])};
+  apply();try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',apply)}catch(e){}
+  const add=()=>{const t=document.querySelector('.top .topright');if(!t||document.getElementById('skThemeBtn'))return;const b=document.createElement('button');b.id='skThemeBtn';b.className='btn light skbtn';b.onclick=window.skThemeCycle;t.insertBefore(b,document.getElementById('menuBtn'));apply()};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',add);else add()})();
+</script>
+
 
 <header class="top">
   <div class="brand"><div class="mark">水</div><div>SUIDO<small>PLUMBING ESTIMATE</small></div></div>
