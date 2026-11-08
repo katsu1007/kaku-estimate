@@ -413,6 +413,17 @@ html[data-sk=dark] .totbar{background:linear-gradient(180deg,#1a2740,#111a2b)!im
 html[data-sk=dark] .chip[aria-pressed="true"],html[data-sk=dark] .seg button[aria-pressed="true"],html[data-sk=dark] .job[aria-pressed="true"],html[data-sk=dark] .ck[aria-checked="true"],html[data-sk=dark] .act.strong,html[data-sk=dark] .primary{background:#2f7ff5!important;color:#fff!important;border-color:#2f7ff5!important}
 html[data-sk=dark] .btn,html[data-sk=dark] .filebtn{background:#26324a;color:#fff;border-color:#33425f}
 html[data-sk=dark] .menu-btn span{background:#e7ecf4}
+/* ---- iPhoneを横にした時：上の帯・合計・下のボタンを小さくして、中身を広く ---- */
+@media (max-height:500px) and (orientation:landscape){
+  .top{height:42px!important}.topright .btn{padding:5px 10px!important;min-height:0!important}.brand small{display:none}.mark{width:26px;height:26px;font-size:15px}
+  .tabs{top:calc(42px + env(safe-area-inset-top,0px))!important;margin:6px 0 10px!important}
+  .app{max-width:none!important;padding-top:12px!important;padding-bottom:calc(110px + env(safe-area-inset-bottom,0px))!important}
+  .mobilebar{padding:4px max(5px,env(safe-area-inset-right,0px)) calc(3px + env(safe-area-inset-bottom,0px)) max(5px,env(safe-area-inset-left,0px))!important}.mobilebar span{font-size:15px!important}
+  .totbar{left:auto!important;right:max(12px,env(safe-area-inset-right,0px))!important;width:min(560px,70vw);margin:0!important;bottom:calc(46px + env(safe-area-inset-bottom,0px))!important;padding:5px 12px!important;gap:0!important}
+  .totbar .tb-cost,.totbar .tb-meta{display:none!important}
+  .totbar .tb-big{font-size:20px!important}
+  .cadview{max-height:calc(100vh - 150px)!important}
+}
 </style>
 <script>
 /* 画面の明るさ（自動・暗い・明るい）。iPhoneの設定に合わせるのが最初の設定 */
