@@ -393,6 +393,7 @@ input,select{background:#fff;border-radius:6px}
 .cadtbl{width:100%;border-collapse:collapse;margin-top:6px}.cadtbl td{padding:7px 4px;border-bottom:1px solid #eee9de}.cadtbl td.num{text-align:right;font-weight:700}
 .cadsw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
 p.note.warn{color:#a34a17}
+.cadtbl select{font-size:14px;padding:6px 4px;max-width:100%}
 </style>
 
 <header class="top">
@@ -1461,7 +1462,7 @@ window.addEventListener("resize",()=>{if(TAB==="draw"&&VIEW==="ws")trDraw()});
 const HELP=[
  ["現場をつくる・消す",["現場ボードの「＋ 現場をつくる」で現場を作ります。現場名・宛名・工事場所は「出力・宛名」で入れます。","現場ボードで現場を長押しすると削除できます（確認が出ます。削除すると元に戻せません）。"]],
  ["配管",["「＋ 配管を追加」で、系統（給水・給湯・排水・通気・雨水）、場所、管の種類と太さ、長さを入れます。継手と支持金具は長さから目安の数が出ます。","長さは m で入れてください。メジャーで測った 3640 のように mm で入れても、m に直します。","「写真で測る」を押すと、図面や写真の上でなぞって長さを測れます。"]],
- ["CAD図面から器具を数える",["「図面・写真」で DXF か JWW の平面図を選ぶと、便器・小便器・洗面カウンター・手洗器などを見つけて数えます。","図面の四角をタップすると種類を直せます。「？（判定保留）」は見分けがつかなかった物なので、種類を選んでください。器具でない物は「器具ではない」にしてください。","洗面カウンターにボウルが複数ある時は、ボウルの数で入れるか台数で入れるか選べます。","「この数を器具に入れる」を押すと、見積ワークの器具に「図面から」として入ります。本体の種類はそこで選び直してください。","図面はこの端末の中で読むだけで、外には送りません。"]],
+ ["CAD図面から器具を数える",["「図面・写真」で DXF か JWW の平面図を選ぶと、便器・小便器・洗面カウンター・手洗器などを見つけて数えます。","図面の四角をタップすると種類を直せます。「？（判定保留）」は見分けがつかなかった物なので、種類を選んでください。器具でない物は「器具ではない」にしてください。","洗面カウンターにボウルが複数ある時は、ボウルの数で入れるか台数で入れるか選べます。","数の表の右の欄で、入れる先の器具を変えられます（例：手洗器・流しを掃除流し（SK）に）。","「この数を器具に入れる」を押すと、見積ワークの器具に「図面から」として入ります。本体の種類はそこで選び直してください。","図面はこの端末の中で読むだけで、外には送りません。"]],
  ["図面・写真でなぞって測る",["「図面・写真」で画像を選びます（PDFはスクショを撮ってから）。","① 長さの分かる所の両端を2か所タップして、その長さを mm で入れ「縮尺を決める」。② 配管の通る所を順にタップすると長さが出ます。「直角に合わせる」がオンだと、縦横にまっすぐ吸い付きます。","「この長さを入れる」で、選んだ配管（または新しい配管）の長さになります。"]],
  ["器具の取付・交換",["器具を選んで「交換・新設・撤去だけ」を選ぶと、本体・接続部材・取付・撤去が入ります。撤去した器具の処分は、中身ごと（陶器・家電・廃プラなど）に分けて入ります。"]],
  ["床・壁の解体と復旧",["配管のために床や壁を開ける時は、「追加する工事」の「＋ 床・壁の解体と復旧」から足します。床・壁・天井を選んで、幅と長さ（壁は高さ）を入れます。","解体するものは上から順に重ねて足せます（タイル → CBブロック → ラス下地モルタル など）。復旧するものも足せます。廃材は中身ごとに分けて処分の行が入ります。"]],
@@ -1835,10 +1836,14 @@ function KF_lshape(g,b){const W=b[2]-b[0],H=b[3]-b[1];if(W<.9||H<.9||W>4.5||H>4.
   if(window.KF_DBGL)KF_DBGL.push({b,legs,S:S.map(l=>[l.h,+l.at.toFixed(3),+l.a.toFixed(3),+l.z.toFixed(3)])});
   const adj=(a,c)=>(a==='S'||a==='N')!==(c==='S'||c==='N');/* 組み合わせが2つ以上ある時は、2本の奥行がそろっている組を選ぶ */const pr=[];for(let i=0;i<legs.length;i++)for(let j=i+1;j<legs.length;j++)if(adj(legs[i].sd,legs[j].sd))pr.push([legs[i],legs[j]]);if(!pr.length)return null;pr.sort((p,q)=>Math.abs(p[0].D-p[1].D)-Math.abs(q[0].D-q[1].D)||(p[0].D+p[1].D)-(q[0].D+q[1].D));return pr[0]}
 /* 鉢：曲線どうしがつながった形で、大きさが20〜65cmの物の数 */
+/* 鉢の数：小さい部品を重なりでまとめる。カウンターの枠などで70cmより大きくなる時はまとめない（全部が1つになって鉢が数えられなくなるので） */
 function KF_bowls(g){const C=g.filter(o=>Math.max(o.b[2]-o.b[0],o.b[3]-o.b[1])<=.65);if(!C.some(o=>o.cv)||C.length>3000)return 0;
   const B=C.map(o=>({b:[...o.b],cv:o.cv}));B.sort((p,q)=>p.b[0]-q.b[0]);let ch=true,it=0;
-  while(ch&&it++<30){ch=false;for(let i=0;i<B.length;i++)for(let j=i+1;j<B.length;j++){const a=B[i].b,c=B[j].b;if(c[0]>a[2]+.01)break;if(c[1]<=a[3]+.01&&a[1]<=c[3]+.01){B[i].b=[Math.min(a[0],c[0]),Math.min(a[1],c[1]),Math.max(a[2],c[2]),Math.max(a[3],c[3])];B[i].cv+=B[j].cv;B.splice(j,1);ch=true;j--}}}
-  return B.filter(o=>o.cv&&Math.min(o.b[2]-o.b[0],o.b[3]-o.b[1])>=.15&&Math.max(o.b[2]-o.b[0],o.b[3]-o.b[1])<=.7).length}
+  while(ch&&it++<30){ch=false;for(let i=0;i<B.length;i++)for(let j=i+1;j<B.length;j++){const a=B[i].b,c=B[j].b;if(c[0]>a[2]+.01)break;if(c[1]<=a[3]+.01&&a[1]<=c[3]+.01){const nb=[Math.min(a[0],c[0]),Math.min(a[1],c[1]),Math.max(a[2],c[2]),Math.max(a[3],c[3])];if(Math.max(nb[2]-nb[0],nb[3]-nb[1])>.7)continue;B[i].b=nb;B[i].cv+=B[j].cv;B.splice(j,1);ch=true;j--}}}
+  const K=B.filter(o=>o.cv&&Math.min(o.b[2]-o.b[0],o.b[3]-o.b[1])>=.15&&Math.max(o.b[2]-o.b[0],o.b[3]-o.b[1])<=.7);if(K.length<2)return K.length;
+  /* 外形に接していて曲線の少ない物は、カウンターの枠の切れ端（鉢ではない） */
+  let G=[Infinity,Infinity,-Infinity,-Infinity];g.forEach(o=>{G=[Math.min(G[0],o.b[0]),Math.min(G[1],o.b[1]),Math.max(G[2],o.b[2]),Math.max(G[3],o.b[3])]});const mx=Math.max(...K.map(o=>o.cv));
+  return K.filter(o=>o.cv>=mx*.25||!(o.b[0]<=G[0]+.01||o.b[1]<=G[1]+.01||o.b[2]>=G[2]-.01||o.b[3]>=G[3]-.01)).length}
 /* 形と大きさで見分ける（m） */
 function KF_guess(w,h,cv,circ,n,burn,bowl,tub){const s=Math.min(w,h),l=Math.max(w,h);if(cv<1)return null;
   /* 便器：楕円の便座で円弧が多く、丸（穴）は少ない。丸が多い同じ大きさの物は掃除流しなど */
@@ -1890,19 +1895,23 @@ async function read(f,opt){opt=opt||{};const ext=(f.name.split('.').pop()||'').t
   let bb=[Infinity,Infinity,-Infinity,-Infinity];KAKU_plan.segs.forEach(s=>{bb=[Math.min(bb[0],s[0],s[2]),Math.min(bb[1],s[1],s[3]),Math.max(bb[2],s[0],s[2]),Math.max(bb[3],s[1],s[3])]});
   /* 下絵：元の向きの線（m） */
   const segs=KAKU_plan.segs;KAKU_plan=null;KAKU_fix=null;KF_Pc=null;
-  return{fx,segs,bb,rot}}
+  return opt.debug?{fx,segs,bb,rot,raw:X.fx,ents:R.ents}:{fx,segs,bb,rot}}
 return{read,T:KF_T};
 
 })();
 
 /* ================= 図面（DXF・JWW）から器具を数える ================= */
-const CAD_KEY={toilet:"wc",urinal:"ur",counter:"wb",sink:"hw",kitchen:"ki",bath:"ub"};
-const CAD_TYPES=["toilet","urinal","counter","sink","kitchen","bath","unknown","other"];
-const CAD_COL={toilet:"#3d6fb6",urinal:"#2c8a7a",counter:"#b0702a",sink:"#8a5bb5",kitchen:"#b5475b",bath:"#4a8a3a",unknown:"#c0392b",other:"#9a9a9a"};
-const CAD={job:"",name:"",segs:null,bb:null,fx:null,sel:0,busy:false,err:"",mode:"swap",wb:"bowl",z:1};
-function cadLoad(){const j=J();if(CAD.job===j.id)return;Object.assign(CAD,{job:j.id,name:"",segs:null,bb:null,fx:null,sel:0,busy:false,err:"",mode:"swap",wb:"bowl"});
-  if(j.cad&&Array.isArray(j.cad.fx)){CAD.name=j.cad.name||"";CAD.fx=j.cad.fx;CAD.mode=j.cad.mode||"swap";CAD.wb=j.cad.wb||"bowl"}}
-function cadSave(){const j=J();j.cad={name:CAD.name,fx:CAD.fx,mode:CAD.mode,wb:CAD.wb};save()}
+const CAD_KEY={toilet:"wc",urinal:"ur",counter:"wb",sink:"hw",slop:"sk",kitchen:"ki",bath:"ub"};
+/* 入れ先に選べる器具（図面の種類ごとに変えられる。例：手洗器・流し → 掃除流し） */
+const CAD_TO=["wc","ur","wb","lf","hw","sk","ki","kf","ub","sf"];
+const cadT=t=>t==="slop"?"掃除流し（SK）":SFX.T[t];
+const cadTo=t=>(CAD.to&&CAD.to[t])||CAD_KEY[t];
+const CAD_TYPES=["toilet","urinal","counter","sink","slop","kitchen","bath","unknown","other"];
+const CAD_COL={toilet:"#3d6fb6",urinal:"#2c8a7a",counter:"#b0702a",sink:"#8a5bb5",slop:"#5b6fb5",kitchen:"#b5475b",bath:"#4a8a3a",unknown:"#c0392b",other:"#9a9a9a"};
+const CAD={job:"",name:"",segs:null,bb:null,fx:null,sel:0,busy:false,err:"",mode:"swap",wb:"bowl",z:1,to:{}};
+function cadLoad(){const j=J();if(CAD.job===j.id)return;Object.assign(CAD,{job:j.id,name:"",segs:null,bb:null,fx:null,sel:0,busy:false,err:"",mode:"swap",wb:"bowl",to:{}});
+  if(j.cad&&Array.isArray(j.cad.fx)){CAD.name=j.cad.name||"";CAD.fx=j.cad.fx;CAD.mode=j.cad.mode||"swap";CAD.wb=j.cad.wb||"bowl";CAD.to=j.cad.to||{}}}
+function cadSave(){const j=J();j.cad={name:CAD.name,fx:CAD.fx,mode:CAD.mode,wb:CAD.wb,to:CAD.to};save()}
 async function cadFile(f){if(!f)return;CAD.busy=true;CAD.err="";renderCad();
   try{const r=await SFX.read(f);CAD.name=f.name;CAD.segs=r.segs;CAD.bb=r.bb;CAD.rot=r.rot;CAD.fx=r.fx;CAD.sel=0;CAD.z=1;cadSave();
     toast(r.fx.length?`器具を ${r.fx.filter(x=>x.t!=="other").length} 個 見つけました`:"器具が見つかりませんでした")}
@@ -1919,11 +1928,11 @@ function renderCad(){cadLoad();const box=$("cadCard");if(!box)return;
     <p class="note">読み取りは KAKU と同じ仕組みです。図面はこの端末の中で読むだけで、外には送りません。</p>`;
     $("cadIn").onchange=e=>cadFile(e.target.files[0]);return}
   const c=cadCounts(),sel=CAD.fx.find(x=>x.id===CAD.sel);
-  const rows=Object.keys(CAD_KEY).filter(t=>c[t]).map(t=>`<tr><td><i class="cadsw" style="background:${CAD_COL[t]}"></i>${esc(SFX.T[t])}</td><td>→ ${esc(FXM[CAD_KEY[t]].n)}</td><td class="num">${t==="counter"?`${c[t]}台${c.bowl!==c[t]?`<br><span class="mini">ボウル ${c.bowl}個</span>`:""}`:c[t]}</td></tr>`).join("");
+  const rows=Object.keys(CAD_KEY).filter(t=>c[t]).map(t=>`<tr><td><i class="cadsw" style="background:${CAD_COL[t]}"></i>${esc(cadT(t))}</td><td><select data-to="${t}" aria-label="${esc(cadT(t))}の入れ先">${CAD_TO.map(k=>`<option value="${k}"${k===cadTo(t)?" selected":""}>${esc(FXM[k].n)}</option>`).join("")}</select></td><td class="num">${t==="counter"?`${c[t]}台${c.bowl!==c[t]?`<br><span class="mini">ボウル ${c.bowl}個</span>`:""}`:c[t]}</td></tr>`).join("");
   box.innerHTML=`<div class="sectionhead"><h2>CAD図面から器具を数える</h2><label class="btn light" style="position:relative;overflow:hidden">${CAD.busy?"読み込み中…":"図面を替える"}${pick}</label></div>
     <p class="mini" style="margin:0 0 6px">${esc(CAD.name)}</p>
-    ${CAD.segs?`<div class="trbar"><span class="mini" style="flex:1">四角をタップすると種類を直せます。</span><button class="btn light" id="cadOut" aria-label="小さく">－</button><button class="btn light" id="cadZin" aria-label="大きく">＋</button></div><div class="cadview" id="cadView">${cadSvg()}</div>`:`<p class="note">図面の絵は保存していません。もう一度見る時は「図面を替える」で同じ図面を選んでください。</p>`}
-    ${sel?`<div class="cadsel"><b>${sel.id}番</b><select id="cadT" aria-label="器具の種類">${CAD_TYPES.map(t=>`<option value="${t}"${t===sel.t?" selected":""}>${esc(SFX.T[t])}</option>`).join("")}</select><button class="btn light" id="cadX">閉じる</button></div>`:""}
+    ${CAD.segs?`<div class="trbar"><span class="mini" style="flex:1">四角をタップすると種類を直せます。右の欄で、入れる先の器具を変えられます。</span><button class="btn light" id="cadOut" aria-label="小さく">－</button><button class="btn light" id="cadZin" aria-label="大きく">＋</button></div><div class="cadview" id="cadView">${cadSvg()}</div>`:`<p class="note">図面の絵は保存していません。もう一度見る時は「図面を替える」で同じ図面を選んでください。</p>`}
+    ${sel?`<div class="cadsel"><b>${sel.id}番</b><select id="cadT" aria-label="器具の種類">${CAD_TYPES.map(t=>`<option value="${t}"${t===sel.t?" selected":""}>${esc(cadT(t))}</option>`).join("")}</select><button class="btn light" id="cadX">閉じる</button></div>`:""}
     ${rows?`<table class="cadtbl"><tbody>${rows}</tbody></table>`:`<p class="note">数えられる器具がありません。</p>`}
     ${c.unknown?`<p class="note warn">？（判定保留）が ${c.unknown} 個あります。図面の赤い四角をタップして種類を選んでください。</p>`:""}
     ${c.counter&&c.bowl!==c.counter?`<div class="f" style="margin-top:8px"><label>洗面カウンターの数え方</label><div class="seg" id="cadWb"><button type="button" data-v="bowl" aria-pressed="${CAD.wb==="bowl"}">ボウルの数（${c.bowl}）</button><button type="button" data-v="unit" aria-pressed="${CAD.wb!=="bowl"}">台数（${c.counter}）</button></div></div>`:""}
@@ -1938,6 +1947,7 @@ function renderCad(){cadLoad();const box=$("cadCard");if(!box)return;
   if($("cadX"))$("cadX").onclick=()=>{CAD.sel=0;renderCad()};
   $("cadMode").querySelectorAll("button").forEach(b=>b.onclick=()=>{CAD.mode=b.dataset.v;cadSave();renderCad()});
   if($("cadWb"))$("cadWb").querySelectorAll("button").forEach(b=>b.onclick=()=>{CAD.wb=b.dataset.v;cadSave();renderCad()});
+  box.querySelectorAll("[data-to]").forEach(s=>s.onchange=()=>{CAD.to={...CAD.to,[s.dataset.to]:s.value};cadSave();renderCad()});
   $("cadPut").onclick=cadPut}
 function cadSvg(){/* 器具のある所を中心に（離れた所の線で小さくならないように） */let b=CAD.bb;if(CAD.fx.length){const f=[Infinity,Infinity,-Infinity,-Infinity];CAD.fx.forEach(x=>{f[0]=Math.min(f[0],x.b[0]);f[1]=Math.min(f[1],x.b[1]);f[2]=Math.max(f[2],x.b[2]);f[3]=Math.max(f[3],x.b[3])});const m=2.5;b=[Math.max(b[0],f[0]-m),Math.max(b[1],f[1]-m),Math.min(b[2],f[2]+m),Math.min(b[3],f[3]+m)]}const pad=.5,W=b[2]-b[0]+2*pad,H=b[3]-b[1]+2*pad,r=v=>Math.round(v*1000)/1000,sw=Math.max(W,H)/900;
   let d="";CAD.segs.forEach(s=>{d+=`M${r(s[0])} ${r(-s[1])}L${r(s[2])} ${r(-s[3])}`});
@@ -1947,9 +1957,11 @@ function cadSvg(){/* 器具のある所を中心に（離れた所の線で小�
     g+=`<g data-fx="${x.id}" style="cursor:pointer"><rect x="${r(q[0]-.05)}" y="${r(-q[3]-.05)}" width="${r(q[2]-q[0]+.1)}" height="${r(q[3]-q[1]+.1)}" fill="${col}" fill-opacity="${on?.45:.18}" stroke="${col}" stroke-width="${r(sw*(on?4:2.5))}"/>`+
       `<text x="${r((q[0]+q[2])/2)}" y="${r(-(q[1]+q[3])/2+fs*.35)}" font-size="${r(fs)}" text-anchor="middle" fill="${col}" font-weight="700">${x.t==="unknown"?"？":x.id}</text></g>`});
   return `<svg style="width:${Math.round(CAD.z*100)}%" viewBox="${r(b[0]-pad)} ${r(-b[3]-pad)} ${r(W)} ${r(H)}" preserveAspectRatio="xMidYMid meet">${g}</svg>`}
-function cadPut(){const j=J(),c=cadCounts();let n=0;
-  Object.entries(CAD_KEY).forEach(([t,k])=>{const q=cadQty(c,t);let f=j.fixes.find(x=>x.where==="図面から"&&x.k===k);
-    if(!q){if(f)j.fixes=j.fixes.filter(x=>x!==f);return}
+function cadPut(){const j=J(),c=cadCounts();let n=0;const Q={};
+  Object.keys(CAD_KEY).forEach(t=>{const q=cadQty(c,t);if(q){const k=cadTo(t);Q[k]=(Q[k]||0)+q}});
+  /* 前に「図面から」で入れた物で、今回入れない器具は消す */
+  j.fixes=j.fixes.filter(x=>x.where!=="図面から"||Q[x.k]);
+  Object.entries(Q).forEach(([k,q])=>{let f=j.fixes.find(x=>x.where==="図面から"&&x.k===k);
     if(!f){f=newFix(k);f.where="図面から";j.fixes.push(f)}f.qty=q;f.mode=CAD.mode;n+=q});
   save();renderFixes();update();toast(`器具に ${n} 個 入れました`);setTab("work");
   setTimeout(()=>{const el=$("fixes");el&&el.scrollIntoView({block:"start",behavior:"smooth"})},80)}
