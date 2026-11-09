@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-09.11";
+var KAKU_VERSION="2026-11-09.12";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -1903,4 +1903,226 @@ if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();
 </script>
+<style id="kaku-v12">
+/* ==== 2026-11-09.12 要確認の行・キーボード対策・案件の検索と並べ替え・元に戻す ==== */
+#items tr.kx-need td{background:rgba(210,80,42,.07)}
+#items tr.kx-need td:first-child{box-shadow:inset 4px 0 0 var(--orange,#d2502a)}
+.kx-badge{display:inline-block;margin:4px 0 0;padding:2px 8px;border-radius:999px;background:var(--orange,#d2502a);color:#fff;font-size:12px;font-weight:700;line-height:1.5;white-space:nowrap}
+#kxNeed{display:none;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 12px;padding:10px 12px;border-radius:12px;border:1px solid rgba(210,80,42,.45);background:rgba(210,80,42,.08);font-size:14px;line-height:1.5}
+#kxNeed.on{display:flex}
+#kxNeed b{color:var(--orange,#d2502a)}
+#kxNeed button{min-height:40px}
+.totalrow.kx-needrow{cursor:pointer}
+.totalrow.kx-needrow b{color:#ffb08f}
+input,select,textarea{scroll-margin-top:72px;scroll-margin-bottom:96px}
+html.kx-kb .mobilebar,html.kx-kb .ktotal{display:none!important}
+/* 案件一覧の検索・並べ替え */
+#kxFind{display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap}
+#kxFind input{flex:1 1 220px;min-width:0;min-height:44px;padding:0 12px;border:1px solid var(--line);border-radius:12px;font-size:16px;background:var(--white,#fff);color:inherit}
+#kxFind select{flex:0 0 auto;min-height:44px;padding:0 10px;border:1px solid var(--line);border-radius:12px;font-size:15px;background:var(--white,#fff);color:inherit}
+.kx-upd{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+/* 元に戻す・やり直す */
+.kx-undo{display:inline-flex;gap:6px;margin-right:8px}
+.kx-undo button{min-height:40px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--white,#fff);color:inherit;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap}
+.kx-undo button:disabled{opacity:.4;cursor:default}
+html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;color:#e8edf5}
+@media(max-width:760px),(max-height:500px) and (orientation:landscape){
+  .kx-undo{margin-right:6px;gap:4px}
+  .kx-undo button{padding:0 9px;font-size:13px;min-height:36px}
+  html.kx-work .topright>.btn:not(.menubtn){display:none}
+  html:not(.kx-work) .kx-undo .kx-l{display:none}
+  html:not(.kx-work) .kx-undo button{font-size:17px;min-width:40px}
+  .top .brand small{display:none}
+}
+@media(max-width:380px){.kx-undo .kx-l{display:none}.kx-undo button{font-size:16px}}
+</style>
+<script id="kaku-v12-js">
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  function hasCur(){return typeof current!=="undefined"&&!!current}
+  function isWork(){var w=$('workspace');return !!(w&&w.classList.contains('show'))}
+  function curTab(){var t=document.querySelector('.tab.on');return t?t.dataset.tab:'overview'}
+
+  /* ================= 1. 確認が必要な行を目立たせる ================= */
+  function markNeed(){
+    var box=$('items');if(!box)return;var list=[];
+    [].forEach.call(box.rows,function(tr){
+      if(tr.cells.length<5)return;
+      var pin=tr.cells[3].querySelector('input'),amt=(tr.cells[4].textContent||'').replace(/\s/g,'');
+      var price=pin?(+pin.value||0):0,zero=/^¥0$/.test(amt);
+      var why=price<=0?'単価が未入力':(zero?'金額が0円':'');
+      tr.classList.toggle('kx-need',!!why);
+      var b=tr.cells[0].querySelector('.kx-badge');
+      if(why){if(!b){b=document.createElement('span');b.className='kx-badge';tr.cells[0].appendChild(b)}b.textContent='要確認：'+why;list.push(tr)}
+      else if(b)b.remove();
+    });
+    var n=list.length,bar=$('kxNeed');
+    if(!bar){
+      var wrap=box.closest('.tablewrap');
+      if(wrap){bar=document.createElement('div');bar.id='kxNeed';bar.setAttribute('role','status');
+        bar.innerHTML='<span></span><button type="button" class="btn light">最初の行へ</button>';
+        wrap.parentNode.insertBefore(bar,wrap);
+        bar.querySelector('button').onclick=function(){
+          var tr=document.querySelector('#items tr.kx-need');if(!tr)return;
+          tr.scrollIntoView({block:'center',behavior:'smooth'});
+          var inp=tr.cells[3]&&tr.cells[3].querySelector('input:not([disabled])');
+          if(inp&&+inp.value<=0)setTimeout(function(){inp.focus({preventScroll:true})},350);
+        };}
+    }
+    if(bar){bar.classList.toggle('on',n>0);bar.firstChild.innerHTML='確認が必要な行が <b>'+n+' 件</b> あります（単価が未入力、または金額が0円）'}
+    var row=$('kxNeedRow');
+    if(!row){var ic=$('itemCount'),tr0=ic&&ic.closest('.totalrow');
+      if(tr0){row=document.createElement('div');row.className='totalrow kx-needrow';row.id='kxNeedRow';row.title='明細で確認する';
+        row.innerHTML='<span>要確認の行</span><b></b>';tr0.parentNode.insertBefore(row,tr0.nextSibling);
+        row.onclick=function(){switchTab('items');setTimeout(function(){var b=$('kxNeed');if(b)b.scrollIntoView({block:'center',behavior:'smooth'})},50)}}}
+    if(row){row.style.display=n>0?'':'none';row.lastChild.textContent=n+' 件'}
+  }
+  function watchItems(){var box=$('items');if(!box)return;new MutationObserver(markNeed).observe(box,{childList:true});markNeed()}
+
+  /* ================= 2. 数字の欄がキーボードに隠れないようにする ================= */
+  var touch=window.matchMedia&&matchMedia('(pointer:coarse)').matches;
+  function headH(){var t=document.querySelector('.top');return t?t.getBoundingClientRect().height:0}
+  function ensure(el){
+    if(!el||document.activeElement!==el||!el.getBoundingClientRect)return;
+    var vv=window.visualViewport,vt=vv?vv.offsetTop:0,vh=vv?vv.height:window.innerHeight;
+    var r=el.getBoundingClientRect(),top=vt+headH()+8,bottom=vt+vh-12;
+    if(r.top<top||r.bottom>bottom){window.scrollBy({top:r.top-(vt+Math.max(headH()+16,vh*0.35)),behavior:'smooth'})}
+  }
+  function kbState(){var vv=window.visualViewport;var on=!!(vv&&vv.height<window.innerHeight*0.78);document.documentElement.classList.toggle('kx-kb',on);return on}
+  document.addEventListener('focusin',function(e){
+    var t=e.target;if(!touch||!t||!t.matches||!t.matches('input,textarea,select'))return;
+    if(t.type==='file'||t.type==='checkbox'||t.type==='radio')return;
+    setTimeout(function(){kbState();ensure(t)},320);setTimeout(function(){kbState();ensure(t)},700);
+  });
+  if(window.visualViewport){visualViewport.addEventListener('resize',function(){var on=kbState();if(on)ensure(document.activeElement)})}
+  document.addEventListener('focusout',function(){setTimeout(kbState,250)});
+
+  /* ================= 3. 案件一覧の検索と並べ替え ================= */
+  var SORTK='kaku-home-sort',q='',sortBy='new';
+  try{sortBy=localStorage.getItem(SORTK)||'new'}catch(e){}
+  function norm(s){return String(s||'').normalize('NFKC').toLowerCase().replace(/[ァ-ヶ]/g,function(c){return String.fromCharCode(c.charCodeAt(0)-0x60)}).replace(/\s+/g,'')}
+  function md(t){var d=new Date(t);return (d.getMonth()+1)+'/'+d.getDate()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')}
+  function amount(p){return +(p.engineGrand!=null?p.engineGrand:(typeof sum==='function'?sum(p)*1.1:0))||0}
+  function buildFind(){
+    if($('kxFind'))return;var list=$('projectList');if(!list)return;
+    var f=document.createElement('div');f.id='kxFind';
+    f.innerHTML='<input type="search" id="kxQ" placeholder="案件名・お客様名・住所で探す" aria-label="案件を探す" enterkeyhint="search">'+
+      '<select id="kxSort" aria-label="並べ替え"><option value="new">更新が新しい順</option><option value="old">更新が古い順</option><option value="name">案件名の順</option><option value="amt">金額が高い順</option></select>';
+    list.parentNode.insertBefore(f,list);
+    var qi=$('kxQ'),si=$('kxSort');si.value=sortBy;
+    qi.addEventListener('input',function(){q=qi.value;arrange()});
+    si.addEventListener('change',function(){sortBy=si.value;try{localStorage.setItem(SORTK,sortBy)}catch(e){}arrange()});
+  }
+  function arrange(){
+    var list=$('projectList');if(!list||typeof data==='undefined')return;
+    var nodes=[].slice.call(list.querySelectorAll(':scope > .project'));if(!nodes.length)return;
+    var byId={};data.forEach(function(p){byId[p.id]=p});
+    var nq=norm(q),items=nodes.map(function(el,i){var m=(el.getAttribute('onclick')||'').match(/openProject\((\d+)\)/);return{el:el,p:m?byId[+m[1]]:null,i:i}});
+    items.forEach(function(x){
+      var p=x.p;if(!p)return;var t=p.updatedAt||p.id;
+      var h=x.el.querySelector('.project-left p');
+      if(h&&!h.querySelector('.kx-upd')){var s=document.createElement('span');s.className='kx-upd';s.textContent='更新 '+md(t);h.appendChild(s)}
+      var hit=!nq||norm([p.name,p.customer,p.address,p.number,p.person].join(' ')).indexOf(nq)>=0;
+      x.el.style.display=hit?'':'none';
+    });
+    var cmp={
+      new:function(a,b){return((b.p&&(b.p.updatedAt||b.p.id))||0)-((a.p&&(a.p.updatedAt||a.p.id))||0)||a.i-b.i},
+      old:function(a,b){return((a.p&&(a.p.updatedAt||a.p.id))||0)-((b.p&&(b.p.updatedAt||b.p.id))||0)||a.i-b.i},
+      name:function(a,b){return String(a.p&&a.p.name||'').localeCompare(String(b.p&&b.p.name||''),'ja')||a.i-b.i},
+      amt:function(a,b){return(b.p?amount(b.p):0)-(a.p?amount(a.p):0)||a.i-b.i}
+    }[sortBy]||null;
+    if(cmp)items.slice().sort(cmp).forEach(function(x){list.appendChild(x.el)});
+    var none=$('kxNone'),shown=items.some(function(x){return x.el.style.display!=='none'});
+    if(!shown){if(!none){none=document.createElement('p');none.id='kxNone';none.className='mini';list.appendChild(none)}none.textContent='「'+q+'」に当てはまる案件はありません。'}
+    else if(none)none.remove();
+  }
+  if(typeof window.renderHome==='function'){
+    var rh=window.renderHome;
+    window.renderHome=function(){var r=rh.apply(this,arguments);try{buildFind();arrange()}catch(e){console.error(e)}return r};
+  }
+
+  /* ================= 4. 元に戻す・やり直す ================= */
+  var MAX=40,undo=[],redo=[],restoring=false,lastSaveAt=0;
+  function key(d){return JSON.stringify(d,function(k,v){return(k==='engineSubtotal'||k==='engineGrand'||k==='updatedAt')?undefined:v})}
+  var lastKey=null,lastFull=null;
+  function snapBase(){try{lastKey=key(data);lastFull=JSON.stringify(data)}catch(e){}}
+  function push(e){undo.push(e);if(undo.length>MAX)undo.shift();redo=[];ui()}
+  if(typeof window.save==='function'){
+    var sv=window.save;
+    window.save=function(){
+      var changed=false,before=lastFull,now=Date.now();
+      if(!restoring&&typeof data!=='undefined'){
+        try{var k=key(data);changed=lastKey!==null&&k!==lastKey;lastKey=k}catch(e){}
+        if(changed){
+          if(hasCur())current.updatedAt=now;
+          var top=undo[undo.length-1];
+          /* 文字を打っている間などの連続した保存は1回分にまとめる */
+          if(!(top&&top.t==='data'&&now-lastSaveAt<1200&&top.pid===(hasCur()?current.id:null)))push({t:'data',snap:before,pid:hasCur()?current.id:null});
+          lastSaveAt=now;
+        }
+      }
+      var r=sv.apply(this,arguments);
+      try{lastFull=JSON.stringify(data)}catch(e){}
+      return r;
+    };
+  }
+  if(typeof window.enginePrice==='function'){
+    var ep=window.enginePrice;
+    window.enginePrice=function(id,v){
+      try{
+        if(!restoring&&typeof engine!=='undefined'&&engine){
+          var row=(engine.snapshot().rows||[]).find(function(x){return x.id===id});
+          var old=row?+row.price:null;
+          if(old!==null&&old!==+v)push({t:'price',id:id,old:old,val:+v});
+        }
+      }catch(e){}
+      return ep.apply(this,arguments);
+    };
+  }
+  function restoreData(snap){
+    var keep={};data.forEach(function(p){keep[p.id]=p});
+    var nd=JSON.parse(snap);
+    nd.forEach(function(p){var o=keep[p.id];if(o){if(o.engineSubtotal!=null)p.engineSubtotal=o.engineSubtotal;if(o.engineGrand!=null)p.engineGrand=o.engineGrand}});
+    var cid=hasCur()?current.id:null,work=isWork(),tab=curTab(),y=window.scrollY;
+    data=nd;
+    var c=cid!=null?data.find(function(p){return p.id===cid}):null;
+    restoring=true;
+    try{
+      if(work&&c){current=c;openProject(c.id);switchTab(tab);window.scrollTo(0,y)}
+      else{current=c||null;if(work)goHome();else renderHome()}
+      save();
+    }finally{restoring=false}
+    snapBase();
+  }
+  function apply(e,dir){
+    if(e.t==='data'){var cur=JSON.stringify(data);restoreData(e.snap);return{t:'data',snap:cur,pid:e.pid}}
+    if(e.t==='price'){
+      var v=dir==='undo'?e.old:e.val;
+      if(typeof engine!=='undefined'&&engine){restoring=true;try{engine.setPrice(e.id,v);refreshEngineRows()}finally{restoring=false}}
+      return e;
+    }
+  }
+  function doUndo(){var e=undo.pop();if(!e)return;var back=apply(e,'undo');redo.push(back);ui();try{toast('元に戻しました')}catch(_){}}
+  function doRedo(){var e=redo.pop();if(!e)return;var back=apply(e,'redo');undo.push(back);ui();try{toast('やり直しました')}catch(_){}}
+  window.KAKU_undo=doUndo;window.KAKU_redo=doRedo;
+  function ui(){var u=$('kxUndo'),r=$('kxRedo');if(u)u.disabled=!undo.length;if(r)r.disabled=!redo.length}
+  function buildUndo(){
+    var tr=document.querySelector('.topright');if(!tr||$('kxUndo'))return;
+    var g=document.createElement('div');g.className='kx-undo';
+    g.innerHTML='<button type="button" id="kxUndo" title="元に戻す（Ctrl+Z）" aria-label="元に戻す" disabled>↶<span class="kx-l"> 元に戻す</span></button><button type="button" id="kxRedo" title="やり直す（Ctrl+Shift+Z）" aria-label="やり直す" disabled>↷<span class="kx-l"> やり直す</span></button>';
+    var nb=tr.querySelector('.btn');tr.insertBefore(g,nb||null);
+    $('kxUndo').onclick=doUndo;$('kxRedo').onclick=doRedo;
+  }
+  document.addEventListener('keydown',function(e){
+    if(!(e.ctrlKey||e.metaKey)||String(e.key).toLowerCase()!=='z')return;
+    var a=document.activeElement;if(a&&a.matches&&a.matches('input,textarea,select,[contenteditable]'))return;
+    e.preventDefault();if(e.shiftKey)doRedo();else doUndo();
+  });
+  function watchWork(){var w=$('workspace');if(!w)return;var f=function(){document.documentElement.classList.toggle('kx-work',w.classList.contains('show'))};new MutationObserver(f).observe(w,{attributes:true,attributeFilter:['class']});f()}
+
+  function init(){buildUndo();watchItems();watchWork();buildFind();arrange();snapBase();ui()}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();
+</script>
+
 </body></html>
