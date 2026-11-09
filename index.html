@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-09.20";
+var KAKU_VERSION="2026-11-10.1";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -2364,6 +2364,7 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
 #kxLoupe .kxc:before{left:12px;top:0;width:2px;height:26px}#kxLoupe .kxc:after{top:12px;left:0;height:2px;width:26px}
 #kxLoupeTag{position:fixed;z-index:9999;display:none;padding:3px 10px;border-radius:999px;background:#20221f;color:#ffd24a;font-weight:800;font-size:14px;pointer-events:none;white-space:nowrap}
 #kxLoupeTag.on{display:block}
+#planSvg .pmeas{fill:none}
 .kxsnap{fill:none;stroke:#e0a800;stroke-width:2.5px;vector-effect:non-scaling-stroke}
 .kxmeas{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
 .kxmeas div{flex:1 1 70px;min-width:70px;padding:6px 8px;border-radius:10px;background:#243044;color:#fff;text-align:center}
@@ -2375,6 +2376,12 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
 (function(){
   var $=function(id){return document.getElementById(id)};
   var fmt=function(v){return Math.round(v*1000).toLocaleString('ja-JP')};
+  /* 吸着の強さ（測る・累進の両方）と、測り方（2点・累進） */
+  var LV=[['off','なし',0],['weak','弱',0.5],['std','標準',1],['strong','強',1.8]];
+  var lv='std',CH=false;try{lv=localStorage.getItem('kaku-snap')||'std';CH=localStorage.getItem('kaku-meas-chain')==='1'}catch(_){}
+  function mult(){var x=LV.find(function(l){return l[0]===lv});return x?x[2]:1}
+  function lvName(){var x=LV.find(function(l){return l[0]===lv});return x?x[1]:'標準'}
+  function addPt(p){var m=KAKU_sel.meas;KAKU_sel.meas=CH?m.concat([p]):(m.length>=2?[p]:m.concat([p]))}
   /* ---------- 交点を求める（測るときだけ。図面ごとに1回） ---------- */
   function inters(P){if(P.__xp)return P.__xp;var G=0.5,g={},out=[],S=P.segs;
     S.forEach(function(s,i){var x0=Math.floor(Math.min(s[0],s[2])/G),x1=Math.floor(Math.max(s[0],s[2])/G),y0=Math.floor(Math.min(s[1],s[3])/G),y1=Math.floor(Math.max(s[1],s[3])/G);
@@ -2385,7 +2392,7 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
       out.push([p[0]+t*rx,p[1]+t*ry])}});
     P.__xp=out;return out}
   /* 吸い付き：端点・交点 → 線の上 → 1mm単位。どれに吸い付いたかも返す */
-  function snap(x,y,tol){var P=KAKU_plan,best=null,bd=tol,kind='';
+  function snap(x,y,tol){var k0=mult();if(!k0){var f=[Math.round(x*1000)/1000,Math.round(y*1000)/1000];f.k='';return f}tol*=k0;var P=KAKU_plan,best=null,bd=tol,kind='';
     P.ends.forEach(function(e){var d=Math.hypot(e[0]-x,e[1]-y);if(d<bd){bd=d;best=e;kind='端点'}});
     if(KAKU_mode==='measure')inters(P).forEach(function(e){var d=Math.hypot(e[0]-x,e[1]-y);if(d<bd*0.999){bd=d;best=e;kind='交点'}});
     if(best){var r=[best[0],best[1]];r.k=kind;return r}
@@ -2406,8 +2413,8 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
     if(p.k){var c=document.createElementNS('http://www.w3.org/2000/svg','circle');c.setAttribute('class','kxsnap');c.setAttribute('cx',p[0]);c.setAttribute('cy',-p[1]);c.setAttribute('r',R*0.16);sv.appendChild(c)}
     var ly=cy-200<8?cy+40:cy-200,lx=Math.min(window.innerWidth-176,Math.max(8,cx-84));
     lp.style.left=lx+'px';lp.style.top=ly+'px';lp.classList.add('on');
-    var first=KAKU_sel.meas.length===1?KAKU_sel.meas[0]:null;
-    tag.textContent=(p.k?p.k:'吸い付きなし')+(first?'　'+fmt(Math.hypot(p[0]-first[0],p[1]-first[1]))+' mm':'');
+    var M=KAKU_sel.meas,first=(CH||M.length===1)&&M.length?M[M.length-1]:null,tot=CH?total(M):0;
+    tag.textContent=(p.k?p.k:'吸い付きなし')+(first?'　'+fmt(Math.hypot(p[0]-first[0],p[1]-first[1]))+' mm':'')+(CH&&M.length>1?'（合計 '+fmt(tot+Math.hypot(p[0]-first[0],p[1]-first[1]))+'）':'');
     tag.style.left=(lx+84)+'px';tag.style.transform='translateX(-50%)';tag.style.top=(ly+174)+'px';tag.classList.add('on')}
   function hide(){if(lp){lp.classList.remove('on');tag.classList.remove('on')}}
   function inPlan(e){var v=$('pickView');return v&&v.contains(e.target)&&typeof KAKU_mode!=='undefined'&&KAKU_mode==='measure'&&typeof KAKU_plan!=='undefined'&&KAKU_plan}
@@ -2420,17 +2427,42 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
     e.preventDefault();e.stopPropagation();L.x=t.clientX;L.y=t.clientY;show(L.x,L.y)},{capture:true,passive:false});
   function end(e){clearTimeout(T);if(!L)return;var was=L;L=null;if(!was.on)return;e.preventDefault();e.stopPropagation();hide();
     if(e.type==='touchcancel'||!was.p)return;var p=was.p;
-    KAKU_sel.meas=KAKU_sel.meas.length>=2?[p]:KAKU_sel.meas.concat([p]);try{KAKU_noClickUntil=Date.now()+600}catch(_){}KAKU_renderEditor()}
+    addPt(p);try{KAKU_noClickUntil=Date.now()+600}catch(_){}KAKU_renderEditor()}
   document.addEventListener('touchend',end,{capture:true,passive:false});
   document.addEventListener('touchcancel',end,{capture:true,passive:false});
 
+  function total(M){var t=0;for(var i=1;i<M.length;i++)t+=Math.hypot(M[i][0]-M[i-1][0],M[i][1]-M[i-1][1]);return t}
+  /* 累進の時は、タップで点をどんどん足す */
+  if(typeof window.KAKU_tap==='function'){var tp=window.KAKU_tap;window.KAKU_tap=function(ev){
+    if(typeof KAKU_mode==='undefined'||KAKU_mode!=='measure'||!CH)return tp.apply(this,arguments);
+    if(Date.now()<KAKU_pinchUntil)return;var svg=ev.currentTarget,m=svg.getScreenCTM();if(!m)return;var pt=new DOMPoint(ev.clientX,ev.clientY).matrixTransform(m.inverse());
+    var p=KAKU_snap(pt.x,-pt.y,16/Math.abs(m.a));addPt(p);KAKU_renderEditor()}}
   /* ---------- 測った長さの表示：距離・水平・垂直・角度（mm） ---------- */
   function panel(){if(typeof KAKU_mode==='undefined'||KAKU_mode!=='measure')return;var box=$('kakuPlan');if(!box)return;
     var bar=box.querySelector('.panel2 .pickbar');if(!bar)return;var m=KAKU_sel.meas,p=m[0],q=m[1];
-    if(!p){bar.innerHTML='<b>測りたい所の1か所目をタップしてください。長押しすると指の所が大きく見えて、線の端や交点に吸い付きます。</b>';return}
-    if(!q){bar.innerHTML='<b>2か所目をタップしてください（'+(p.k?p.k+'に吸い付き':'吸い付きなし')+'）</b><div class="kxmeasbtn"><button type="button" class="btn light" id="kxMeasClr">置き直す</button></div>';}
+    var ctl='<div class="kxmeasbtn" style="margin-bottom:6px"><div class="seg2"><button type="button" class="'+(CH?'':'on')+'" data-ch="0">2点で測る</button><button type="button" class="'+(CH?'on':'')+'" data-ch="1">累進（続けて足す）</button></div><button type="button" class="btn light" id="kxSnapBtn">吸着 '+lvName()+'</button></div>';
+    var wire=function(){[].forEach.call(bar.querySelectorAll('[data-ch]'),function(b){b.onclick=function(){CH=b.dataset.ch==='1';try{localStorage.setItem('kaku-meas-chain',CH?'1':'0')}catch(_){}KAKU_sel.meas=[];KAKU_renderEditor()}});
+      var sb=$('kxSnapBtn');if(sb)sb.onclick=function(){var i=LV.findIndex(function(l){return l[0]===lv});lv=LV[(i+1)%LV.length][0];try{localStorage.setItem('kaku-snap',lv)}catch(_){}toast('吸着の強さ：'+lvName());KAKU_renderEditor()}};
+    [].forEach.call(box.querySelectorAll('*'),function(el){if(el.children.length===0&&/^2か所タップすると、その間の長さが出ます。?$/.test(el.textContent.trim()))el.textContent=CH?'点を続けてタップすると、長さを足していきます':'2か所タップすると、その間の長さが出ます'});
+    if(CH){var svg0=$('planSvg');[].forEach.call(box.querySelectorAll('.pmeas,.pmeasl'),function(el){el.remove()});
+      var tot=total(m),last=m.length>1?Math.hypot(m[m.length-1][0]-m[m.length-2][0],m[m.length-1][1]-m[m.length-2][1]):0;
+      bar.innerHTML=ctl+(m.length<2?'<b>'+(m.length?'次の点をタップしてください。何点でも続けて足せます。':'1点目をタップしてください。長押しすると指の所が大きく見えます。')+'</b>':
+        '<b>累進　合計 '+fmt(tot)+' mm（'+(m.length-1)+' 区間）</b><div class="kxmeas"><div><small>合計</small><b>'+fmt(tot)+'</b></div><div><small>最後の区間</small><b>'+fmt(last)+'</b></div><div><small>点の数</small><b>'+m.length+'</b></div></div>')+
+        (m.length?'<div class="kxmeasbtn"><button type="button" class="btn light" id="kxMeasClr">置き直す</button><button type="button" class="btn light" id="kxMeasBack">1点戻す</button></div>':'');
+      wire();
+      var c=$('kxMeasClr');if(c)c.onclick=function(){KAKU_sel.meas=[];KAKU_renderEditor()};
+      var bk=$('kxMeasBack');if(bk)bk.onclick=function(){KAKU_sel.meas=KAKU_sel.meas.slice(0,-1);KAKU_renderEditor()};
+      if(svg0&&m.length){var unit=1;try{unit=1/Math.abs(svg0.getScreenCTM().a)}catch(_){}var NS='http://www.w3.org/2000/svg',g=document.createElementNS(NS,'g');
+        if(m.length>1){var pa=document.createElementNS(NS,'path');pa.setAttribute('class','pmeas');pa.setAttribute('d',m.map(function(pt,i){return(i?'L':'M')+pt[0]+' '+(-pt[1])}).join(''));g.appendChild(pa)}
+        m.forEach(function(pt,i){var c2=document.createElementNS(NS,'circle');c2.setAttribute('cx',pt[0]);c2.setAttribute('cy',-pt[1]);c2.setAttribute('r',(pt.k?9:5)*unit);c2.setAttribute('class',pt.k?'kxsnap':'');if(!pt.k)c2.setAttribute('fill','#20221f');g.appendChild(c2);
+          if(i){var a2=m[i-1],t=document.createElementNS(NS,'text');t.setAttribute('class','pmeasl');t.setAttribute('x',(a2[0]+pt[0])/2);t.setAttribute('y',-(a2[1]+pt[1])/2);t.setAttribute('font-size',14*unit);t.textContent=fmt(Math.hypot(pt[0]-a2[0],pt[1]-a2[1]));g.appendChild(t)}});
+        svg0.appendChild(g)}
+      return}
+    if(!p){bar.innerHTML=ctl+'<b>測りたい所の1か所目をタップしてください。長押しすると指の所が大きく見えて、線の端や交点に吸い付きます。</b>';wire();return}
+    if(!q){bar.innerHTML=ctl+'<b>2か所目をタップしてください（'+(p.k?p.k+'に吸い付き':'吸い付きなし')+'）</b><div class="kxmeasbtn"><button type="button" class="btn light" id="kxMeasClr">置き直す</button></div>';}
     else{var dx=q[0]-p[0],dy=q[1]-p[1],ang=Math.atan2(Math.abs(dy),Math.abs(dx))*180/Math.PI;
-      bar.innerHTML='<b>'+(p.k||'点')+' → '+(q.k||'点')+'　'+fmt(Math.hypot(dx,dy))+' mm</b><div class="kxmeas"><div><small>距離</small><b>'+fmt(Math.hypot(dx,dy))+'</b></div><div><small>水平</small><b>'+fmt(Math.abs(dx))+'</b></div><div><small>垂直</small><b>'+fmt(Math.abs(dy))+'</b></div><div><small>角度</small><b>'+ang.toFixed(1)+'°</b></div></div><div class="kxmeasbtn"><button type="button" class="btn light" id="kxMeasClr">置き直す</button><button type="button" class="btn light" id="kxMeasBack">1点戻す</button></div>'}
+      bar.innerHTML=ctl+'<b>'+(p.k||'点')+' → '+(q.k||'点')+'　'+fmt(Math.hypot(dx,dy))+' mm</b><div class="kxmeas"><div><small>距離</small><b>'+fmt(Math.hypot(dx,dy))+'</b></div><div><small>水平</small><b>'+fmt(Math.abs(dx))+'</b></div><div><small>垂直</small><b>'+fmt(Math.abs(dy))+'</b></div><div><small>角度</small><b>'+ang.toFixed(1)+'°</b></div></div><div class="kxmeasbtn"><button type="button" class="btn light" id="kxMeasClr">置き直す</button><button type="button" class="btn light" id="kxMeasBack">1点戻す</button></div>'}
+    wire();
     var c=$('kxMeasClr');if(c)c.onclick=function(){KAKU_sel.meas=[];KAKU_renderEditor()};
     var b=$('kxMeasBack');if(b)b.onclick=function(){KAKU_sel.meas=KAKU_sel.meas.slice(0,1);KAKU_renderEditor()};
     var lab=box.querySelector('.pmeasl');if(lab&&q)lab.textContent=fmt(Math.hypot(q[0]-p[0],q[1]-p[1]))+' mm';
