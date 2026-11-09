@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-10.2";
+var KAKU_VERSION="2026-11-10.3";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -2490,7 +2490,14 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
     if(V.plan!==KAKU_plan){V.plan=KAKU_plan;V.s=1;V.cx=b[0]+b[2]/2;V.cy=b[1]+b[3]/2}
     var maxH=Math.round(window.innerHeight*0.56),natH=Math.round(v.clientWidth*b[3]/b[2]);v.style.height=Math.max(220,Math.min(maxH,natH))+'px';
     var w=b[2]/V.s,h=b[3]/V.s;svg.setAttribute('viewBox',(V.cx-w/2)+' '+(V.cy-h/2)+' '+w+' '+h);
+    hits(svg);
     var zb=document.querySelectorAll('#kakuPlan .pickzoom button');if(zb.length>=2){zb[0].disabled=V.s<=1.001;zb[1].disabled=V.s>=40}}
+  /* 電気の丸：指で触りやすいように、見えない大きめの当たりを付ける（拡大しても指の大きさは同じ） */
+  function canDrag(g){try{return KAKU_mode==='elec'&&g&&(g.dataset.k!=null?KF.tool==='fix':KF.tool==='place'&&KP.where==='pt')}catch(e){return false}}
+  function hits(svg){if(typeof KAKU_mode==='undefined'||KAKU_mode!=='elec')return;var m=svg.getScreenCTM();if(!m)return;var unit=1/Math.abs(m.a),NS='http://www.w3.org/2000/svg';
+    [].forEach.call(svg.querySelectorAll('g[data-pid]'),function(g){if(!canDrag(g))return;var h=g.querySelector(':scope > .kxhit');
+      if(!h){var bb;try{bb=g.getBBox()}catch(e){return}h=document.createElementNS(NS,'circle');h.setAttribute('class','kxhit');h.setAttribute('cx',bb.x+bb.width/2);h.setAttribute('cy',bb.y+bb.height/2);h.setAttribute('fill','transparent');h.setAttribute('pointer-events','all');g.insertBefore(h,g.firstChild)}
+      h.setAttribute('r',22*unit)})}
   function clamp(){var b=V.base;if(!b)return;V.s=Math.min(40,Math.max(1,V.s));var w=b[2]/V.s,h=b[3]/V.s;
     V.cx=Math.min(b[0]+b[2]-w/2+w*0.4,Math.max(b[0]+w/2-w*0.4,V.cx));V.cy=Math.min(b[1]+b[3]-h/2+h*0.4,Math.max(b[1]+h/2-h*0.4,V.cy))}
   /* 画面の点 → 図の座標（viewBox の座標） */
@@ -2507,7 +2514,7 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
   function onPlan(e){var v=$('pickView');return v&&v.contains(e.target)}
   function suppress(){try{KAKU_pinchUntil=Date.now()+400}catch(_){}try{KAKU_noClickUntil=Date.now()+400}catch(_){}}
   document.addEventListener('touchstart',function(e){if(!onPlan(e))return;
-    if(e.target.closest&&e.target.closest('[data-pid],.kpdrag')){T=null;return}
+    var g=e.target.closest&&e.target.closest('[data-pid]');if(g&&canDrag(g)){T=null;return}
     if(e.touches.length===1){var t=e.touches[0];T={n:1,x:t.clientX,y:t.clientY,moved:false}}
     else if(e.touches.length===2){var a=e.touches[0],b=e.touches[1];T={n:2,d:Math.max(10,Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY)),mx:(a.clientX+b.clientX)/2,my:(a.clientY+b.clientY)/2,moved:true};e.preventDefault()}},{passive:false});
   document.addEventListener('touchmove',function(e){if(!T)return;var lp=$('kxLoupe');if(lp&&lp.classList.contains('on')){T=null;return}
@@ -2523,7 +2530,7 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
   document.addEventListener('touchend',end,{passive:true});document.addEventListener('touchcancel',end,{passive:true});
   /* パソコン：ドラッグで動かす・ホイールで拡大 */
   var M=null;
-  document.addEventListener('mousedown',function(e){if(!onPlan(e)||e.button!==0)return;if(e.target.closest&&e.target.closest('[data-pid],.kpdrag'))return;M={x:e.clientX,y:e.clientY,moved:false}});
+  document.addEventListener('mousedown',function(e){if(!onPlan(e)||e.button!==0)return;var g=e.target.closest&&e.target.closest('[data-pid]');if(g&&canDrag(g))return;M={x:e.clientX,y:e.clientY,moved:false}});
   document.addEventListener('mousemove',function(e){if(!M)return;var svg=$('planSvg');if(!svg)return;var dx=e.clientX-M.x,dy=e.clientY-M.y;if(!M.moved&&Math.hypot(dx,dy)<5)return;M.moved=true;
     var unit=(V.base[2]/V.s)/svg.clientWidth;V.cx-=dx*unit;V.cy-=dy*unit;M.x=e.clientX;M.y=e.clientY;clamp();apply();$('pickView').classList.add('kxpan')});
   document.addEventListener('mouseup',function(){if(M&&M.moved)suppress();M=null;var v=$('pickView');if(v)v.classList.remove('kxpan')});
