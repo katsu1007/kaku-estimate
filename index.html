@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-09.3";
+var KAKU_VERSION="2026-11-09.4";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -1666,14 +1666,15 @@ function KF_dotReset(){const p=(current.places||[]).find(q=>q.id===KF.dot.pid);i
 
 /* ===================== 画面の明るさ（自動・明るい・暗い）と、電気モードの器具カード・詳細 ===================== */
 const KTH={hl:'',sel:'',grp:''};
-function KT_mode(){try{return localStorage.getItem('kaku-theme')||'auto'}catch(e){return'auto'}}
+/* 暗い画面は見にくかったのでやめた（いつも明るい画面）。暗い画面の色は kaku_theme.css に残してある */
+function KT_mode(){return'light'}
 function KT_apply(){const m=KT_mode(),dark=m==='dark'||(m==='auto'&&window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches);
   document.documentElement.setAttribute('data-theme',dark?'dark':'light');const mt=document.querySelector('meta[name=theme-color]');if(mt)mt.setAttribute('content',dark?'#0d1119':'#f4f1eb');
   const b=document.getElementById('ktThemeBtn');if(b){b.textContent=m==='auto'?'◐':m==='dark'?'☾':'☀';b.setAttribute('aria-label','画面の明るさ：'+({auto:'iPhoneの設定に合わせる',dark:'暗い',light:'明るい'})[m])}}
 function KT_cycle(){const o=['auto','dark','light'],m=o[(o.indexOf(KT_mode())+1)%3];try{localStorage.setItem('kaku-theme',m)}catch(e){}KT_apply();
   toast('画面の明るさ：'+({auto:'iPhoneの設定に合わせる',dark:'暗い画面',light:'明るい画面'})[m])}
 (function(){KT_apply();try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',KT_apply)}catch(e){}
-  const add=()=>{const t=document.querySelector('.top .topright');if(!t||document.getElementById('ktThemeBtn'))return;const b=document.createElement('button');b.id='ktThemeBtn';b.className='btn light ktbtn';b.onclick=KT_cycle;t.insertBefore(b,t.querySelector('.menubtn'));KT_apply()};
+  const add=()=>{return;const t=document.querySelector('.top .topright');if(!t||document.getElementById('ktThemeBtn'))return;const b=document.createElement('button');b.id='ktThemeBtn';b.className='btn light ktbtn';b.onclick=KT_cycle;t.insertBefore(b,t.querySelector('.menubtn'));KT_apply()};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',add);else add();setTimeout(add,500)})();
 
 /* 器具の部門（照明・スイッチ・コンセントなど） */
