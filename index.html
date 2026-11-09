@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-09.13";
+var KAKU_VERSION="2026-11-09.14";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -2195,6 +2195,31 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
     window.openProject=function(){var r=op.apply(this,arguments);try{fill()}catch(x){console.error(x)}return r};
   }
   function init(){build();fill()}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();
+</script>
+
+<style id="kaku-v14">
+/* ==== 2026-11-09.14 編集中の明細を目立たせる・掛け率の影響をその場で表示 ==== */
+#items tr:focus-within td{background:rgba(210,80,42,.10)}
+@media(max-width:760px){#items tr:focus-within{outline:3px solid var(--orange,#d2502a);outline-offset:-1px;border-radius:12px}}
+#kxRatePv{margin-top:10px;padding:10px 12px;border-radius:10px;background:rgba(210,80,42,.08);font-size:14px;line-height:1.7}
+#kxRatePv b{font-size:16px}
+</style>
+<script id="kaku-v14-js">
+(function(){
+  function pv(){
+    var card=document.getElementById('kxCard'),c=document.getElementById('kxCost'),p=document.getElementById('kxProfit');if(!card||!c||!p)return;
+    var box=document.getElementById('kxRatePv');
+    if(!box){box=document.createElement('div');box.id='kxRatePv';box.setAttribute('aria-live','polite');card.appendChild(box)}
+    var ct=c.querySelector('b')?c.querySelector('b').textContent:c.textContent,pt=p.querySelector('b')?p.querySelector('b').textContent:p.textContent;
+    box.innerHTML='この案件の今の金額<br>原価 <b>'+ct+'</b>　粗利 <b>'+pt+'</b><br><span class="mini">掛け率を変えると、ここがすぐに変わります。</span>';
+  }
+  function init(){
+    var c=document.getElementById('kxCost'),p=document.getElementById('kxProfit');
+    if(!c||!p){setTimeout(init,500);return}
+    var mo=new MutationObserver(pv);[c,p].forEach(function(e){mo.observe(e,{childList:true,subtree:true,characterData:true})});pv();
+  }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();
 </script>
