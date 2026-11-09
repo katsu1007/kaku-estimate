@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-09.17";
+var KAKU_VERSION="2026-11-09.18";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -2264,6 +2264,57 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
   }
   function init(){var st=$('drawingStatus');if(!st)return;new MutationObserver(function(){if(/区画を見つけました/.test(st.textContent))check();else if(/中…$/.test(st.textContent))show(null)}).observe(st,{childList:true,characterData:true,subtree:true})}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();
+</script>
+
+<style id="kaku-v18">
+/* ==== 2026-11-09.18 図面の器具の数を明細に入れる ==== */
+#kxFix{display:none;margin:12px 0 0;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--white,#fff)}
+#kxFix.on{display:block}
+#kxFix h4{margin:0 0 4px;font-size:16px}
+#kxFix table{width:100%;border-collapse:collapse;margin-top:8px}
+#kxFix td{padding:6px 4px;border-top:1px solid var(--line);vertical-align:middle;font-size:14px}
+#kxFix td.n{white-space:nowrap}
+#kxFix select{width:100%;min-height:42px;border:1px solid var(--line);border-radius:10px;padding:0 8px;font-size:15px;background:var(--white,#fff);color:inherit}
+#kxFix input[type=number]{width:72px;min-height:42px;border:1px solid var(--line);border-radius:10px;padding:0 8px;font-size:16px;text-align:right;background:var(--white,#fff);color:inherit}
+#kxFix .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+@media(max-width:560px){#kxFix tr{display:grid;grid-template-columns:1fr auto;gap:6px}#kxFix td{border:0;padding:2px 0}#kxFix tr{border-top:1px solid var(--line);padding:8px 0}#kxFix td.sel{grid-column:1/-1}}
+</style>
+<script id="kaku-v18-js">
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var ORDER=['toilet','urinal','counter','sink','bath','kitchen'];
+  var NAME={toilet:'便器',urinal:'小便器',counter:'洗面（カウンターのボウル）',sink:'手洗器・流し',bath:'浴槽',kitchen:'キッチン'};
+  var DEF={toilet:'fx-toilet',urinal:'q-ur',counter:'q-hw',sink:'q-hw',bath:'fx-ub',kitchen:'fx-kitchen'};
+  function cur(){return typeof current!=='undefined'&&current?current:null}
+  function fx(){return typeof KAKU_fix!=='undefined'&&KAKU_fix&&KAKU_fix.fx?KAKU_fix.fx:null}
+  function counts(){var c={},cnt={};(fx()||[]).forEach(function(x){if(!NAME[x.t])return;cnt[x.t]=(cnt[x.t]||0)+1;c[x.t]=(c[x.t]||0)+(x.t==='counter'?Math.max(1,+x.bw||1):1)});return{q:c,n:cnt}}
+  function items(){try{return engine.catalogAll().filter(function(g){return g.key==='fix'||g.key==='plumb'}).flatMap(function(g){return g.items})}catch(e){return[]}}
+  function render(){
+    var st=$('drawingStatus');if(!st)return;var b=$('kxFix');
+    if(!b){b=document.createElement('div');b.id='kxFix';var after=$('kxBooth')||st;after.parentNode.insertBefore(b,after.nextSibling)}
+    var p=cur(),f=fx();if(!p||!f||!f.length||typeof engine==='undefined'||!engine){b.classList.remove('on');return}
+    var c=counts(),types=ORDER.filter(function(t){return c.q[t]});if(!types.length){b.classList.remove('on');return}
+    var map=p.fixMap||{},list=items(),inEst=(p.picks||[]).some(function(x){return x.fx});
+    var opt=function(sel){return '<option value="">入れない</option>'+list.map(function(i){return '<option value="'+i.id+'"'+(i.id===sel?' selected':'')+'>'+esc(i.name+(i.spec?' '+i.spec:''))+'</option>'}).join('')};
+    b.innerHTML='<h4>図面の器具の数</h4><p class="mini">図面から数えた器具です。入れる品目と数を確かめてから「明細に入れる」を押してください。図面で見つからない器具は、数を直すか「一覧から追加」で入れてください。</p><table>'+
+      types.map(function(t){var m=map[t]||{},sel=m.item!==undefined?m.item:DEF[t],q=m.qty!=null?m.qty:c.q[t];
+        return '<tr data-t="'+t+'"><td class="n"><b>'+NAME[t]+'</b><br><span class="mini">図面で '+c.q[t]+(t==='counter'?' 個（カウンター '+c.n[t]+' 台）':' 個')+'</span></td><td><input type="number" min="0" inputmode="numeric" value="'+q+'" aria-label="'+NAME[t]+'の数"></td><td class="sel"><select aria-label="'+NAME[t]+'に入れる品目">'+opt(sel)+'</select></td></tr>'}).join('')+
+      '</table><div class="acts"><button type="button" class="btn orange" id="kxFixGo">'+(inEst?'明細に入れ直す':'明細に入れる')+'</button>'+(inEst?'<button type="button" class="btn light" id="kxFixOut">明細から外す</button>':'')+'</div>';
+    b.classList.add('on');
+    [].forEach.call(b.querySelectorAll('tr[data-t]'),function(tr){var t=tr.dataset.t,q=tr.querySelector('input'),s=tr.querySelector('select');
+      var put=function(){p.fixMap=p.fixMap||{};p.fixMap[t]={item:s.value,qty:Math.max(0,+q.value||0)};save()};q.onchange=put;s.onchange=put});
+    $('kxFixGo').onclick=function(){
+      p.picks=(p.picks||[]).filter(function(x){return!x.fx});var add=0;
+      [].forEach.call(b.querySelectorAll('tr[data-t]'),function(tr){var t=tr.dataset.t,id=tr.querySelector('select').value,q=Math.max(0,+tr.querySelector('input').value||0);if(!id||!q)return;
+        var ex=p.picks.find(function(x){return x.fx&&x.item===id});if(ex)ex.qty+=q;else p.picks.push({item:id,qty:q,fx:t});add++});
+      save();refreshEngineRows();render();toast(add?'図面の器具を明細に入れました':'入れる器具がありません');
+    };
+    var o=$('kxFixOut');if(o)o.onclick=function(){p.picks=(p.picks||[]).filter(function(x){return!x.fx});save();refreshEngineRows();render();toast('図面の器具を明細から外しました')};
+  }
+  window.KAKU_renderFix=render;
+  if(typeof window.KAKU_renderEditor==='function'){var re=window.KAKU_renderEditor;window.KAKU_renderEditor=function(){var r=re.apply(this,arguments);try{render()}catch(e){console.error(e)}return r}}
+  if(typeof window.openProject==='function'){var op=window.openProject;window.openProject=function(){var r=op.apply(this,arguments);setTimeout(function(){try{render()}catch(e){}},300);return r}}
 })();
 </script>
 
