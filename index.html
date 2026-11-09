@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-09.5";
+var KAKU_VERSION="2026-11-09.6";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -1761,6 +1761,43 @@ if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
   .mobilebar button.kux-on{color:var(--orange);background:var(--orange2)}
   .stat label{font-size:11px}
   .tab{padding:12px 12px}
+}
+
+/* ==== 2026-11-09.6 見積明細：スマホでは1行を1枚のカードにして横にはみ出さない ==== */
+@media(max-width:760px){
+  .tablewrap{overflow:visible}
+  .line-table{min-width:0!important;display:block;font-size:14px}
+  .line-table thead{display:none}
+  .line-table tbody{display:flex;flex-direction:column;gap:10px}
+  .line-table tr{display:grid;grid-template-columns:minmax(0,1fr) 68px minmax(0,1fr);grid-template-areas:"d d x" "q u p" "a a a";gap:8px;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--white)}
+  .line-table tr.pick{border-left:5px solid var(--green)}
+  .line-table tr.extra{border-left:5px solid var(--orange)}
+  .line-table td{display:block;padding:0;border:0!important;min-width:0}
+  .line-table tr.pick td:first-child{border-left:0!important}
+  .line-table td:nth-child(1){grid-area:d;align-self:center}
+  .line-table td:nth-child(1) .desc{font-size:15px;font-weight:750}
+  .line-table td:nth-child(2){grid-area:q}
+  .line-table td:nth-child(3){grid-area:u}
+  .line-table td:nth-child(4){grid-area:p}
+  .line-table td:nth-child(5){grid-area:a}
+  .line-table td:nth-child(6){grid-area:x;justify-self:end;align-self:start}
+  .line-table td[colspan]{grid-column:1/-1;grid-row:auto}
+  .line-table td:nth-child(2)::before,.line-table td:nth-child(3)::before,.line-table td:nth-child(4)::before{display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:4px}
+  .line-table td:nth-child(2)::before{content:"数量"}
+  .line-table td:nth-child(3)::before{content:"単位"}
+  .line-table td:nth-child(4)::before{content:"単価（円）"}
+  .line-table td[colspan]::before{content:none}
+  .line-table td:nth-child(3){font-weight:700}
+  .line-table td:nth-child(3):not(:has(input)){line-height:42px}
+  .line-table td:nth-child(3)::before{line-height:normal}
+  .line-table td:nth-child(2):has(input[disabled])::before{content:"数量（自動計算）"}
+  .line-table input,.line-table .num,.line-table input.unit,.line-table input.desc{width:100%;min-width:0;font-size:16px}
+  .line-table .num{text-align:right}
+  .line-table input:not([disabled]){border:1px solid var(--line);background:#fff}
+  .line-table input[disabled]{background:#ece9e1;color:var(--ink);opacity:1;-webkit-text-fill-color:var(--ink)}
+  .line-table td.amount{display:flex;justify-content:space-between;align-items:baseline;border-top:1px dashed var(--line)!important;padding-top:9px;font-size:18px}
+  .line-table td.amount::before{content:"金額";font-size:12px;font-weight:700;color:var(--muted)}
+  .line-table td:nth-child(6) .btn.ghost{min-width:44px;min-height:44px;font-size:20px;border:1px solid var(--line);border-radius:10px;background:var(--white);color:var(--muted)}
 }
 </style>
 <script id="kaku-ux-js">
