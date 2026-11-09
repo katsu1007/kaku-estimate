@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-09.4";
+var KAKU_VERSION="2026-11-09.5";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -1717,4 +1717,106 @@ if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
 }
 </script>
 <div class="pv" id="pv" role="dialog" aria-modal="true" aria-label="帳票プレビュー"><div class="pvbar"><b id="pvTitle">見積書</b><button class="btn orange" onclick="KAKU_doPrint()">印刷・PDF保存</button><button class="btn light" onclick="KAKU_closePrint()">閉じる</button></div><div class="pvnote">「印刷・PDF保存」→ 印刷画面で共有ボタン →「ファイルに保存」でPDFになります。</div><div class="pvbody" id="pvBody"><div class="pvpage" id="pvPage"><iframe id="pvFrame" title="帳票プレビュー" scrolling="no"></iframe></div></div></div><div id="printRoot"></div>
+<style id="kaku-ux">
+/* ==== 2026-11-09.5 見やすさ・押しやすさの改善（Gemini・ChatGPT・Perplexityの共通意見） ==== */
+/* 文字と枠線の色を濃くして、屋外でも読みやすく */
+:root{--muted:#55574f;--line:#d3d0c6;--orange:#d2502a}
+.line-table td{border-bottom-color:#e2dfd7}
+/* 小さすぎる文字を大きく */
+.mini,.footnote,.worksum,.stat small,.project p,.aside-note,.pill{font-size:12px}
+.field label,.stat label,.totalbox label,.ktlen,.kpform label,.kewire label,.libform label,.hwhere{font-size:12px}
+.roomfields label,.workgrid label,.wform label,.hgrid label{font-size:11px}
+.line-table th{font-size:11px}
+.line-table{font-size:13px}
+.tag,.tagplan{font-size:11px}
+.tab{font-size:13px}
+.totalrow,.ktotal .kt-l,.ktotal .kt-s{font-size:12px}
+.chip small,.libname small,.ktcard small{font-size:11px}
+/* ボタン・入力欄を押しやすく（手袋でも） */
+.btn{min-height:44px}
+.btn.ghost{min-height:40px}
+.mode{min-height:44px;font-size:13px}
+.line-table input{min-height:42px}
+.field input,.field select,.cellinput{min-height:44px}
+.roomfields input,.workgrid select,.workgrid input,.wform input,.wform select,.hgrid input,.hgrid select,.wrow select,.wrow input{min-height:42px}
+.kttab,.libchip{min-height:40px}
+.pickzoom .btn{min-width:48px}
+/* 図面：いま選んでいるモードをはっきり */
+.modes .mode.on{background:var(--orange);color:#fff;box-shadow:0 2px 6px #d2502a55}
+/* 見積明細の金額を見やすく */
+.line-table .amount{font-size:14px}
+/* 保存の状態 */
+.kux-saved{display:inline-flex;align-items:center;gap:5px;font-weight:700}
+.kux-saved::before{content:"";width:8px;height:8px;border-radius:50%;background:#3d8f5a;flex:none}
+.kux-saved.err{color:#c0281b}.kux-saved.err::before{background:#c0281b}
+.brand small.kux-saved{font-size:11px;letter-spacing:.02em;color:var(--muted)}
+.brand small.kux-saved.err{color:#c0281b}
+/* 図面の読み込み中 */
+.kux-busy{display:flex!important;align-items:center;gap:10px;font-size:14px!important;font-weight:700;color:var(--ink)!important;background:var(--orange2);border:1px solid #f1c5b5;border-radius:10px;padding:12px 14px}
+.kux-busy::before{content:"";width:20px;height:20px;border-radius:50%;border:3px solid #f1c5b5;border-top-color:var(--orange);animation:kuxspin .8s linear infinite;flex:none}
+@keyframes kuxspin{to{transform:rotate(360deg)}}
+@media(max-width:760px),(max-height:500px) and (orientation:landscape){
+  /* 下のメニュー：文字を大きく、いまの場所を色で */
+  .mobilebar button{font-size:11px;min-height:48px;min-width:64px;font-weight:700;position:relative;border-radius:10px;padding:4px 6px}
+  .mobilebar button.kux-on{color:var(--orange);background:var(--orange2)}
+  .stat label{font-size:11px}
+  .tab{padding:12px 12px}
+}
+</style>
+<script id="kaku-ux-js">
+/* ==== 2026-11-09.5 見やすさ・押しやすさの改善（既存の計算や保存の中身は変えない） ==== */
+(function(){
+  function hhmm(d){return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')}
+  /* ---- 保存した時刻を表示（保存に失敗したら赤で知らせる） ---- */
+  var lastOk=null;
+  function showSave(ok){
+    var pill=document.querySelector('.topright .pill');
+    var sm=document.querySelector('.brand small');
+    var txt=ok?('保存済み '+hhmm(lastOk)):'保存できませんでした';
+    if(pill){pill.textContent=ok?('この端末に自動保存 · '+hhmm(lastOk)):'⚠ 保存できませんでした';pill.classList.add('kux-saved');pill.classList.toggle('err',!ok)}
+    if(sm){sm.textContent=txt;sm.classList.add('kux-saved');sm.classList.toggle('err',!ok)}
+  }
+  if(typeof window.save==='function'){
+    var orig=window.save;
+    window.save=function(){
+      try{var r=orig.apply(this,arguments);lastOk=new Date();showSave(true);return r}
+      catch(e){showSave(false);try{toast('保存できませんでした。容量がいっぱいの可能性があります')}catch(_){}throw e}
+    };
+  }
+  /* 開いた時：前回の保存データがあれば今の時刻ではなく「保存済み」とだけ出す */
+  function initSave(){
+    var sm=document.querySelector('.brand small'),pill=document.querySelector('.topright .pill');
+    if(sm){sm.textContent='この端末に自動保存';sm.classList.add('kux-saved')}
+    if(pill){pill.textContent='この端末に自動保存';pill.classList.add('kux-saved')}
+  }
+  /* ---- 図面を読んでいる間はくるくるを出す ---- */
+  function watchBusy(){
+    var st=document.getElementById('drawingStatus');if(!st)return;
+    var upd=function(){var t=st.textContent||'',was=st.classList.contains('kux-busy'),on=/中…$|中\.\.\.$|でいます…$/.test(t.trim());st.classList.toggle('kux-busy',on);if(on&&!was){try{st.scrollIntoView({block:'center',behavior:'smooth'})}catch(_){}}};
+    new MutationObserver(upd).observe(st,{childList:true,characterData:true,subtree:true});upd();
+  }
+  /* ---- 数字の入力欄はタップで全選択（すぐ上書きできる） ---- */
+  document.addEventListener('focusin',function(e){
+    var el=e.target;if(!el||el.tagName!=='INPUT')return;
+    var t=(el.getAttribute('type')||'').toLowerCase(),im=(el.getAttribute('inputmode')||'').toLowerCase();
+    if(t==='number'||im==='decimal'||im==='numeric'){setTimeout(function(){try{el.select()}catch(_){}} ,0)}
+  });
+  /* ---- 下のメニュー：いまいる画面を色で示す ---- */
+  function syncNav(){
+    var bar=document.querySelector('.mobilebar');if(!bar)return;
+    var b=bar.querySelectorAll('button');if(b.length<4)return;
+    var ws=document.querySelector('.workspace'),inWs=ws&&ws.classList.contains('show');
+    var dr=document.getElementById('panel-drawing'),onDr=dr&&dr.classList.contains('on');
+    var idx=!inWs?0:(onDr?2:1);
+    b.forEach(function(x,i){x.classList.toggle('kux-on',i===idx)});
+  }
+  function watchNav(){
+    var mo=new MutationObserver(syncNav);
+    document.querySelectorAll('.workspace,.dash,.panel').forEach(function(el){mo.observe(el,{attributes:true,attributeFilter:['class']})});
+    syncNav();
+  }
+  function start(){initSave();watchBusy();watchNav()}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
+})();
+</script>
 </body></html>
