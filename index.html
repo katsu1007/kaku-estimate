@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-10.8";
+var KAKU_VERSION="2026-11-10.9";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -2717,6 +2717,7 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
 .kxsk .edges{font-size:14px;line-height:1.7;color:var(--muted)}
 .kxsk .edges b{color:inherit}
 .kxsk .lab{font-size:13px;color:var(--muted)}
+.kxsk svg .w.bad{stroke:#9b3528}
 .kxsk svg .w{stroke:#20221f;stroke-width:2.5px;vector-effect:non-scaling-stroke;fill:rgba(210,80,42,.07)}
 .kxsk svg .cur{stroke:#d2502a;stroke-width:3px;vector-effect:non-scaling-stroke;fill:none}
 .kxsk svg .d{fill:#1f6fd1;font-weight:700;cursor:pointer}
@@ -2728,163 +2729,164 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
 .kxsk svg .corner.sel{fill:#d2502a;stroke:#d2502a}
 </style>
 <script id="kaku-v24-js">
-/* ==== 寸法で間取りを作る（手書きの図面から）：向きと長さで描く・写真から大まかな形を取って寸法で直す ==== */
+/* ==== 寸法で間取りを作る：写真・手で描く・向きと長さ。角は自由（直角にそろえない）、寸法は辺と角どうしの長さで決める ==== */
 (function(){
   var $=function(id){return document.getElementById(id)};
   var DIRS=[['↑',0,1],['→',1,0],['↓',0,-1],['←',-1,0]];
-  var S=null,E={dir:1,start:null,sel:null,tap:null},IMG=null;
+  var S=null,E={dir:1,start:null,sel:null,tap:null,pick:null},IMG=null;
   function cur(){return typeof current!=='undefined'&&current?current:null}
   function key(){return 'kaku-sketch-'+cur().id}
   function ikey(){return 'kaku-sketchimg-'+cur().id}
-  function load(){try{S=JSON.parse(localStorage.getItem(key())||'null')}catch(_){S=null}if(!S||!S.rooms)S={rooms:[],draft:null};
-    try{IMG=JSON.parse(localStorage.getItem(ikey())||'null')}catch(_){IMG=null}return S}
-  function store(){try{localStorage.setItem(key(),JSON.stringify(S))}catch(_){toast('この端末に保存できませんでした')}}
   function mm(v){return Math.round(v*1000).toLocaleString('ja-JP')}
   function area(P){var a=0;for(var i=0;i<P.length;i++){var p=P[i],q=P[(i+1)%P.length];a+=p[0]*q[1]-q[0]*p[1]}return Math.abs(a)/2}
   function peri(P){var s=0;for(var i=0;i<P.length;i++){var p=P[i],q=P[(i+1)%P.length];s+=Math.hypot(q[0]-p[0],q[1]-p[1])}return s}
+  function dist(a,b){return Math.hypot(b[0]-a[0],b[1]-a[1])}
   function walk(st,edges){var P=[st.slice()];edges.forEach(function(e){var a=P[P.length-1],D=DIRS[e.d];P.push([a[0]+D[1]*e.l,a[1]+D[2]*e.l])});return P}
-  /* 部屋の角：辺で持っている部屋は、辺から計算する */
-  function rpts(r){if(r.edges){var P=walk(r.start,r.edges);P.pop();return P}return r.pts}
+  /* 部屋：v＝角の位置、c＝寸法（a番の角とb番の角の長さ。隣どうしは辺、離れていれば角どうし） */
+  function migrate(r){if(r.v)return r;var P;if(r.edges){P=walk(r.start,r.edges);P.pop();r.c=r.edges.map(function(e,i){return{a:i,b:(i+1)%r.edges.length,l:e.l,ok:e.ok!==false}})}else{P=r.pts;r.c=P.map(function(p,i){return{a:i,b:(i+1)%P.length,l:dist(p,P[(i+1)%P.length]),ok:true}})}
+    r.v=P.map(function(p){return p.slice()});delete r.edges;delete r.start;delete r.pts;return r}
+  function load(){try{S=JSON.parse(localStorage.getItem(key())||'null')}catch(_){S=null}if(!S||!S.rooms)S={rooms:[],draft:null};S.rooms.forEach(migrate);
+    try{IMG=JSON.parse(localStorage.getItem(ikey())||'null')}catch(_){IMG=null}return S}
+  function store(){try{localStorage.setItem(key(),JSON.stringify(S))}catch(_){toast('この端末に保存できませんでした')}}
+  function rpts(r){return r.v}
+  function isEdge(r,a,b){var n=r.v.length;return (b===(a+1)%n)||(a===(b+1)%n)}
+  function edgeC(r,i){var n=r.v.length,j=(i+1)%n;for(var k=0;k<r.c.length;k++){var c=r.c[k];if((c.a===i&&c.b===j)||(c.a===j&&c.b===i))return c}var c2={a:i,b:j,l:dist(r.v[i],r.v[j]),ok:false};r.c.push(c2);return c2}
+  /* 寸法に合うように角を動かす（入れた寸法は強く、まだの辺は今の長さを弱く保つ）。1つ目の角と1本目の辺の向きは動かさない */
+  function solve(r){var V=r.v,n=V.length;if(n<3)return;r.c.forEach(function(c){if(!c.ok)c.l=dist(V[c.a],V[c.b])});
+    var p0=V[0].slice(),ang0=Math.atan2(V[1][1]-V[0][1],V[1][0]-V[0][0]);
+    for(var it=0;it<600;it++){r.c.forEach(function(c){var a=V[c.a],b=V[c.b],d=dist(a,b)||1e-9,k=c.ok?1:0.05,diff=(d-c.l)/d*0.5*k,dx=(b[0]-a[0])*diff,dy=(b[1]-a[1])*diff;a[0]+=dx;a[1]+=dy;b[0]-=dx;b[1]-=dy});
+      /* 位置と向きを戻す */
+      var ang=Math.atan2(V[1][1]-V[0][1],V[1][0]-V[0][0]),rot=ang0-ang,cs=Math.cos(rot),sn=Math.sin(rot),o=V[0].slice();
+      V.forEach(function(p){var x=p[0]-o[0],y=p[1]-o[1];p[0]=p0[0]+x*cs-y*sn;p[1]=p0[1]+x*sn+y*cs})}
+    V.forEach(function(p){p[0]=Math.round(p[0]*10000)/10000;p[1]=Math.round(p[1]*10000)/10000});
+    var bad=[];r.c.forEach(function(c){if(!c.ok)return;var d=dist(V[c.a],V[c.b]);if(Math.abs(d-c.l)>0.003)bad.push(mm(c.l)+' が '+mm(d))});r.bad=bad.length?bad.join('・')+' にしかなりません':'';return r}
   function pip(x,y,P){var c=false;for(var i=0,j=P.length-1;i<P.length;j=i++){var a=P[i],b=P[j];if((a[1]>y)!==(b[1]>y)&&x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])c=!c}return c}
-  function corners(){var o=[];S.rooms.forEach(function(r){rpts(r).forEach(function(p){if(!o.some(function(q){return Math.hypot(q[0]-p[0],q[1]-p[1])<1e-4}))o.push(p)})});return o}
+  function corners(){var o=[];S.rooms.forEach(function(r){rpts(r).forEach(function(p){if(!o.some(function(q){return dist(p,q)<1e-4}))o.push(p)})});return o}
   function draftPts(){var d=S.draft;if(!d)return[];return walk(d.start,d.edges)}
-  /* 閉じていない分を、まだ寸法を入れていない辺で合わせる */
-  function fixClose(r){var P=walk(r.start,r.edges),last=P[P.length-1],dx=last[0]-r.start[0],dy=last[1]-r.start[1],bad=[];
-    [[dx,1],[dy,2]].forEach(function(z){var g=z[0];if(Math.abs(g)<1e-6)return;var axis=z[1];
-      var cand=r.edges.map(function(e,i){return i}).filter(function(i){var e=r.edges[i];return !e.ok&&DIRS[e.d][axis]!==0}).reverse();
-      for(var k=0;k<cand.length;k++){var e=r.edges[cand[k]],nl=e.l-g*DIRS[e.d][axis];if(nl>0.01){e.l=Math.round(nl*1000)/1000;g=0;break}}
-      if(Math.abs(g)>1e-6)bad.push((axis===1?'横':'縦')+' '+mm(Math.abs(g))+' mm')});
-    /* 縦・横それぞれ、寸法を入れていない辺が1本だけなら、その長さは決まるので確定にする */
-    if(!bad.length)[1,2].forEach(function(axis){var u=r.edges.filter(function(e){return!e.ok&&DIRS[e.d][axis]!==0});if(u.length===1){u[0].ok=true;u[0].auto=true}});
-    r.bad=bad.length?bad.join('・'):'';return r}
   /* ---------- 絵 ---------- */
-  var VB=null;
   function draw(){var pv=$('kxSkPv');if(!pv)return;var all=[];S.rooms.forEach(function(r){all=all.concat(rpts(r))});var dp=draftPts();all=all.concat(dp);if(E.start)all.push(E.start);
     if(E.tap)all=all.concat(E.tap.pts);
-    if(IMG&&S.s&&(E.tap||!all.length)){all.push([0,0],[IMG.w*S.s,-IMG.h*S.s])}
+    var photo=IMG&&S.s;if(photo&&(E.tap||!all.length))all.push([0,0],[IMG.w*S.s,-IMG.h*S.s]);
+    if(E.tap&&!photo)all=all.concat([[0,0],[10,8]]);
     if(!all.length)all=[[0,0],[3.64,2.73]];
     var x0=Math.min.apply(null,all.map(function(p){return p[0]})),x1=Math.max.apply(null,all.map(function(p){return p[0]})),y0=Math.min.apply(null,all.map(function(p){return p[1]})),y1=Math.max.apply(null,all.map(function(p){return p[1]}));
     var w=Math.max(x1-x0,1.8),h=Math.max(y1-y0,1.8),m=Math.max(w,h)*0.15+0.4,fs=Math.max(w,h)/22;
-    VB=[x0-m,-(y1+m),w+2*m,h+2*m];
+    var VB=[x0-m,-(y1+m),w+2*m,h+2*m];
+    /* 角をタップしている間は、絵が動かないように最初の範囲のままにする */
+    if(E.tap){if(!E.tap.vb){if(!photo&&!S.rooms.length){VB=[-0.5,-8.5,11,9];fs=0.45}E.tap.vb=VB;E.tap.fs=fs}VB=E.tap.vb;fs=E.tap.fs}
     var o='<svg viewBox="'+VB.join(' ')+'" xmlns="http://www.w3.org/2000/svg">';
-    if(IMG&&S.s)o+='<image href="'+IMG.src+'" x="0" y="0" width="'+IMG.w*S.s+'" height="'+IMG.h*S.s+'" opacity="'+(E.tap?0.95:0.35)+'" preserveAspectRatio="none"/>';
-    function dims(P,closed,ri){var t='';var n=closed?P.length:P.length-1;var cx=0,cy=0;P.forEach(function(p){cx+=p[0];cy+=p[1]});cx/=P.length;cy/=P.length;var R=ri!=null?S.rooms[ri]:null;
-      for(var i=0;i<n;i++){var a=P[i],b=P[(i+1)%P.length],L=Math.hypot(b[0]-a[0],b[1]-a[1]);if(L<1e-6)continue;var mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2,nx=-(b[1]-a[1])/L,ny=(b[0]-a[0])/L;
-        if((mx+nx-cx)*(mx+nx-cx)+(my+ny-cy)*(my+ny-cy)<(mx-nx-cx)*(mx-nx-cx)+(my-ny-cy)*(my-ny-cy)){nx=-nx;ny=-ny}
-        var ox=mx+nx*fs*1.1,oy=my+ny*fs*1.1,dd=fs*0.3;if(S.rooms.some(function(r,k){return k!==ri&&(function(Q){return pip(ox,oy+dd,Q)||pip(ox,oy-dd,Q)||pip(ox+dd,oy,Q)||pip(ox-dd,oy,Q)})(rpts(r))})){nx=-nx;ny=-ny}
-        var tx=mx+nx*fs*1.15,ty=-(my+ny*fs*1.15),vert=Math.abs(b[0]-a[0])<1e-6,ed=R&&R.edges?R.edges[i]:null,sel=E.sel&&E.sel.r===ri&&E.sel.e===i;
-        if(sel)t+='<line x1="'+a[0]+'" y1="'+(-a[1])+'" x2="'+b[0]+'" y2="'+(-b[1])+'" stroke="#d2502a" stroke-width="7" vector-effect="non-scaling-stroke" opacity=".6"/>';
-        t+='<text class="d'+(ed&&!ed.ok?' tmp':'')+(sel?' sel':'')+'"'+(ed?' data-r="'+ri+'" data-e="'+i+'"':'')+' x="'+tx+'" y="'+ty+'" font-size="'+fs+'" text-anchor="middle" dominant-baseline="middle"'+(vert?' transform="rotate(-90 '+tx+' '+ty+')"':'')+'>'+(ed&&!ed.ok?'約':'')+mm(L)+'</text>'}return t}
-    S.rooms.forEach(function(r,ri){var P=rpts(r);o+='<polygon class="w" points="'+P.map(function(p){return p[0]+','+(-p[1])}).join(' ')+'"/>';
-      var c=P.reduce(function(s,p){return[s[0]+p[0]/P.length,s[1]+p[1]/P.length]},[0,0]);
-      o+='<text class="n" x="'+c[0]+'" y="'+(-c[1])+'" font-size="'+fs*1.15+'" text-anchor="middle" dominant-baseline="middle">'+esc(r.name)+'</text><text class="ar" x="'+c[0]+'" y="'+(-c[1]+fs*1.3)+'" font-size="'+fs*0.9+'" text-anchor="middle" fill="#55574f">'+area(P).toFixed(2)+'㎡</text>'+dims(P,true,ri)});
-    if(dp.length>1){o+='<polyline class="cur" points="'+dp.map(function(p){return p[0]+','+(-p[1])}).join(' ')+'"/>'+dims(dp,false,null)}
+    if(E.tap&&!photo){for(var gx=Math.floor(VB[0]);gx<=VB[0]+VB[2];gx++)o+='<line x1="'+gx+'" y1="'+VB[1]+'" x2="'+gx+'" y2="'+(VB[1]+VB[3])+'" stroke="#e5e2d8" stroke-width="1" vector-effect="non-scaling-stroke"/>';for(var gy=Math.floor(VB[1]);gy<=VB[1]+VB[3];gy++)o+='<line x1="'+VB[0]+'" y1="'+gy+'" x2="'+(VB[0]+VB[2])+'" y2="'+gy+'" stroke="#e5e2d8" stroke-width="1" vector-effect="non-scaling-stroke"/>'}
+    if(photo)o+='<image href="'+IMG.src+'" x="0" y="0" width="'+IMG.w*S.s+'" height="'+IMG.h*S.s+'" opacity="'+(E.tap?0.95:0.3)+'" preserveAspectRatio="none"/>';
+    function lab(a,b,txt,cls,attrs,cx,cy,ri,inside){var L=dist(a,b);if(L<1e-6)return'';var mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2,nx=-(b[1]-a[1])/L,ny=(b[0]-a[0])/L;
+      if((mx+nx-cx)*(mx+nx-cx)+(my+ny-cy)*(my+ny-cy)<(mx-nx-cx)*(mx-nx-cx)+(my-ny-cy)*(my-ny-cy)){nx=-nx;ny=-ny}if(inside){nx=-nx;ny=-ny}
+      var ox=mx+nx*fs*1.1,oy=my+ny*fs*1.1,dd=fs*0.3;if(!inside&&S.rooms.some(function(r,k){return k!==ri&&(function(Q){return pip(ox,oy+dd,Q)||pip(ox,oy-dd,Q)||pip(ox+dd,oy,Q)||pip(ox-dd,oy,Q)})(rpts(r))})){nx=-nx;ny=-ny}
+      var tx=mx+nx*fs*1.15,ty=-(my+ny*fs*1.15),an=Math.atan2(-(b[1]-a[1]),b[0]-a[0])*180/Math.PI;if(an>90)an-=180;if(an<-90)an+=180;
+      return '<text class="'+cls+'" '+attrs+' x="'+tx+'" y="'+ty+'" font-size="'+fs+'" text-anchor="middle" dominant-baseline="middle" transform="rotate('+an+' '+tx+' '+ty+')">'+txt+'</text>'}
+    S.rooms.forEach(function(r,ri){var P=rpts(r);o+='<polygon class="w'+(r.bad?' bad':'')+'" points="'+P.map(function(p){return p[0]+','+(-p[1])}).join(' ')+'"/>';
+      var cx=0,cy=0;P.forEach(function(p){cx+=p[0]/P.length;cy+=p[1]/P.length});
+      o+='<text class="n" x="'+cx+'" y="'+(-cy)+'" font-size="'+fs*1.15+'" text-anchor="middle" dominant-baseline="middle">'+esc(r.name)+'</text><text class="ar" x="'+cx+'" y="'+(-cy+fs*1.3)+'" font-size="'+fs*0.9+'" text-anchor="middle" fill="#55574f">'+area(P).toFixed(2)+'㎡</text>';
+      for(var i=0;i<P.length;i++){var c=edgeC(r,i),sel=E.sel&&E.sel.r===ri&&E.sel.c===r.c.indexOf(c);var a=P[i],b=P[(i+1)%P.length];
+        if(sel)o+='<line x1="'+a[0]+'" y1="'+(-a[1])+'" x2="'+b[0]+'" y2="'+(-b[1])+'" stroke="#d2502a" stroke-width="7" vector-effect="non-scaling-stroke" opacity=".6"/>';
+        o+=lab(a,b,(c.ok?'':'約')+mm(dist(a,b)),'d'+(c.ok?'':' tmp')+(sel?' sel':''),'data-r="'+ri+'" data-c="'+r.c.indexOf(c)+'"',cx,cy,ri,false)}
+      r.c.forEach(function(c,ci){if(isEdge(r,c.a,c.b))return;var a=P[c.a],b=P[c.b],sel=E.sel&&E.sel.r===ri&&E.sel.c===ci;
+        o+='<line x1="'+a[0]+'" y1="'+(-a[1])+'" x2="'+b[0]+'" y2="'+(-b[1])+'" stroke="'+(sel?'#d2502a':'#1f6fd1')+'" stroke-width="1.5" stroke-dasharray="6 4" vector-effect="non-scaling-stroke"/>'+
+          '<text class="d'+(sel?' sel':'')+'" data-r="'+ri+'" data-c="'+ci+'" x="'+(a[0]+(b[0]-a[0])*0.3)+'" y="'+(-(a[1]+(b[1]-a[1])*0.3))+'" font-size="'+fs*0.9+'" text-anchor="middle" dominant-baseline="middle" paint-order="stroke" stroke="#fff" stroke-width="'+fs*0.25+'">'+mm(dist(a,b))+'</text>'})});
+    if(dp.length>1){o+='<polyline class="cur" points="'+dp.map(function(p){return p[0]+','+(-p[1])}).join(' ')+'"/>';for(var k=0;k+1<dp.length;k++)o+=lab(dp[k],dp[k+1],mm(dist(dp[k],dp[k+1])),'d','',dp[0][0],dp[0][1],-1,false)}
     if(dp.length)o+='<circle class="pt" cx="'+dp[dp.length-1][0]+'" cy="'+(-dp[dp.length-1][1])+'" r="'+fs*0.35+'"/>';
-    if(E.tap&&E.tap.pts.length){var T=E.tap.pts;o+='<polyline class="cur" points="'+T.concat(T.length>2?[T[0]]:[]).map(function(p){return p[0]+','+(-p[1])}).join(' ')+'"'+(T.length>2?' stroke-dasharray="0"':'')+'/>';T.forEach(function(p,i){o+='<circle class="pt" cx="'+p[0]+'" cy="'+(-p[1])+'" r="'+fs*(i?0.3:0.45)+'"/>'})}
-    if(E.pick){var PA=E.pick.A,PB=E.pick.B;o+='<line x1="'+PA[0]+'" y1="'+(-PA[1])+'" x2="'+PB[0]+'" y2="'+(-PB[1])+'" stroke="#d2502a" stroke-width="2.5" stroke-dasharray="6 4" vector-effect="non-scaling-stroke"/>';
-      var dx=Math.abs(PB[0]-PA[0]),dy=Math.abs(PB[1]-PA[1]);if(dx>1e-6){o+='<line x1="'+PA[0]+'" y1="'+(-PA[1])+'" x2="'+PB[0]+'" y2="'+(-PA[1])+'" stroke="#1f6fd1" stroke-width="2" vector-effect="non-scaling-stroke"/><text class="d sel" x="'+(PA[0]+PB[0])/2+'" y="'+(-PA[1]-fs*2.3)+'" font-size="'+fs+'" text-anchor="middle">横 '+mm(dx)+'</text>'}
-      if(dy>1e-6){o+='<line x1="'+PB[0]+'" y1="'+(-PA[1])+'" x2="'+PB[0]+'" y2="'+(-PB[1])+'" stroke="#1f6fd1" stroke-width="2" vector-effect="non-scaling-stroke"/><text class="d sel" x="'+(PB[0]+fs*2.3)+'" y="'+(-(PA[1]+PB[1])/2)+'" font-size="'+fs+'" text-anchor="start" dominant-baseline="middle">縦 '+mm(dy)+'</text>'}}
-    if(!S.draft&&!E.tap)corners().forEach(function(p){var sel=(E.start&&Math.hypot(E.start[0]-p[0],E.start[1]-p[1])<1e-4)||(E.pick&&(Math.hypot(E.pick.A[0]-p[0],E.pick.A[1]-p[1])<1e-4||Math.hypot(E.pick.B[0]-p[0],E.pick.B[1]-p[1])<1e-4));o+='<circle class="corner'+(sel?' sel':'')+'" data-x="'+p[0]+'" data-y="'+p[1]+'" cx="'+p[0]+'" cy="'+(-p[1])+'" r="'+fs*(sel?0.45:0.32)+'"/>'});
+    if(E.tap&&E.tap.pts.length){var T=E.tap.pts;o+='<polyline class="cur" points="'+T.concat(T.length>2?[T[0]]:[]).map(function(p){return p[0]+','+(-p[1])}).join(' ')+'"/>';T.forEach(function(p,i){o+='<circle class="pt" cx="'+p[0]+'" cy="'+(-p[1])+'" r="'+fs*(i?0.3:0.45)+'"/>'})}
+    if(E.pick){var PA=E.pick.A,PB=E.pick.B;o+='<line x1="'+PA[0]+'" y1="'+(-PA[1])+'" x2="'+PB[0]+'" y2="'+(-PB[1])+'" stroke="#d2502a" stroke-width="2.5" stroke-dasharray="6 4" vector-effect="non-scaling-stroke"/>'}
+    if(!S.draft&&!E.tap)corners().forEach(function(p){var sel=(E.start&&dist(E.start,p)<1e-4);o+='<circle class="corner'+(sel?' sel':'')+'" data-x="'+p[0]+'" data-y="'+p[1]+'" cx="'+p[0]+'" cy="'+(-p[1])+'" r="'+fs*(sel?0.45:0.32)+'"/>'});
     o+='</svg>';pv.innerHTML=o;
     [].forEach.call(pv.querySelectorAll('.corner'),function(c){c.addEventListener('click',function(ev){ev.stopPropagation();tapCorner([+c.dataset.x,+c.dataset.y])})});
-    [].forEach.call(pv.querySelectorAll('text[data-r]'),function(t){t.addEventListener('click',function(ev){ev.stopPropagation();E.pick=null;E.start=null;E.sel={r:+t.dataset.r,e:+t.dataset.e};draw();info();var l=$('kxSkFixLen');if(l){l.value='';l.focus()}})});
+    [].forEach.call(pv.querySelectorAll('text[data-r]'),function(t){t.addEventListener('click',function(ev){ev.stopPropagation();E.pick=null;E.start=null;E.sel={r:+t.dataset.r,c:+t.dataset.c};draw();info();var l=$('kxSkFixLen');if(l){l.value='';l.focus()}})});
   }
-  /* 写真の上をタップ：角を足す */
   function svgPt(ev){var svg=$('kxSkPv').querySelector('svg');var m=svg&&svg.getScreenCTM();if(!m)return null;var p=new DOMPoint(ev.clientX,ev.clientY).matrixTransform(m.inverse());return[p.x,-p.y]}
-  function onPvClick(ev){if(!E.tap)return;var p=svgPt(ev);if(!p)return;E.tap.pts.push(p);draw();info()}
-  /* ---------- 角を2つ選んで、その間の寸法を直す ---------- */
-  function vidx(r,p){var P=rpts(r);for(var i=0;i<P.length;i++)if(Math.hypot(P[i][0]-p[0],P[i][1]-p[1])<1e-4)return i;return -1}
+  function onPvClick(ev){if(!E.tap)return;var p=svgPt(ev);if(!p)return;
+    /* ほかの部屋の角の近くなら、その角に合わせる */
+    var svg=$('kxSkPv').querySelector('svg'),u=1/Math.abs(svg.getScreenCTM().a),near=corners().filter(function(c){return dist(c,p)<16*u})[0];if(near)p=near.slice();
+    E.tap.pts.push(p);draw();info()}
+  /* ---------- 角を2つ選ぶ：隣どうしなら辺、離れていれば角どうしの長さ ---------- */
+  function vidx(r,p){for(var i=0;i<r.v.length;i++)if(dist(r.v[i],p)<1e-4)return i;return -1}
   function tapCorner(p){E.sel=null;
     if(E.pick){E.pick=null;E.start=p;draw();info();return}
-    if(E.start&&Math.hypot(E.start[0]-p[0],E.start[1]-p[1])<1e-4){E.start=null;draw();info();return}
-    if(E.start){var A=E.start,ri=-1;S.rooms.forEach(function(r,k){if(ri<0&&r.edges&&vidx(r,A)>=0&&vidx(r,p)>=0)ri=k});
+    if(E.start&&dist(E.start,p)<1e-4){E.start=null;draw();info();return}
+    if(E.start){var A=E.start,ri=-1;S.rooms.forEach(function(r,k){if(ri<0&&vidx(r,A)>=0&&vidx(r,p)>=0)ri=k});
       if(ri<0){E.start=p;toast('同じ部屋の角を2つ選んでください');draw();info();return}
-      E.pick={r:ri,a:vidx(S.rooms[ri],A),b:vidx(S.rooms[ri],p),A:A.slice(),B:p.slice()};E.start=null;draw();info();
-      var dx=Math.abs(p[0]-A[0]),dy=Math.abs(p[1]-A[1]);var f=$(dx>=dy?'kxSkPkH':'kxSkPkV');if(f){f.value='';f.focus()}return}
+      var r=S.rooms[ri],a=vidx(r,A),b=vidx(r,p),ci=-1;
+      if(isEdge(r,a,b)){var c=edgeC(r,Math.min(a,b)===0&&Math.max(a,b)===r.v.length-1?r.v.length-1:Math.min(a,b));ci=r.c.indexOf(c)}
+      else{for(var k=0;k<r.c.length;k++){var c2=r.c[k];if((c2.a===a&&c2.b===b)||(c2.a===b&&c2.b===a)){ci=k;break}}
+        if(ci<0){r.c.push({a:a,b:b,l:dist(r.v[a],r.v[b]),ok:false,diag:true});ci=r.c.length-1}}
+      E.start=null;E.sel={r:ri,c:ci};draw();info();var l=$('kxSkFixLen');if(l){l.value='';l.focus()}return}
     E.start=p;draw();info()}
-  /* a→b の道のり（どちら回りか）で、axis(1=横,2=縦) の辺を直す */
-  function pathEdges(r,a,b,fwd){var n=r.edges.length,o=[];if(fwd){for(var i=a;i!==b;i=(i+1)%n)o.push(i)}else{for(var j=b;j!==a;j=(j+1)%n)o.push(j)}return o}
-  function applyPick(axis,val){var pk=E.pick,r=S.rooms[pk.r],P=rpts(r),A=P[pk.a],B=P[pk.b],cur=Math.abs(B[axis-1]-A[axis-1]),want=val/1000,d=want-cur;if(Math.abs(d)<1e-6)return true;
-    var best=null;[true,false].forEach(function(fwd){var es=pathEdges(r,pk.a,pk.b,fwd).filter(function(i){return DIRS[r.edges[i].d][axis]!==0});if(!es.length)return;
-      /* 道のりの向き（a→b）。逆回りの時は b→a なので向きが反対 */
-      var net=0;es.forEach(function(i){net+=DIRS[r.edges[i].d][axis]*r.edges[i].l});var sg=(net>=0?1:-1)*(fwd?1:-1);
-      var un=es.filter(function(i){return!r.edges[i].ok}),pick=(un.length?un:es).slice().reverse();
-      for(var k=0;k<pick.length;k++){var e=r.edges[pick[k]],dir=DIRS[e.d][axis]*(fwd?1:-1),nl=e.l+d*(dir===sg?1:-1)*(fwd?1:1);if(nl>0.01){var sc=(un.length?2:1);if(!best||sc>best.sc)best={i:pick[k],nl:nl,sc:sc,es:es};break}}});
-    if(!best){toast('この2つの角の間では、長さを変えられませんでした');return false}
-    var lock={};best.es.forEach(function(i){lock[i]=r.edges[i].ok;r.edges[i].ok=true});
-    r.edges[best.i].l=Math.round(best.nl*1000)/1000;fixClose(r);
-    /* 反対側の辺がもう確定していて閉じない時は、道のりの外の辺で合わせる（向かいの壁も一緒に動く） */
-    if(r.bad){var keep=r.edges.map(function(e){return e.ok});r.edges.forEach(function(e,i){if(best.es.indexOf(i)<0)e.ok=false});fixClose(r);r.edges.forEach(function(e,i){if(best.es.indexOf(i)<0)e.ok=keep[i]})}
-    best.es.forEach(function(i){if(i!==best.i&&!lock[i])r.edges[i].ok=false});r.edges[best.i].ok=true;
-    var P2=rpts(r);if(Math.abs(Math.abs(P2[pk.b][axis-1]-P2[pk.a][axis-1])-want)>0.002){toast('思った通りに直せませんでした。辺の寸法を1本ずつ直してください');return false}
-    return true}
-  function fixPick(){if(!E.pick)return;var h=$('kxSkPkH').value,v=$('kxSkPkV').value,ok=true;
-    if(h!=='')ok=applyPick(1,+h)&&ok;if(v!=='')ok=applyPick(2,+v)&&ok;
-    var r=S.rooms[E.pick.r];store();if(ok){var P=rpts(r);E.pick.A=P[E.pick.a];E.pick.B=P[E.pick.b]}draw();info();if(ok)toast(r.bad?'寸法が合っていません：'+r.bad:'「'+r.name+'」の寸法を直しました（'+area(rpts(r)).toFixed(2)+'㎡）')}
   function info(){var d=S.draft,el=$('kxSkInfo');if(!el)return;var P=draftPts(),html='';
-    if(E.pick){var pk=E.pick,dx=Math.abs(pk.B[0]-pk.A[0]),dy=Math.abs(pk.B[1]-pk.A[1]);html='<b>'+esc(S.rooms[pk.r].name)+'</b> の2つの角の間：'+(dx>1e-6?'横 '+mm(dx)+' mm':'')+(dx>1e-6&&dy>1e-6?'・':'')+(dy>1e-6?'縦 '+mm(dy)+' mm':'')+'。正しい長さを入れて「直す」を押してください。'}
-    else if(E.tap)html='<b>写真の上で、部屋の角を順番にタップしてください</b>（今 '+E.tap.pts.length+' か所）。大まかで大丈夫です。全部の角をタップしたら「形を決める」を押してください。';
-    else if(E.sel){var r=S.rooms[E.sel.r],e=r&&r.edges[E.sel.e];html='<b>'+esc(r.name)+'</b> の選んだ辺（'+DIRS[e.d][0]+'）：今 '+(e.ok?'':'約 ')+mm(e.l)+' mm。正しい長さを入れて「直す」を押してください。'}
-    else if(!d){var bad=S.rooms.filter(function(r){return r.bad});html=(S.rooms.length?'寸法を直すときは、図の<b>寸法の数字</b>をタップするか、<b>角（白い丸）を2つ</b>タップしてください。2つの角の間の横・縦の長さを直せます（「約」が付いているのは写真から取った仮の長さです）。'+(E.start?'<br>角を1つ選んでいます。もう1つ角をタップするか、「向きと長さで描く」でここから次の部屋を描けます。':''):'部屋の名前を入れて、「写真から形を取る」か「向きと長さで描く」を選んでください。')+
-      (bad.length?'<br><span style="color:#9b3528;font-weight:700">寸法が合っていません：'+bad.map(function(r){return esc(r.name)+'（'+r.bad+'）'}).join('、')+'</span>':'')}
-    else{var L=P.length>1?Math.hypot(P[P.length-1][0]-P[0][0],P[P.length-1][1]-P[0][1]):0;
-      html='<b>'+esc(d.name)+'</b>：'+(d.edges.length?d.edges.map(function(e){return DIRS[e.d][0]+' '+mm(e.l)}).join('　'):'向きを選んで、長さ（mm）を入れて「足す」')+(d.edges.length>=2?'<br>最初の点まで、あと '+mm(L)+' mm':'')}
+    if(E.sel){var r=S.rooms[E.sel.r],c=r&&r.c[E.sel.c];var L=dist(r.v[c.a],r.v[c.b]);html='<b>'+esc(r.name)+'</b> の'+(isEdge(r,c.a,c.b)?'辺':'角から角まで')+'：今 '+(c.ok?'':'約 ')+mm(L)+' mm。正しい長さを入れて「直す」を押してください。'+(isEdge(r,c.a,c.b)?'':'<br>斜めの長さ（対角線）を入れると、形がゆがんでいる部屋も正しくなります。')}
+    else if(E.tap)html='<b>'+(IMG&&E.tap.photo?'写真の上で':'白い所に')+'、部屋の角を順番にタップしてください</b>（今 '+E.tap.pts.length+' か所）。大まかで大丈夫です。全部の角をタップしたら「形を決める」を押してください。';
+    else if(!d){var bad=S.rooms.filter(function(r){return r.bad});html=(S.rooms.length?'寸法を直すときは、図の<b>寸法の数字</b>をタップするか、<b>角（白い丸）を2つ</b>タップしてください。離れた角を2つ選ぶと、角から角までの長さ（対角線）を入れられます。'+(E.start?'<br>角を1つ選んでいます。もう1つ角をタップするか、「向きと長さで描く」でここから次の部屋を描けます。':''):'部屋の名前を入れて、描き方を選んでください。')+
+      (function(){var need=S.rooms.filter(function(r){if(!r.rough||r.bad)return false;var n=r.v.length,es=0,dg=0;r.c.forEach(function(c){if(!c.ok)return;if(isEdge(r,c.a,c.b))es++;else dg++});return es===n&&n>3&&dg<n-3}).map(function(r){var dg=r.c.filter(function(c){return c.ok&&!isEdge(r,c.a,c.b)}).length;return esc(r.name)+' あと '+(r.v.length-3-dg)+' 本'});
+        return need.length?'<br><span style="color:#8a5a00;font-weight:700">辺の長さだけでは、角の開き具合が決まりません。形を正確にするには、離れた角を2つタップして対角線の長さも入れてください（'+need.join('、')+'）。直角の部屋なら「ほぼ縦・横の辺をそろえる」でも大丈夫です。</span>':''})()+
+      (bad.length?'<br><span style="color:#9b3528;font-weight:700">寸法が合っていません：'+bad.map(function(r){return esc(r.name)+'（'+r.bad+'）'}).join('、')+'。どれかの寸法を確かめてください。</span>':'')}
+    else{var L2=P.length>1?dist(P[P.length-1],P[0]):0;
+      html='<b>'+esc(d.name)+'</b>：'+(d.edges.length?d.edges.map(function(e){return DIRS[e.d][0]+' '+mm(e.l)}).join('　'):'向きを選んで、長さ（mm）を入れて「足す」')+(d.edges.length>=2?'<br>最初の点まで、あと '+mm(L2)+' mm':'')}
     el.innerHTML=html;
     var vis=function(id,on){var e=$(id);if(e)e.style.display=on?'':'none'};
-    var pk=!!E.pick;vis('kxSkEdge',!!d&&!E.tap);vis('kxSkCloseRow',!!d&&!E.tap);vis('kxSkNewRow',!d&&!E.tap&&!E.sel&&!pk);vis('kxSkRectRow',!E.tap&&!E.sel&&!pk);vis('kxSkTapRow',!!E.tap);vis('kxSkFixRow',!!E.sel);vis('kxSkEndRow',!E.tap&&!E.sel&&!d&&!pk);
-    vis('kxSkPickRow',pk);if(pk){var dx2=Math.abs(E.pick.B[0]-E.pick.A[0]),dy2=Math.abs(E.pick.B[1]-E.pick.A[1]);vis('kxSkPkHW',dx2>1e-6);vis('kxSkPkVW',dy2>1e-6)}
+    vis('kxSkEdge',!!d&&!E.tap);vis('kxSkCloseRow',!!d&&!E.tap);vis('kxSkNewRow',!d&&!E.tap&&!E.sel);vis('kxSkRectRow',!E.tap&&!E.sel&&!d);vis('kxSkTapRow',!!E.tap);vis('kxSkFixRow',!!E.sel);vis('kxSkEndRow',!E.tap&&!E.sel&&!d);
+    var dl=$('kxSkFixDel');if(dl&&E.sel){var rr=S.rooms[E.sel.r],cc=rr.c[E.sel.c];dl.style.display=cc&&!isEdge(rr,cc.a,cc.b)?'':'none'}
   }
   function setDir(i){E.dir=i;[].forEach.call(document.querySelectorAll('#kxSkDirs button'),function(b,k){b.classList.toggle('on',k===i)})}
   function nameOr(){return($('kxSkName').value||'').trim()||('部屋'+(S.rooms.length+1))}
   function defStart(){if(E.start)return E.start;if(S.rooms.length){var P=rpts(S.rooms[S.rooms.length-1]);var xs=P.map(function(p){return p[0]}),ys=P.map(function(p){return p[1]});return[Math.max.apply(null,xs),Math.min.apply(null,ys)]}return[0,0]}
   function newRoom(){S.draft={name:nameOr(),start:defStart(),edges:[]};E.start=null;E.sel=null;store();draw();info();var l=$('kxSkLen');if(l)l.focus()}
-  function addEdge(){var v=+($('kxSkLen').value||0);if(!(v>0)){toast('長さ（mm）を入れてください');return}S.draft.edges.push({d:E.dir,l:v/1000,ok:true});$('kxSkLen').value='';
-    setDir((E.dir+1)%4);store();draw();info();
-    var P=draftPts();if(P.length>3&&Math.hypot(P[P.length-1][0]-P[0][0],P[P.length-1][1]-P[0][1])<1e-6)closeRoom()}
+  function addEdge(){var v=+($('kxSkLen').value||0);if(!(v>0)){toast('長さ（mm）を入れてください');return}S.draft.edges.push({d:E.dir,l:v/1000});$('kxSkLen').value='';
+    setDir((E.dir+1)%4);store();draw();info();var P=draftPts();if(P.length>3&&dist(P[P.length-1],P[0])<1e-6)closeRoom()}
+  function addRoom(name,V,okMask){var r={name:name,v:V.map(function(p){return[Math.round(p[0]*10000)/10000,Math.round(p[1]*10000)/10000]}),c:[]};
+    for(var i=0;i<V.length;i++)r.c.push({a:i,b:(i+1)%V.length,l:dist(V[i],V[(i+1)%V.length]),ok:!!(okMask&&okMask[i])});
+    if(area(r.v)<0.01){toast('部屋の形になっていません');return null}S.rooms.push(r);return r}
   function rect(){var w=+($('kxSkW').value||0),h=+($('kxSkH').value||0);if(!(w>0&&h>0)){toast('幅と奥行（mm）を入れてください');return}
-    if(!S.draft)newRoom();S.draft.edges=[{d:0,l:h/1000,ok:true},{d:1,l:w/1000,ok:true},{d:2,l:h/1000,ok:true},{d:3,l:w/1000,ok:true}];closeRoom();$('kxSkW').value='';$('kxSkH').value=''}
+    var st=defStart(),W=w/1000,H=h/1000;var r=addRoom(nameOr(),[st,[st[0],st[1]+H],[st[0]+W,st[1]+H],[st[0]+W,st[1]]],[1,1,1,1]);if(!r)return;
+    /* 長方形は対角線も入れておく（直角のまま保つ） */
+    r.c.push({a:0,b:2,l:Math.hypot(W,H),ok:true,diag:true});E.start=null;$('kxSkW').value='';$('kxSkH').value='';var nm=$('kxSkName');if(nm)nm.value='';store();draw();info();toast('「'+r.name+'」を足しました（'+area(r.v).toFixed(2)+'㎡）')}
   function closeRoom(){var d=S.draft,P=draftPts();if(P.length<3){toast('辺を2つ以上入れてください');return}
-    var last=P[P.length-1],dx=d.start[0]-last[0],dy=d.start[1]-last[1],ed=d.edges.slice();
-    /* 最初の点まで、縦・横の辺で閉じる */
-    if(Math.abs(dy)>1e-6)ed.push({d:dy>0?0:2,l:Math.abs(dy),ok:false});if(Math.abs(dx)>1e-6)ed.push({d:dx>0?1:3,l:Math.abs(dx),ok:false});
-    var r={name:d.name,start:d.start.slice(),edges:ed.map(function(e){return{d:e.d,l:Math.round(e.l*1000)/1000,ok:e.ok!==false}})};
-    if(area(rpts(r))<0.01){toast('部屋の形になっていません');return}
-    S.rooms.push(r);S.draft=null;store();var nm=$('kxSkName');if(nm)nm.value='';draw();info();toast('「'+r.name+'」を足しました（'+area(rpts(r)).toFixed(2)+'㎡）')}
+    var closed=dist(P[P.length-1],P[0])<1e-6;if(closed)P.pop();var mask=d.edges.map(function(){return 1});if(!closed)mask.push(0);
+    var r=addRoom(d.name,P,mask);if(!r)return;S.draft=null;store();var nm=$('kxSkName');if(nm)nm.value='';draw();info();toast('「'+r.name+'」を足しました（'+area(r.v).toFixed(2)+'㎡）')}
   function back(){if(E.tap){E.tap.pts.pop();draw();info();return}if(E.sel){E.sel=null;draw();info();return}
     if(S.draft&&S.draft.edges.length){S.draft.edges.pop();}else if(S.draft){S.draft=null}else if(S.rooms.length){if(!confirm('最後の部屋「'+S.rooms[S.rooms.length-1].name+'」を消しますか？'))return;S.rooms.pop()}store();draw();info()}
-  /* ---------- 写真から形を取る ---------- */
+  /* ---------- 写真・手で描く ---------- */
   function pickPhoto(f){if(!f)return;var rd=new FileReader();rd.onload=function(){var im=new Image();im.onload=function(){var M=1600,k=Math.min(1,M/Math.max(im.width,im.height)),cv=document.createElement('canvas');cv.width=Math.round(im.width*k);cv.height=Math.round(im.height*k);cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);
       IMG={src:cv.toDataURL('image/jpeg',0.72),w:cv.width,h:cv.height};try{localStorage.setItem(ikey(),JSON.stringify(IMG))}catch(_){toast('写真が大きすぎて保存できませんでしたが、このまま使えます')}
-      /* 仮の縮尺：写真の横幅を 10m とする（最初の寸法を入れた時に合わせ直す） */
-      if(!S.s||!S.sOk){S.s=10/cv.width;S.sOk=false}store();startTap()};im.src=rd.result};rd.readAsDataURL(f)}
-  function startTap(){if(!IMG){$('kxSkPhoto').click();return}E.tap={name:nameOr(),pts:[]};E.sel=null;draw();info()}
+      if(!S.s||!S.sOk){S.s=10/cv.width;S.sOk=false}store();startTap(true)};im.src=rd.result};rd.readAsDataURL(f)}
+  function startTap(photo){if(photo&&!IMG){$('kxSkPhoto').click();return}E.tap={name:nameOr(),pts:[],photo:!!photo};E.sel=null;E.start=null;draw();info()}
   function finishTap(){var T=E.tap.pts;if(T.length<3){toast('角を3か所以上タップしてください');return}
-    /* 辺を縦か横にそろえる */
-    var ed=[];for(var i=0;i<T.length;i++){var a=T[i],b=T[(i+1)%T.length],dx=b[0]-a[0],dy=b[1]-a[1];
-      if(Math.abs(dx)>=Math.abs(dy)){if(Math.abs(dx)>1e-6)ed.push({d:dx>0?1:3,l:Math.abs(dx),ok:false})}else ed.push({d:dy>0?0:2,l:Math.abs(dy),ok:false})}
-    /* 同じ向きが続いたら1本にまとめる */
-    var mg=[];ed.forEach(function(e){var p=mg[mg.length-1];if(p&&p.d===e.d)p.l+=e.l;else mg.push(e)});if(mg.length>1&&mg[0].d===mg[mg.length-1].d){mg[0].l+=mg.pop().l}
-    var st=T[0].slice(),near=corners().filter(function(c){return Math.hypot(c[0]-st[0],c[1]-st[1])<0.4})[0];if(near)st=near.slice();
-    var r={name:E.tap.name,start:st,edges:mg.map(function(e){return{d:e.d,l:Math.round(e.l*1000)/1000,ok:false}}),photo:true};fixClose(r);
-    if(area(rpts(r))<0.01){toast('部屋の形になっていません');return}
-    S.rooms.push(r);E.tap=null;E.sel={r:S.rooms.length-1,e:0};store();var nm=$('kxSkName');if(nm)nm.value='';draw();info();
+    var r=addRoom(E.tap.name,T,null);if(!r)return;r.photo=E.tap.photo;r.rough=true;r.dirs=T.map(function(p,i){var q=T[(i+1)%T.length];return[q[0]-p[0],q[1]-p[1]]});E.tap=null;E.sel={r:S.rooms.length-1,c:0};store();var nm=$('kxSkName');if(nm)nm.value='';draw();info();
     toast('形を取りました。辺の寸法を順番に入れてください');var l=$('kxSkFixLen');if(l)l.focus()}
-  /* ---------- 選んだ辺の寸法を直す ---------- */
+  /* ---------- 選んだ寸法を直す ---------- */
   function fixLen(){if(!E.sel)return;var v=+($('kxSkFixLen').value||0);if(!(v>0)){toast('長さ（mm）を入れてください');return}
-    var r=S.rooms[E.sel.r],e=r.edges[E.sel.e],nl=v/1000;
-    /* 写真から取った部屋で、まだ縮尺が決まっていなければ、この寸法で全体の縮尺を合わせる */
-    if(r.photo&&!S.sOk&&e.l>0){var k=nl/e.l;S.s*=k;S.sOk=true;S.rooms.forEach(function(q){if(!q.photo)return;q.start=[q.start[0]*k,q.start[1]*k];q.edges.forEach(function(x){if(!x.ok)x.l=Math.round(x.l*k*1000)/1000})})}
-    e.l=nl;e.ok=true;fixClose(r);$('kxSkFixLen').value='';
+    var r=S.rooms[E.sel.r],c=r.c[E.sel.c],nl=v/1000,cur0=dist(r.v[c.a],r.v[c.b]);
+    /* 大まかに描いた部屋で最初の寸法なら、その寸法で部屋全体（写真なら写真も）の大きさを合わせる */
+    if(r.rough&&!r.c.some(function(x){return x.ok})&&cur0>0){var k=nl/cur0,o=r.v[0].slice();
+      if(r.photo&&!S.sOk){S.s*=k;S.sOk=true;S.rooms.forEach(function(q){if(q.photo&&q.rough)q.v.forEach(function(p){p[0]*=k;p[1]*=k})})}
+      else r.v.forEach(function(p){p[0]=o[0]+(p[0]-o[0])*k;p[1]=o[1]+(p[1]-o[1])*k})}
+    c.l=nl;c.ok=true;solve(r);$('kxSkFixLen').value='';
     /* 次の、まだ寸法を入れていない辺へ */
-    var nx=-1;for(var k2=1;k2<=r.edges.length;k2++){var j=(E.sel.e+k2)%r.edges.length;if(!r.edges[j].ok){nx=j;break}}
-    var remain=r.edges.filter(function(x){return!x.ok}).length;
-    if(nx>=0)E.sel={r:E.sel.r,e:nx};else E.sel=null;
-    store();draw();info();if(E.sel){var l=$('kxSkFixLen');if(l)l.focus()}else toast(r.bad?'寸法が合っていません：'+r.bad:'「'+r.name+'」の寸法を直しました（'+area(rpts(r)).toFixed(2)+'㎡）')}
+    var n=r.v.length,i0=isEdge(r,c.a,c.b)?(c.b===(c.a+1)%n?c.a:c.b):-1,nx=-1;for(var k2=1;k2<=n;k2++){var i=((i0+k2)%n+n)%n,e=edgeC(r,i);if(!e.ok){nx=r.c.indexOf(e);break}}
+    E.sel=nx>=0?{r:E.sel.r,c:nx}:null;store();draw();info();if(E.sel){var l=$('kxSkFixLen');if(l)l.focus()}else toast(r.bad?'寸法が合っていません：'+r.bad:'「'+r.name+'」の寸法を直しました（'+area(r.v).toFixed(2)+'㎡）')}
+  function delDiag(){if(!E.sel)return;var r=S.rooms[E.sel.r];r.c.splice(E.sel.c,1);E.sel=null;solve(r);store();draw();info()}
+  function square(){var list=E.sel?[S.rooms[E.sel.r]]:S.rooms.filter(function(r){return r.rough});if(!list.length){toast('そろえる部屋がありません');return}list.forEach(sq1);store();draw();info();toast('ほぼ縦・横の辺をそろえました')}
+  function sq1(r){var V=r.v,n=V.length,E2=[];
+    /* 辺ごとに、ほぼ縦・横（15°以内）なら縦・横にして、入れた寸法の長さで描き直す */
+    for(var i=0;i<n;i++){var a=V[i],b=V[(i+1)%n],dd=r.dirs&&r.dirs[i],dx=dd?dd[0]:b[0]-a[0],dy=dd?dd[1]:b[1]-a[1],c=edgeC(r,i),L=c.ok?c.l:dist(a,b),t=Math.abs(dx)<Math.abs(dy)*0.27?'v':Math.abs(dy)<Math.abs(dx)*0.27?'h':'';
+      var cx0=b[0]-a[0],cy0=b[1]-a[1];E2.push(t==='h'?{x:Math.sign(dx)*L,y:0,ok:c.ok,t:t}:t==='v'?{x:0,y:Math.sign(dy)*L,ok:c.ok,t:t}:{x:cx0/Math.hypot(cx0,cy0)*L,y:cy0/Math.hypot(cx0,cy0)*L,ok:c.ok,t:''})}
+    /* 閉じるように、まだ寸法を入れていない縦・横の辺で合わせる（なければ最後の縦・横の辺） */
+    var sx=0,sy=0;E2.forEach(function(e){sx+=e.x;sy+=e.y});
+    [['h','x',sx],['v','y',sy]].forEach(function(z){if(Math.abs(z[2])<1e-6)return;var c2=E2.filter(function(e){return e.t===z[0]&&!e.ok});if(!c2.length)c2=E2.filter(function(e){return e.t===z[0]});if(!c2.length)return;var e=c2[c2.length-1];e[z[1]]-=z[2]});
+    var p=V[0].slice(),NV=[p.slice()];for(var k=0;k<n-1;k++){p=[p[0]+E2[k].x,p[1]+E2[k].y];NV.push(p.slice())}
+    if(area(NV)<0.01){toast('そろえると形がつぶれるので、そろえませんでした');return}
+    r.v=NV;V=r.v;r.c.forEach(function(c){if(!c.ok)c.l=dist(V[c.a],V[c.b])});solve(r)}
   /* ---------- 図面にする ---------- */
   function toPlan(){if(!S.rooms.length){toast('部屋がありません');return}
     var segs=[],faces=[];S.rooms.forEach(function(r,i){var P=rpts(r);for(var k=0;k<P.length;k++){var a=P[k],b=P[(k+1)%P.length];segs.push([a[0],a[1],b[0],b[1]])}
       faces.push({i:i,name:r.name,area:+area(P).toFixed(3),peri:+peri(P).toFixed(3),poly:P.map(function(p){return p.slice()})})});
-    if(S.rooms.some(function(r){return r.edges&&r.edges.some(function(e){return!e.ok})})&&!confirm('「約」が付いた寸法（写真から取った仮の長さ）が残っています。このまま部屋を作りますか？'))return;
+    if(S.rooms.some(function(r){return r.c.some(function(c){return!c.ok&&isEdge(r,c.a,c.b)})})&&!confirm('「約」が付いた寸法（大まかに描いた長さ）が残っています。このまま部屋を作りますか？'))return;
+    if(S.rooms.some(function(r){return r.bad})&&!confirm('寸法が合っていない部屋があります。このまま部屋を作りますか？'))return;
     var hasRooms=cur().rooms.some(function(r){return r.plan});
     if(hasRooms&&!confirm('今の図面と、図面から作った部屋を、この間取りに入れ替えます。よろしいですか？'))return;
     cur().rooms=cur().rooms.filter(function(r){return!r.plan});
@@ -2895,33 +2897,31 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
     try{switchTab('drawing')}catch(_){}toast(faces.length+'部屋を作りました')}
   function dxf(){if(!S.rooms.length){toast('部屋がありません');return}var L=['0','SECTION','2','ENTITIES'];var u=function(v){return(Math.round(v*1000)).toString()};
     S.rooms.forEach(function(r){var P=rpts(r);for(var k=0;k<P.length;k++){var a=P[k],b=P[(k+1)%P.length];L.push('0','LINE','8','壁','10',u(a[0]),'20',u(a[1]),'30','0','11',u(b[0]),'21',u(b[1]),'31','0');
-      var Lm=Math.hypot(b[0]-a[0],b[1]-a[1]);L.push('0','TEXT','8','寸法','10',u((a[0]+b[0])/2),'20',u((a[1]+b[1])/2),'30','0','40','150','1',String(Math.round(Lm*1000)),'72','1','11',u((a[0]+b[0])/2),'21',u((a[1]+b[1])/2),'31','0')}
+      L.push('0','TEXT','8','寸法','10',u((a[0]+b[0])/2),'20',u((a[1]+b[1])/2),'30','0','40','150','1',String(Math.round(dist(a,b)*1000)),'72','1','11',u((a[0]+b[0])/2),'21',u((a[1]+b[1])/2),'31','0')}
       var c=P.reduce(function(s,p){return[s[0]+p[0]/P.length,s[1]+p[1]/P.length]},[0,0]);L.push('0','TEXT','8','室名','10',u(c[0]),'20',u(c[1]),'30','0','40','250','1',r.name,'72','1','11',u(c[0]),'21',u(c[1]),'31','0')});
     L.push('0','ENDSEC','0','EOF');KAKU_share((cur().name||'間取り')+'.dxf',L.join('\r\n'),'application/dxf')}
   function open(){if(!cur()){toast('先に案件を開いてください');return}load();E.start=null;E.sel=null;E.tap=null;E.pick=null;
-    KAKU_sheet('kxSketch','寸法で間取りを作る','<div class="kxsk"><p class="mini">手書きの図面の写真を撮って、部屋の角をタップすると大まかな形ができます。そのあと寸法の数字をタップして、正しい長さ（mm）を入れていくと形が合っていきます。写真を使わずに、壁の向きと長さを順番に入れて描くこともできます。</p>'+
+    KAKU_sheet('kxSketch','寸法で間取りを作る','<div class="kxsk"><p class="mini">手書きの図面の写真か白い所で、部屋の角をタップすると大まかな形ができます。そのあと寸法の数字をタップして、正しい長さ（mm）を入れていくと形が合っていきます。角は直角にそろえないので、ゆがんだ部屋もそのまま描けます。</p>'+
       '<div class="kxskpv" id="kxSkPv"></div><div class="mini" id="kxSkInfo"></div>'+
-      '<div class="row" id="kxSkNewRow"><input type="text" id="kxSkName" placeholder="部屋の名前（例：洋室）" style="flex:1 1 100%"><button type="button" class="btn orange" id="kxSkPhotoBtn">写真から形を取る</button><button type="button" class="btn light" id="kxSkNew">向きと長さで描く</button><input type="file" id="kxSkPhoto" accept="image/*" style="display:none">'+(IMG?'<button type="button" class="btn light" id="kxSkPhotoNew">写真を撮り直す</button>':'')+'</div>'+
+      '<div class="row" id="kxSkNewRow"><input type="text" id="kxSkName" placeholder="部屋の名前（例：洋室）" style="flex:1 1 100%"><button type="button" class="btn orange" id="kxSkPhotoBtn">写真から形を取る</button><button type="button" class="btn light" id="kxSkHand">手で描く</button><button type="button" class="btn light" id="kxSkNew">向きと長さで描く</button><input type="file" id="kxSkPhoto" accept="image/*" style="display:none">'+(IMG?'<button type="button" class="btn light" id="kxSkPhotoNew">写真を撮り直す</button>':'')+'</div>'+
       '<div class="row" id="kxSkTapRow"><button type="button" class="btn orange" id="kxSkTapDone">形を決める</button><button type="button" class="btn light" id="kxSkTapBack">1つ戻す</button><button type="button" class="btn light" id="kxSkTapCancel">やめる</button></div>'+
-      '<div class="row" id="kxSkFixRow"><input type="number" class="len" id="kxSkFixLen" inputmode="numeric" placeholder="正しい長さ mm" enterkeyhint="done"><button type="button" class="btn orange" id="kxSkFix">直す</button><button type="button" class="btn light" id="kxSkFixEnd">終わる</button></div>'+
-      '<div class="row" id="kxSkPickRow"><label id="kxSkPkHW" class="lab" style="display:flex;align-items:center;gap:6px;flex:1 1 140px">横<input type="number" id="kxSkPkH" inputmode="numeric" placeholder="mm" style="flex:1;min-width:0"></label><label id="kxSkPkVW" class="lab" style="display:flex;align-items:center;gap:6px;flex:1 1 140px">縦<input type="number" id="kxSkPkV" inputmode="numeric" placeholder="mm" style="flex:1;min-width:0"></label><button type="button" class="btn orange" id="kxSkPkGo">直す</button><button type="button" class="btn light" id="kxSkPkEnd">終わる</button></div>'+
+      '<div class="row" id="kxSkFixRow"><input type="number" class="len" id="kxSkFixLen" inputmode="numeric" placeholder="正しい長さ mm" enterkeyhint="done"><button type="button" class="btn orange" id="kxSkFix">直す</button><button type="button" class="btn light" id="kxSkFixEnd">終わる</button><button type="button" class="btn light" id="kxSkSquare">ほぼ縦・横の辺をそろえる</button><button type="button" class="btn light" id="kxSkFixDel">この対角線を消す</button></div>'+
       '<div class="row" id="kxSkRectRow"><span class="lab">長方形：</span><input type="number" id="kxSkW" inputmode="numeric" placeholder="幅 mm" style="flex:1 1 90px"><span>×</span><input type="number" id="kxSkH" inputmode="numeric" placeholder="奥行 mm" style="flex:1 1 90px"><button type="button" class="btn light" id="kxSkRect">長方形で足す</button></div>'+
       '<div class="row" id="kxSkEdge"><div class="dirs" id="kxSkDirs">'+DIRS.map(function(d,i){return '<button type="button" data-i="'+i+'" aria-label="'+['上','右','下','左'][i]+'へ">'+d[0]+'</button>'}).join('')+'</div><input type="number" class="len" id="kxSkLen" inputmode="numeric" placeholder="長さ mm" enterkeyhint="done"><button type="button" class="btn orange" id="kxSkAdd">足す</button></div>'+
       '<div class="row" id="kxSkCloseRow"><button type="button" class="btn light" id="kxSkClose">最初の点まで閉じる</button><button type="button" class="btn light" id="kxSkBack">1つ戻す</button></div>'+
-      '<div class="row" id="kxSkEndRow" style="border-top:1px solid var(--line);padding-top:10px"><button type="button" class="btn orange" id="kxSkPlan">この間取りで部屋を作る</button><button type="button" class="btn light" id="kxSkDxf">DXFで書き出す</button><button type="button" class="btn light" id="kxSkUndoRoom">最後の部屋を消す</button></div></div>');
+      '<div class="row" id="kxSkEndRow" style="border-top:1px solid var(--line);padding-top:10px"><button type="button" class="btn orange" id="kxSkPlan">この間取りで部屋を作る</button><button type="button" class="btn light" id="kxSkDxf">DXFで書き出す</button><button type="button" class="btn light" id="kxSkSquareAll">ほぼ縦・横の辺をそろえる</button><button type="button" class="btn light" id="kxSkUndoRoom">最後の部屋を消す</button></div></div>');
     $('kxSkNew').onclick=newRoom;$('kxSkAdd').onclick=addEdge;$('kxSkClose').onclick=closeRoom;$('kxSkBack').onclick=back;$('kxSkRect').onclick=rect;$('kxSkPlan').onclick=toPlan;$('kxSkDxf').onclick=dxf;
-    $('kxSkUndoRoom').onclick=back;
-    $('kxSkPhotoBtn').onclick=startTap;$('kxSkPhoto').onchange=function(){pickPhoto(this.files[0]);this.value=''};var pn=$('kxSkPhotoNew');if(pn)pn.onclick=function(){$('kxSkPhoto').click()};
+    $('kxSkUndoRoom').onclick=back;$('kxSkHand').onclick=function(){startTap(false)};
+    $('kxSkPhotoBtn').onclick=function(){startTap(true)};$('kxSkPhoto').onchange=function(){pickPhoto(this.files[0]);this.value=''};var pn=$('kxSkPhotoNew');if(pn)pn.onclick=function(){$('kxSkPhoto').click()};
     $('kxSkTapDone').onclick=finishTap;$('kxSkTapBack').onclick=back;$('kxSkTapCancel').onclick=function(){E.tap=null;draw();info()};
-    $('kxSkFix').onclick=fixLen;$('kxSkPkGo').onclick=fixPick;$('kxSkPkEnd').onclick=function(){E.pick=null;draw();info()};
-    ['kxSkPkH','kxSkPkV'].forEach(function(id){$(id).addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();fixPick()}})});$('kxSkFixEnd').onclick=function(){E.sel=null;draw();info()};
+    $('kxSkFix').onclick=fixLen;$('kxSkFixEnd').onclick=function(){E.sel=null;draw();info()};$('kxSkSquare').onclick=square;$('kxSkSquareAll').onclick=square;$('kxSkFixDel').onclick=delDiag;
     $('kxSkFixLen').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();fixLen()}});
     $('kxSkLen').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();addEdge()}});
     $('kxSkPv').addEventListener('click',onPvClick);
-    [].forEach.call(document.querySelectorAll('#kxSkDirs button'),function(b){b.onclick=function(){setDir(+b.dataset.i)}});setDir(E.dir);draw();info()}
+    [].forEach.call(document.querySelectorAll('#kxSkDirs button'),function(b){b.onclick=function(){setDir(+b.dataset.i)}});setDir(E.dir);S.rooms.forEach(solve);draw();info()}
   window.KAKU_sketch=open;
   function card(){var p=$('panel-drawing');if(!p||$('kxSkCard'))return;var c=document.createElement('div');c.className='card';c.id='kxSkCard';
-    c.innerHTML='<div class="sectionhead" style="margin:0"><div><h3 style="margin:0">寸法で間取りを作る</h3><div class="mini">図面のデータがない時に。手書きの図面の写真から大まかな形を取って、寸法を入れて仕上げます。</div></div><button type="button" class="btn orange" id="kxSkOpen">間取りを作る</button></div>';
+    c.innerHTML='<div class="sectionhead" style="margin:0"><div><h3 style="margin:0">寸法で間取りを作る</h3><div class="mini">図面のデータがない時に。手書きの図面の写真や手で描いた形に、寸法を入れて仕上げます。</div></div><button type="button" class="btn orange" id="kxSkOpen">間取りを作る</button></div>';
     p.insertBefore(c,p.firstChild);$('kxSkOpen').onclick=open}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',card);else card();
 })();
