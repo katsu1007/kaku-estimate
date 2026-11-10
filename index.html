@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-10.3";
+var KAKU_VERSION="2026-11-10.4";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -2535,6 +2535,78 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
     var unit=(V.base[2]/V.s)/svg.clientWidth;V.cx-=dx*unit;V.cy-=dy*unit;M.x=e.clientX;M.y=e.clientY;clamp();apply();$('pickView').classList.add('kxpan')});
   document.addEventListener('mouseup',function(){if(M&&M.moved)suppress();M=null;var v=$('pickView');if(v)v.classList.remove('kxpan')});
   document.addEventListener('wheel',function(e){if(!onPlan(e))return;e.preventDefault();zoomAt(e.deltaY<0?1.2:1/1.2,e.clientX,e.clientY)},{passive:false});
+})();
+</script>
+
+<script id="kaku-v22-js">
+/* ==== 2026-11-10.4 まるごとバックアップ（書き出す・戻す） ==== */
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var LAST='kaku-backup-last';
+  function stamp(d){d=d||new Date();var p=function(n){return String(n).padStart(2,'0')};return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'_'+p(d.getHours())+p(d.getMinutes())}
+  function when(t){if(!t)return'まだありません';var d=new Date(+t);return d.getFullYear()+'/'+(d.getMonth()+1)+'/'+d.getDate()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')}
+  function keys(){var o={};for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k&&k.indexOf('kaku-')===0&&k!==LAST)o[k]=localStorage.getItem(k)}return o}
+  function exportAll(){
+    try{save()}catch(_){}
+    var go=function(){var k=keys(),n=0;try{n=JSON.parse(k['kaku-estimate-v1']||'[]').length}catch(_){}
+      var body=JSON.stringify({app:'KAKU',kind:'backup',v:1,at:new Date().toISOString(),version:typeof KAKU_VERSION!=='undefined'?KAKU_VERSION:'',projects:n,data:k});
+      KAKU_share('KAKU_バックアップ_'+stamp()+'.json',body,'application/json');
+      try{localStorage.setItem(LAST,String(Date.now()))}catch(_){}
+      setTimeout(function(){toast('バックアップを書き出しました（案件 '+n+' 件）');foot()},300)};
+    /* 計算の設定（単価・掛け率・会社情報）を先に保存してから書き出す */
+    try{waitEngine().then(function(e){try{e.setCompany&&e.setCompany({})}catch(_){}setTimeout(go,150)}).catch(go)}catch(_){go()}
+  }
+  function readFile(f){return new Promise(function(ok,ng){var r=new FileReader();r.onload=function(){ok(String(r.result))};r.onerror=function(){ng(new Error('ファイルを読めませんでした'))};r.readAsText(f)})}
+  function parse(txt){var j;try{j=JSON.parse(String(txt).replace(/^﻿/,''))}catch(e){throw new Error('KAKUのバックアップファイルではありません')}
+    if(!j||j.app!=='KAKU'||!j.data||typeof j.data!=='object'||!j.data['kaku-estimate-v1'])throw new Error('KAKUのバックアップファイルではありません');return j}
+  function replaceAll(j){
+    /* 計算の仕組み（iframe）が閉じる時に古い設定を書き戻さないよう、先に外しておく */
+    try{var fr=$('engineFrame');if(fr)fr.remove()}catch(_){}
+    var del=[];for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k&&k.indexOf('kaku-')===0&&k!==LAST)del.push(k)}
+    del.forEach(function(k){localStorage.removeItem(k)});
+    Object.keys(j.data).forEach(function(k){if(k.indexOf('kaku-')===0)localStorage.setItem(k,j.data[k])});
+    toast('バックアップから戻しました。読み込み直します…');setTimeout(function(){location.reload()},700);
+  }
+  function addProjects(j){
+    var src=JSON.parse(j.data['kaku-estimate-v1']||'[]'),have={},added=0,t=Date.now();
+    data.forEach(function(p){have[p.id]=1});
+    src.forEach(function(p,i){var old=p.id,nid=have[old]?t+i+1:old;p.id=nid;have[nid]=1;
+      ['kaku-plan-','kaku-fix-','kaku-trace-'].forEach(function(pre){var v=j.data[pre+old];if(v!=null)localStorage.setItem(pre+nid,v)});
+      data.push(p);added++});
+    save();renderHome();toast('案件を '+added+' 件 足しました');
+  }
+  function openSheet(){
+    var n=0;try{n=data.length}catch(_){}
+    KAKU_sheet('kxBackup','バックアップ','<p class="mini">案件・図面・器具・単価・掛け率・会社情報を、1つのファイルにまとめて書き出します。アプリを入れ直す前や、ほかの端末に移す時に使ってください。</p>'+
+      '<p class="mini">今の案件：<b>'+n+' 件</b>　最後に書き出した日：<b>'+when(localStorage.getItem(LAST))+'</b></p>'+
+      '<div style="display:grid;gap:10px;margin:12px 0"><button type="button" class="btn orange" id="kxBkOut">バックアップを書き出す</button>'+
+      '<label class="btn light" style="text-align:center;cursor:pointer">バックアップから戻す<input type="file" id="kxBkIn" accept=".json,application/json" style="display:none"></label></div>'+
+      '<div id="kxBkAsk"></div>');
+    $('kxBkOut').onclick=exportAll;
+    $('kxBkIn').onchange=function(){var f=this.files[0];this.value='';if(!f)return;
+      readFile(f).then(parse).then(function(j){var m=0;try{m=JSON.parse(j.data['kaku-estimate-v1']).length}catch(_){}
+        var ask=$('kxBkAsk');ask.innerHTML='<div class="card" style="padding:12px"><p style="margin:0 0 8px"><b>'+esc(f.name)+'</b><br><span class="mini">'+(j.at?when(Date.parse(j.at))+' に書き出したもの・':'')+'案件 '+m+' 件</span></p>'+
+          '<div style="display:grid;gap:8px"><button type="button" class="btn light" id="kxBkAdd">案件を足す（今の案件はそのまま）</button>'+
+          '<button type="button" class="btn" style="background:#9b3528;color:#fff" id="kxBkRep">全部入れ替える（今のデータは消えます）</button></div>'+
+          '<p class="mini" style="margin:8px 0 0">「案件を足す」は案件と図面だけを足します。単価・会社情報は今のままです。</p></div>';
+        $('kxBkAdd').onclick=function(){addProjects(j);KAKU_closeSheet('kxBackup')};
+        $('kxBkRep').onclick=function(){if(confirm('今の案件・単価・会社情報をすべて消して、このバックアップの内容に入れ替えます。よろしいですか？'))replaceAll(j)};
+      }).catch(function(e){toast(e.message)});
+    };
+  }
+  window.KAKU_backup=openSheet;
+  /* メニューに追加 */
+  if(typeof window.KAKU_menu==='function'){var mn=window.KAKU_menu;window.KAKU_menu=function(){var r=mn.apply(this,arguments);
+    try{var l=$('kakuMenu').querySelector('.menulist');if(l&&!l.querySelector('.kx-bk-item')){var b=document.createElement('button');b.className='menuitem kx-bk-item';
+      b.innerHTML='<b>バックアップ</b><span>全部のデータを1つのファイルに書き出す・ファイルから戻す</span>';b.onclick=function(){KAKU_closeSheet('kakuMenu');openSheet()};
+      var co=l.querySelector('.kx-co-item');l.insertBefore(b,co?co.nextSibling:l.firstChild)}}catch(_){}return r}}
+  /* 一覧の下の案内 */
+  function foot(){var f=document.querySelector('#dash .footnote');if(!f)return;var t=localStorage.getItem(LAST);
+    f.innerHTML='データはこの端末の中に保存されます。メニューの「バックアップ」で、全部のデータを1つのファイルに書き出せます（最後に書き出した日：'+when(t)+'）。'+
+      (!t||Date.now()-t>14*864e5?' <a href="#" id="kxBkLink">今すぐ書き出す</a>':'');
+    var a=$('kxBkLink');if(a)a.onclick=function(e){e.preventDefault();openSheet()}}
+  if(typeof window.renderHome==='function'){var rh=window.renderHome;window.renderHome=function(){var r=rh.apply(this,arguments);try{foot()}catch(_){}return r}}
+  try{foot()}catch(_){}
 })();
 </script>
 
