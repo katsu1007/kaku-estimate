@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-10.11";
+var KAKU_VERSION="2026-11-10.13";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -2999,4 +2999,162 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
   window.KAKU_cad={jww:jww,dxf:dxf};
 })();
 </script>
+<script id="kaku-v28-js">
+/* ==== 2026-11-10.12 照明の自動配置：壁から決まった寸法＋均等割り、細い通路は器具の先との真ん中に一列、列をそろえる、50mm単位 ==== */
+(function(){
+  if(typeof window.KF_faceLights!=='function')return;
+  var old=window.KF_faceLights;
+  function edge(){var v=typeof current!=='undefined'&&current&&current.lightEdge;return v>0?+v:0.6}
+  var FX=['urinal','toilet','counter','sink','slop','kitchen','bath'];
+  /* 壁の間を割る：壁から e 空けて、間隔が p 以下になるように均等 */
+  function split(lo,hi,e,p){var W=hi-lo;/* 両側の照明の間が狭すぎる（90cm未満、または間隔の半分未満）なら真ん中に1つ */if(W-2*e<Math.max(0.9,p*0.5))return[(lo+hi)/2];var n=Math.max(2,Math.ceil((W-2*e)/p-1e-9)+1),s=(W-2*e)/(n-1),o=[];for(var k=0;k<n;k++)o.push(lo+e+k*s);return o}
+  /* 決まった数で割る（足したDLの分） */
+  function splitN(lo,hi,e,n){if(n<=1)return[(lo+hi)/2];var W=hi-lo;/* 壁から決まった寸法だと照明の間が90cm未満になる時は、壁際を間隔の半分にして均等 */if((W-2*e)/(n-1)<0.9)e=Math.min(e,W/(2*n));var o=[];for(var k=0;k<n;k++)o.push(lo+e+(W-2*e)*k/(n-1));return o}
+  /* 細い所の真ん中：器具が片側の壁に並んでいたら、器具の先と反対の壁の真ん中 */
+  function freeMid(r,ax){var lo=r[ax],hi=r[ax+2],fx=((typeof KAKU_fix!=='undefined'&&KAKU_fix&&KAKU_fix.fx)||[]).filter(function(x){if(FX.indexOf(x.t)<0)return false;var b=x.b,o=1-ax;return b[o+2]>r[o]+0.05&&b[o]<r[o+2]-0.05&&b[ax+2]>lo-0.05&&b[ax]<hi+0.05});
+    var a=lo,b=hi;fx.forEach(function(x){var bb=x.b;if(bb[ax]-lo<0.15)a=Math.max(a,Math.min(bb[ax+2],hi));else if(hi-bb[ax+2]<0.15)b=Math.min(b,Math.max(bb[ax],lo))});
+    if(b-a<0.3){a=lo;b=hi}return(a+b)/2}
+  function lines(r,ax,e,p){var W=r[ax+2]-r[ax];/* 小さい所（5㎡未満）は1つ */var L=(r[2]-r[0])*(r[3]-r[1])<5?[(r[ax]+r[ax+2])/2]:split(r[ax],r[ax+2],e,p);if(L.length===1)L=[freeMid(r,ax)];return L.map(function(v){return{v:v,single:L.length===1,r:r}})}
+  window.KF_faceLights=function(f,p){var P=f.poly,x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;P.forEach(function(q){x0=Math.min(x0,q[0]);x1=Math.max(x1,q[0]);y0=Math.min(y0,q[1]);y1=Math.max(y1,q[1])});
+    var fill=f.area/((x1-x0)*(y1-y0)||1),R=fill>.97?[[x0,y0,x1,y1]]:KF_rects(P);if(!R)return old.apply(this,arguments);
+    var e=edge();p=+p||2;
+    /* 四角ごとの縦・横の線 */
+    var GR=(window.KX_gridFor&&window.KX_gridFor(f.i))||{};
+    var per=R.map(function(r,ri){var o={r:r,X:lines(r,0,e,p),Y:lines(r,1,e,p)},g=GR[ri];
+      if(g){if(g.x)o.X=splitN(r[0],r[2],e,o.X.length+g.x).map(function(v){return{v:v,single:false,r:r}});if(g.y)o.Y=splitN(r[1],r[3],e,o.Y.length+g.y).map(function(v){return{v:v,single:false,r:r}});o.g=g}
+      return o});
+    /* 列をそろえる：近い線（1m以内）は同じ位置にする。四角の壁から30cm以上離れていて、細い所の線は真ん中から40cm以内の時だけ */
+    [['X',0],['Y',1]].forEach(function(z){var k=z[0],ax=z[1],all=[];per.forEach(function(o){o[k].forEach(function(l){all.push(l)})});all.sort(function(a,b){return a.v-b.v});
+      /* 近い線から順にまとめる。同じ四角の線どうしはまとめない。まとめた線の幅は1mまで */
+      var groups=all.map(function(l){return[l]}),mean=function(G){return G.reduce(function(s,l){return s+l.v},0)/G.length};
+      for(;;){var bi=-1,bj=-1,bd=1e9;for(var i=0;i<groups.length;i++)for(var j=i+1;j<groups.length;j++){var A=groups[i],B=groups[j];
+          if(A.some(function(a){return B.some(function(b){return a.r===b.r})}))continue;var C=A.concat(B),lo=Math.min.apply(null,C.map(function(l){return l.v})),hi=Math.max.apply(null,C.map(function(l){return l.v}));if(hi-lo>1.0)continue;
+          var d=Math.abs(mean(A)-mean(B));if(d<bd){bd=d;bi=i;bj=j}}
+        if(bi<0)break;groups[bi]=groups[bi].concat(groups[bj]);groups.splice(bj,1)}
+      groups.forEach(function(G){if(G.length<2)return;
+        /* 候補：それぞれの線の位置。広い四角の線を優先して、全部の線が動ける位置を選ぶ */
+        var cands=G.slice().sort(function(a,b){var A=(a.r[2]-a.r[0])*(a.r[3]-a.r[1]),B=(b.r[2]-b.r[0])*(b.r[3]-b.r[1]);return B-A}).map(function(l){return l.v});
+        var avg=G.reduce(function(s,l){return s+l.v},0)/G.length;cands.push(avg);
+        var ok=function(v){return G.every(function(l){var lo=l.r[ax],hi=l.r[ax+2];if(v<lo+0.3||v>hi-0.3)return false;if(l.single&&Math.abs(v-l.v)>0.4)return false;/* 同じ四角のほかの線に近づきすぎない */if(all.some(function(m){return m.r===l.r&&G.indexOf(m)<0&&Math.abs(m.v-v)<0.6}))return false;return true})};
+        var pick=null;for(var i=0;i<cands.length;i++)if(ok(cands[i])){pick=cands[i];break}
+        if(pick!=null)G.forEach(function(l){l.v=pick})})});
+    /* 50mm単位にそろえる（四角の壁からの寸法で） */
+    var rnd=function(v,lo){var d=Math.round((v-lo)/0.05)*0.05;return lo+d};
+    var out=[];per.forEach(function(o){var r=o.r;o.Y.forEach(function(ly){o.X.forEach(function(lx){var q=[rnd(lx.v,x0),rnd(ly.v,y0)];if(q[0]>r[0]+0.1&&q[0]<r[2]-0.1&&q[1]>r[1]+0.1&&q[1]<r[3]-0.1&&!out.some(function(z){return Math.hypot(z[0]-q[0],z[1]-q[1])<0.3}))out.push(q)})})});
+    /* 1本の通りだけ数を増やした所：その通りが通っている所（四角をまたいでも）の端から e 空けて均等に */
+    (GR.lines||[]).forEach(function(Ln){var ax=Ln.ax,o=1-ax,on=out.filter(function(q){return Math.abs(q[o]-Ln.v)<0.3});if(!on.length)return;var v=on[0][o];
+      var iv=R.filter(function(r){return v>r[o]+0.1&&v<r[o+2]-0.1}).map(function(r){return[r[ax],r[ax+2]]}).sort(function(a,b){return a[0]-b[0]});
+      var runs=[];iv.forEach(function(a){var L=runs[runs.length-1];if(L&&a[0]<=L[1]+0.15)L[1]=Math.max(L[1],a[1]);else runs.push(a.slice())});
+      var mid=on.reduce(function(s,q){return s+q[ax]},0)/on.length,run=runs.find(function(a){return mid>=a[0]-0.05&&mid<=a[1]+0.05})||runs[0];if(!run)return;
+      on=on.filter(function(q){return q[ax]>=run[0]-0.05&&q[ax]<=run[1]+0.05});var n=on.length+(Ln.add||0);
+      out=out.filter(function(q){return on.indexOf(q)<0});
+      splitN(run[0],run[1],e,n).forEach(function(t){var q=[0,0];q[o]=v;q[ax]=rnd(t,ax?y0:x0);out.push(q)})});
+    return out.length?out:old.apply(this,arguments)};
+  /* 電気の画面に「壁から」の欄を足す */
+  function addField(){var f=document.querySelector('#kakuPlan .kpform');if(!f||f.querySelector('.kx-edge'))return;var lab=document.createElement('label');lab.className='kx-edge';
+    lab.innerHTML='照明の壁からの寸法 mm<input type="number" inputmode="numeric" step="50" min="200" max="2000" value="'+Math.round(edge()*1000)+'">';
+    var pit=[].find.call(f.querySelectorAll('label'),function(l){return/間隔/.test(l.textContent)});f.insertBefore(lab,pit?pit.nextSibling:f.firstChild);
+    lab.querySelector('input').onchange=function(){var v=Math.max(200,Math.min(2000,+this.value||600));if(typeof current!=='undefined'&&current){current.lightEdge=v/1000;save();try{KP_sync()}catch(_){}KAKU_renderEditor()}}}
+  if(typeof window.KAKU_renderEditor==='function'){var re=window.KAKU_renderEditor;window.KAKU_renderEditor=function(){var r=re.apply(this,arguments);try{addField()}catch(e){}return r}}
+})();
+</script>
+
+<style id="kaku-v29">
+.kxsnap-row{display:flex;align-items:center;gap:10px;margin:8px 0;font-weight:700;min-height:44px}
+.kxsnap-row input{width:22px;height:22px;flex:none}
+#kxRowOnly{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(140px + env(safe-area-inset-bottom));z-index:60;display:none;gap:8px;align-items:center;background:#20221f;color:#fff;padding:8px 10px 8px 14px;border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,.3);font-size:14px;max-width:94vw}
+#kxRowOnly.on{display:flex}
+#kxRowOnly button{min-height:40px;border-radius:10px;border:0;padding:0 12px;font-weight:700}
+</style>
+<script id="kaku-v29-js">
+/* ==== 2026-11-10.13 足したDLを列にそろえる（自動の照明は列を増やして均等に、手で置いた照明は通りをそろえて均等に） ==== */
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  function edge(){var v=typeof current!=='undefined'&&current&&current.lightEdge;return v>0?+v:0.6}
+  function snapOn(){return !(typeof current!=='undefined'&&current&&current.lightSnap===false)}
+  /* ---- 自動の照明：区画ごとに列・行を増やす（KF_faceLights の中で使う） ---- */
+  var CUR=null;
+  if(typeof window.KF_raw==='function'){var raw=window.KF_raw;window.KF_raw=function(p){CUR=p;try{return raw.apply(this,arguments)}finally{CUR=null}}}
+  window.KX_gridFor=function(fi){return CUR&&CUR.grid&&CUR.grid[fi]||null};
+  /* ---- 置く時 ---- */
+  var LONG=false,T=null;
+  document.addEventListener('touchstart',function(e){var v=$('pickView');if(!v||!v.contains(e.target))return;LONG=false;clearTimeout(T);T=setTimeout(function(){LONG=true},450)},{passive:true});
+  document.addEventListener('touchmove',function(){clearTimeout(T)},{passive:true});
+  document.addEventListener('touchend',function(){clearTimeout(T);setTimeout(function(){LONG=false},700)},{passive:true});
+  function faceAt(q){var P=KF_P();if(!P)return null;return P.faces.find(function(f){return KAKU_pip(q[0],q[1],f.poly)})||null}
+  function rectsOf(f){var P=f.poly,x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;P.forEach(function(q){x0=Math.min(x0,q[0]);x1=Math.max(x1,q[0]);y0=Math.min(y0,q[1]);y1=Math.max(y1,q[1])});
+    var fill=f.area/((x1-x0)*(y1-y0)||1);return fill>.97?[[x0,y0,x1,y1]]:(KF_rects(P)||[[x0,y0,x1,y1]])}
+  function runOf(R,ax,v,mid){var o=1-ax,iv=R.filter(function(r){return v>r[o]+0.1&&v<r[o+2]-0.1}).map(function(r){return[r[ax],r[ax+2]]}).sort(function(a,b){return a[0]-b[0]});
+    var runs=[];iv.forEach(function(a){var L=runs[runs.length-1];if(L&&a[0]<=L[1]+0.15)L[1]=Math.max(L[1],a[1]);else runs.push(a.slice())});
+    return runs.find(function(a){return mid>=a[0]-0.05&&mid<=a[1]+0.05})||null}
+  function inR(r,q){return q[0]>=r[0]-1e-6&&q[0]<=r[2]+1e-6&&q[1]>=r[1]-1e-6&&q[1]<=r[3]+1e-6}
+  function bar(msg,btn,fn){var b=$('kxRowOnly');if(!b){b=document.createElement('div');b.id='kxRowOnly';document.body.appendChild(b)}
+    b.innerHTML='<span></span>'+(btn?'<button type="button" id="kxRowOnlyBtn">'+btn+'</button>':'')+'<button type="button" id="kxRowOnlyX" aria-label="閉じる">×</button>';b.firstChild.textContent=msg;b.classList.add('on');
+    if(btn)$('kxRowOnlyBtn').onclick=function(){b.classList.remove('on');fn()};$('kxRowOnlyX').onclick=function(){b.classList.remove('on')};clearTimeout(b._t);b._t=setTimeout(function(){b.classList.remove('on')},9000)}
+  /* 区画の照明を変える前に、自分で動かした照明は1個ずつ置いた物にしておく（動かさない） */
+  function newPt(item,g){current.places.push({id:'p'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),item:item,where:'pt',p:[Math.round(g[0]*1000)/1000,Math.round(g[1]*1000)/1000],count:1})}
+  /* 並べ直す前の状態を覚える（自分で動かした・消した照明） */
+  function snap0(L,fi){var raw={};KF_raw(L).forEach(function(o){raw[o.k]=o.p});var mine=function(k){return String(k).split(':')[0]===String(fi)};
+    return{mv:Object.keys(L.mv||{}).filter(mine).map(function(k){return{k:k,p0:raw[k],to:L.mv[k]}}).filter(function(o){return o.p0}),
+      del:(L.del||[]).filter(mine).map(function(k){return{k:k,p0:raw[k]}}).filter(function(o){return o.p0})}}
+  /* 並べ直した後：動いていない照明には、動かした・消した印を付け直す。並べ直した照明を自分で動かしていたら、1個ずつ置いた物にする */
+  function snap1(L,fi,S){var mine=function(k){return String(k).split(':')[0]===String(fi)};
+    L.mv=L.mv||{};Object.keys(L.mv).filter(mine).forEach(function(k){delete L.mv[k]});L.del=(L.del||[]).filter(function(k){return!mine(k)});
+    var raw=KF_raw(L).filter(function(o){return mine(o.k)}),used={};
+    var find=function(p0){var b=null,bd=0.05;raw.forEach(function(o){if(used[o.k])return;var d=Math.hypot(o.p[0]-p0[0],o.p[1]-p0[1]);if(d<bd){bd=d;b=o}});if(b)used[b.k]=1;return b};
+    S.mv.forEach(function(o){var n=find(o.p0);if(n)L.mv[n.k]=o.to;else newPt(L.item,o.to)});
+    S.del.forEach(function(o){var n=find(o.p0);if(n)L.del.push(n.k)})}
+  function addToAuto(L,f,q){var R=rectsOf(f),ri=R.findIndex(function(r){return inR(r,q)});if(ri<0)ri=0;var r=R[ri];
+    /* 今の照明（この区画の中） */
+    CUR=L;var all=KF_faceLights(KF_face(f.i),+L.pitch||2);CUR=null;var pts=all.filter(function(p){return inR(r,p)});
+    var uniq=function(a){var o=[];a.forEach(function(v){if(!o.some(function(w){return Math.abs(w-v)<0.1}))o.push(v)});return o.sort(function(a,b){return a-b})};
+    var cols=uniq(pts.map(function(p){return p[0]})),rows=uniq(pts.map(function(p){return p[1]}));
+    var near=function(a,v){var b=null;a.forEach(function(w){if(Math.abs(w-v)<0.5&&(b==null||Math.abs(w-v)<Math.abs(b-v)))b=w});return b};
+    var e0=edge(),fitY=(r[3]-r[1])>=2*e0+0.9,fitX=(r[2]-r[0])>=2*e0+0.9;
+    var c=fitY?near(cols,q[0]):null,w=fitX?near(rows,q[1]):null,mode;
+    if(c==null&&w==null&&!fitX&&!fitY)return false;
+    /* 通りの上をタップ → その通りに1個足す。どの通りからも離れていたら → 列か行を1本足す */
+    if(c!=null&&(w==null||Math.abs(c-q[0])<=Math.abs(w-q[1])))mode={ax:1,v:c,par:cols.length};
+    else if(w!=null)mode={ax:0,v:w,par:rows.length};
+    else{var dx=cols.length?Math.min.apply(null,cols.map(function(v){return Math.abs(v-q[0])})):9,dy=rows.length?Math.min.apply(null,rows.map(function(v){return Math.abs(v-q[1])})):9;
+      var nl=fitX&&(!fitY||dx>=dy)?'x':fitY?'y':null;if(!nl)return false;mode={newLine:nl}}
+    var S=snap0(L,f.i);L.grid=L.grid||{};var G=L.grid[f.i]=L.grid[f.i]||{};
+    /* 通りに1個足す時：その通りで自分で動かした・消した照明は、並べ直す数から外す（動かした物は1個ずつ置いた物になる） */
+    var onLine=function(o){if(!mode.ax&&mode.ax!==0)return false;var l=KF_L(o.p0);return Math.abs(l[1-mode.ax]-mode.v)<0.3&&inR(r,l)};
+    var lineOff=0;if(mode.ax!=null&&mode.par<=1){S.mv=S.mv.filter(function(o){return!onLine(o)});S.del=S.del.filter(function(o){if(onLine(o)){lineOff++;return false}return true})}
+    var addLine=function(m,d){d=d==null?1:d;G.lines=G.lines||[];var e=G.lines.find(function(x){return x.ax===m.ax&&Math.abs(x.v-m.v)<0.3});if(e)e.add=(e.add||0)+d;else G.lines.push({ax:m.ax,v:m.v,add:d})};
+    var addGrid=function(k,d){var g=G[ri]=G[ri]||{x:0,y:0};g[k]=(g[k]||0)+d};
+    var done=function(msg){snap1(L,f.i,S);KP_sync();KAKU_renderEditor();save();return msg};
+    if(mode.newLine){addGrid(mode.newLine,1);toast(done(mode.newLine==='x'?'縦の列を1本足して、部屋全体を均等に並べ直しました':'横の列を1本足して、部屋全体を均等に並べ直しました'));return}
+    var nm=mode.ax===1?'縦の列':'横の列';
+    if(mode.par>1){addGrid(mode.ax===1?'y':'x',1);done();
+      bar('部屋全体を1個ずつ増やして、均等に並べ直しました','この'+nm+'だけにする',function(){S=snap0(L,f.i);addGrid(mode.ax===1?'y':'x',-1);addLine(mode);toast(done('この'+nm+'だけ均等に並べ直しました'))})}
+    else{addLine(mode,1-lineOff);toast(done('照明を足して、通りを均等に並べ直しました'))}}
+  /* 手で置いた照明：近い通りにそろえて、その通りを壁から均等に */
+  function addToManual(item,q){var f=faceAt(q);var pts=(current.places||[]).filter(function(p){return p.where==='pt'&&p.item===item}).map(function(p){return{p:p,l:KF_L(p.p)}});
+    var ql=q.slice(),row=pts.filter(function(o){return Math.abs(o.l[1]-ql[1])<0.5}),col=pts.filter(function(o){return Math.abs(o.l[0]-ql[0])<0.5});
+    if(!row.length&&!col.length)return null;
+    var ax=row.length>=col.length?0:1,line=ax===0?row:col,v=line.reduce(function(s,o){return s+o.l[1-ax]},0)/line.length;ql[1-ax]=v;
+    var np={id:'p'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),item:item,where:'pt',p:[0,0],count:1};current.places.push(np);line.push({p:np,l:ql});
+    /* 壁から edge 空けて均等（その通りが入っている四角の壁で） */
+    var run=null;if(f)run=runOf(rectsOf(f),ax,v,ql[ax]);
+    line.sort(function(a,b){return a.l[ax]-b.l[ax]});var n=line.length,lo,hi;
+    if(run){lo=run[0]+edge();hi=run[1]-edge();if(n>1&&(hi-lo)/(n-1)<0.9){var e2=Math.min(edge(),(run[1]-run[0])/(2*n));lo=run[0]+e2;hi=run[1]-e2}}else{lo=line[0].l[ax];hi=line[n-1].l[ax]}
+    line.forEach(function(o,k){var c=o.l.slice();c[ax]=n===1?(lo+hi)/2:lo+(hi-lo)*k/(n-1);c[1-ax]=v;if(run){c[ax]=run[0]+Math.round((c[ax]-run[0])/0.05)*0.05}var g=KF_G(c);o.p.p=[Math.round(g[0]*1000)/1000,Math.round(g[1]*1000)/1000]});
+    KP_sync();KAKU_renderEditor();toast('通りをそろえて、均等に並べ直しました');save();return true}
+  if(typeof window.KP_tapPt==='function'){var tp=window.KP_tapPt;window.KP_tapPt=function(x,y,tol){
+    try{var R=Math.min(tol,.35),hit=KP_ptPlaces().some(function(p){return Math.hypot(p.p[0]-x,p.p[1]-y)<R});
+      if(!hit&&!KP.ptSel&&KP.item&&snapOn()&&!LONG){var q=KF_L([x,y]),f=faceAt(q);
+        var L=f&&(current.places||[]).find(function(p){return p.where==='fix'&&p.auto==='light'&&p.item===KP.item&&(p.faces||[]).indexOf(f.i)>=0});
+        if(L&&addToAuto(L,f,q)!==false)return;
+        if(addToManual(KP.item,q))return}}catch(e){console.error(e)}
+    LONG=false;return tp.apply(this,arguments)}}
+  /* 切り替え */
+  function ui(){if(typeof KAKU_mode==='undefined'||KAKU_mode!=='elec'||typeof KF==='undefined'||KF.tool!=='place'||KP.where!=='pt')return;var box=document.querySelector('#kakuPlan .panel2');if(!box||box.querySelector('.kxsnap-row'))return;
+    var d=document.createElement('label');d.className='kxsnap-row';d.innerHTML='<input type="checkbox"'+(snapOn()?' checked':'')+'><span>足した照明を通りにそろえて均等に並べる<span class="mini" style="display:block;font-weight:400">長押しで置くと、その1個はそのままの位置に置きます</span></span>';
+    var fm=box.querySelector('.kpform');box.insertBefore(d,fm?fm.nextSibling:box.firstChild);d.querySelector('input').onchange=function(){current.lightSnap=this.checked;save()}}
+  if(typeof window.KAKU_renderEditor==='function'){var re=window.KAKU_renderEditor;window.KAKU_renderEditor=function(){var r=re.apply(this,arguments);try{ui()}catch(e){}return r}}
+})();
+</script>
+
 </body></html>
