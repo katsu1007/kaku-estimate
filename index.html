@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-10.10";
+var KAKU_VERSION="2026-11-10.11";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -2900,8 +2900,8 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
       for(var k=0;k<P.length;k++){var a=P[k],b=P[(k+1)%P.length],L=dist(a,b);if(L<1e-6)continue;G.lines.push([a[0],a[1],b[0],b[1],0]);
         var mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2,nx=-(b[1]-a[1])/L,ny=(b[0]-a[0])/L;if((mx+nx-cx)*(mx+nx-cx)+(my+ny-cy)*(my+ny-cy)<(mx-nx-cx)*(mx-nx-cx)+(my-ny-cy)*(my-ny-cy)){nx=-nx;ny=-ny}
         var deg=Math.atan2(b[1]-a[1],b[0]-a[0])*180/Math.PI;if(deg>90)deg-=180;if(deg<=-90)deg+=180;
-        G.texts.push({s:String(Math.round(L*1000)),x:mx-nx*0.25,y:my-ny*0.25,h:2.5,deg:deg,layer:1})}
-      G.texts.push({s:r.name,x:cx,y:cy+0.15,h:4,deg:0,layer:2});G.texts.push({s:area(P).toFixed(2)+'㎡',x:cx,y:cy-0.2,h:2.5,deg:0,layer:2})});return G}
+        G.texts.push({s:String(Math.round(L*1000)),x:mx-nx*0.3,y:my-ny*0.3,h:3,deg:deg,layer:1})}
+      G.texts.push({s:r.name,x:cx,y:cy+0.18,h:4.5,deg:0,layer:2});G.texts.push({s:area(P).toFixed(2)+'㎡',x:cx,y:cy-0.22,h:3,deg:0,layer:2})});return G}
   function dxf(){if(!S.rooms.length){toast('部屋がありません');return}KAKU_shareBytes((cur().name||'間取り')+'.dxf',KAKU_cad.dxf(geom()),'application/dxf')}
   function jwwOut(){if(!S.rooms.length){toast('部屋がありません');return}KAKU_shareBytes((cur().name||'間取り')+'.jww',KAKU_cad.jww(geom(),50),'application/octet-stream')}
   function open(){if(!cur()){toast('先に案件を開いてください');return}load();E.start=null;E.sel=null;E.tap=null;E.pick=null;
@@ -2993,7 +2993,7 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
     P(0,'SECTION',2,'BLOCKS',0,'ENDSEC');
     P(0,'SECTION',2,'ENTITIES');
     G.lines.forEach(function(l){P(0,'LINE',8,LN[l[4]||0],10,u(l[0]),20,u(l[1]),30,0,11,u(l[2]),21,u(l[3]),31,0)});
-    G.texts.forEach(function(t){P(0,'TEXT',8,LN[t.layer||0],10,u(t.x),20,u(t.y),30,0,40,u(t.h/1000*50),1,t.s,50,(t.deg||0).toFixed(3),7,'STANDARD',72,1,11,u(t.x),21,u(t.y),31,0,73,2)});
+    G.texts.forEach(function(t){P(0,'TEXT',8,LN[t.layer||0],10,u(t.x),20,u(t.y),30,0,40,u(t.h/1000*50),1,String(t.s).replace(/㎡/g,'m2'),50,(t.deg||0).toFixed(3),7,'STANDARD',72,1,11,u(t.x),21,u(t.y),31,0,73,2)});
     P(0,'ENDSEC',0,'EOF');
     var txt=L.join('\r\n')+'\r\n';return new Uint8Array(sjis(txt))}
   window.KAKU_cad={jww:jww,dxf:dxf};
