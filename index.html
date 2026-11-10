@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-10.5";
+var KAKU_VERSION="2026-11-10.6";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -2699,6 +2699,124 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
   window.KAKU_floorRender=render;
   if(typeof window.switchTab==='function'){var st=window.switchTab;window.switchTab=function(t){var r=st.apply(this,arguments);if(t==='items')setTimeout(render,0);return r}}
   if(typeof window.openProject==='function'){var op=window.openProject;window.openProject=function(){var r=op.apply(this,arguments);setTimeout(render,400);return r}}
+})();
+</script>
+
+<style id="kaku-v24">
+/* ==== 2026-11-10.6 寸法で間取りを作る（手書きの図面から） ==== */
+#kxSkCard{margin-bottom:13px}
+.kxsk{display:grid;gap:10px}
+.kxsk .kxskpv{border:1px solid var(--line);border-radius:12px;background:#fff;height:46vh;min-height:240px;touch-action:none;overflow:hidden}
+.kxsk .kxskpv svg{width:100%;height:100%;display:block}
+.kxsk .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.kxsk input[type=text],.kxsk input[type=number]{min-height:46px;border:1px solid var(--line);border-radius:10px;padding:0 12px;font-size:18px;background:var(--white,#fff);color:inherit;min-width:0}
+.kxsk .len{flex:1 1 140px;font-size:22px!important;font-weight:700;text-align:right}
+.kxsk .dirs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;flex:1 1 220px}
+.kxsk .dirs button{min-height:52px;font-size:22px;font-weight:800;border-radius:12px;border:1px solid var(--line);background:var(--white,#fff);color:inherit}
+.kxsk .dirs button.on{background:var(--orange,#d2502a);color:#fff;border-color:var(--orange,#d2502a)}
+.kxsk .edges{font-size:14px;line-height:1.7;color:var(--muted)}
+.kxsk .edges b{color:inherit}
+.kxsk .lab{font-size:13px;color:var(--muted)}
+.kxsk svg .w{stroke:#20221f;stroke-width:2.5px;vector-effect:non-scaling-stroke;fill:rgba(210,80,42,.07)}
+.kxsk svg .cur{stroke:#d2502a;stroke-width:3px;vector-effect:non-scaling-stroke;fill:none}
+.kxsk svg .d{fill:#1f6fd1;font-weight:700}
+.kxsk svg .n{fill:#20221f;font-weight:800}
+.kxsk svg .pt{fill:#d2502a}
+.kxsk svg .corner{fill:#fff;stroke:#20221f;stroke-width:1.5px;vector-effect:non-scaling-stroke}
+.kxsk svg .corner.sel{fill:#d2502a;stroke:#d2502a}
+</style>
+<script id="kaku-v24-js">
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var DIRS=[['↑',0,1],['→',1,0],['↓',0,-1],['←',-1,0]];
+  var S=null,E={dir:1,start:null};
+  function cur(){return typeof current!=='undefined'&&current?current:null}
+  function key(){return 'kaku-sketch-'+cur().id}
+  function load(){try{S=JSON.parse(localStorage.getItem(key())||'null')}catch(_){S=null}if(!S||!S.rooms)S={rooms:[],draft:null};return S}
+  function store(){try{localStorage.setItem(key(),JSON.stringify(S))}catch(_){}}
+  function mm(v){return Math.round(v*1000).toLocaleString('ja-JP')}
+  function area(P){var a=0;for(var i=0;i<P.length;i++){var p=P[i],q=P[(i+1)%P.length];a+=p[0]*q[1]-q[0]*p[1]}return Math.abs(a)/2}
+  function peri(P){var s=0;for(var i=0;i<P.length;i++){var p=P[i],q=P[(i+1)%P.length];s+=Math.hypot(q[0]-p[0],q[1]-p[1])}return s}
+  function pip(x,y,P){var c=false;for(var i=0,j=P.length-1;i<P.length;j=i++){var a=P[i],b=P[j];if((a[1]>y)!==(b[1]>y)&&x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])c=!c}return c}
+  function corners(){var o=[];S.rooms.forEach(function(r){r.pts.forEach(function(p){if(!o.some(function(q){return Math.hypot(q[0]-p[0],q[1]-p[1])<1e-4}))o.push(p)})});return o}
+  function draftPts(){var d=S.draft;if(!d)return[];var P=[d.start.slice()];d.edges.forEach(function(e){var a=P[P.length-1],D=DIRS[e.d];P.push([a[0]+D[1]*e.l,a[1]+D[2]*e.l])});return P}
+  /* ---------- 絵 ---------- */
+  function draw(){var pv=$('kxSkPv');if(!pv)return;var all=[];S.rooms.forEach(function(r){all=all.concat(r.pts)});var dp=draftPts();all=all.concat(dp);if(E.start)all.push(E.start);
+    if(!all.length)all=[[0,0],[3.64,2.73]];
+    var x0=Math.min.apply(null,all.map(function(p){return p[0]})),x1=Math.max.apply(null,all.map(function(p){return p[0]})),y0=Math.min.apply(null,all.map(function(p){return p[1]})),y1=Math.max.apply(null,all.map(function(p){return p[1]}));
+    var w=Math.max(x1-x0,1.8),h=Math.max(y1-y0,1.8),m=Math.max(w,h)*0.18+0.6,fs=Math.max(w,h)/22;
+    var vb=[x0-m,-(y1+m),w+2*m,h+2*m];
+    var o='<svg viewBox="'+vb.join(' ')+'" xmlns="http://www.w3.org/2000/svg">';
+    function dims(P,closed,cls){var t='';var n=closed?P.length:P.length-1;var cx=0,cy=0;P.forEach(function(p){cx+=p[0];cy+=p[1]});cx/=P.length;cy/=P.length;
+      for(var i=0;i<n;i++){var a=P[i],b=P[(i+1)%P.length],L=Math.hypot(b[0]-a[0],b[1]-a[1]);if(L<1e-6)continue;var mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2,nx=-(b[1]-a[1])/L,ny=(b[0]-a[0])/L;
+        if((mx+nx-cx)*(mx+nx-cx)+(my+ny-cy)*(my+ny-cy)<(mx-nx-cx)*(mx-nx-cx)+(my-ny-cy)*(my-ny-cy)){nx=-nx;ny=-ny}
+        /* 外側がほかの部屋の中なら、文字は自分の部屋の内側に置く */
+        var ox=mx+nx*fs*1.1,oy=my+ny*fs*1.1;var dd=fs*0.3;if(S.rooms.some(function(r){return r.pts!==P&&(pip(ox,oy+dd,r.pts)||pip(ox,oy-dd,r.pts)||pip(ox+dd,oy,r.pts)||pip(ox-dd,oy,r.pts))})){nx=-nx;ny=-ny}
+        var vert=Math.abs(b[0]-a[0])<1e-6;t+='<text class="d" x="'+(mx+nx*fs*1.1)+'" y="'+(-(my+ny*fs*1.1))+'" font-size="'+fs+'" text-anchor="middle" dominant-baseline="middle"'+(vert?' transform="rotate(-90 '+(mx+nx*fs*1.1)+' '+(-(my+ny*fs*1.1))+')"':'')+'>'+mm(L)+'</text>'}return t}
+    S.rooms.forEach(function(r){o+='<polygon class="w" points="'+r.pts.map(function(p){return p[0]+','+(-p[1])}).join(' ')+'"/>';
+      var c=r.pts.reduce(function(s,p){return[s[0]+p[0]/r.pts.length,s[1]+p[1]/r.pts.length]},[0,0]);
+      o+='<text class="n" x="'+c[0]+'" y="'+(-c[1])+'" font-size="'+fs*1.15+'" text-anchor="middle" dominant-baseline="middle">'+esc(r.name)+'</text><text class="ar" x="'+c[0]+'" y="'+(-c[1]+fs*1.3)+'" font-size="'+fs*0.9+'" text-anchor="middle" fill="#55574f">'+area(r.pts).toFixed(2)+'㎡</text>'+dims(r.pts,true)});
+    if(dp.length>1){o+='<polyline class="cur" points="'+dp.map(function(p){return p[0]+','+(-p[1])}).join(' ')+'"/>'+dims(dp,false)}
+    if(dp.length)o+='<circle class="pt" cx="'+dp[dp.length-1][0]+'" cy="'+(-dp[dp.length-1][1])+'" r="'+fs*0.35+'"/>';
+    if(!S.draft)corners().forEach(function(p){var sel=E.start&&Math.hypot(E.start[0]-p[0],E.start[1]-p[1])<1e-4;o+='<circle class="corner'+(sel?' sel':'')+'" data-x="'+p[0]+'" data-y="'+p[1]+'" cx="'+p[0]+'" cy="'+(-p[1])+'" r="'+fs*(sel?0.45:0.32)+'"/>'});
+    o+='</svg>';pv.innerHTML=o;
+    [].forEach.call(pv.querySelectorAll('.corner'),function(c){c.addEventListener('click',function(){E.start=[+c.dataset.x,+c.dataset.y];draw();info()})});
+  }
+  function info(){var d=S.draft,el=$('kxSkInfo');if(!el)return;var P=draftPts();
+    if(!d){el.innerHTML=S.rooms.length?'次の部屋は、<b>上の図の角（白い丸）をタップ</b>してから始めてください。選ばなければ、前の部屋の右下の角から始めます。':'部屋の名前を入れて「部屋を描き始める」を押してください。';}
+    else{var L=P.length>1?Math.hypot(P[P.length-1][0]-P[0][0],P[P.length-1][1]-P[0][1]):0;
+      el.innerHTML='<b>'+esc(d.name)+'</b>：'+(d.edges.length?d.edges.map(function(e){return DIRS[e.d][0]+' '+mm(e.l)}).join('　'):'向きを選んで、長さ（mm）を入れて「足す」')+(d.edges.length>=2?'<br>最初の点まで、あと '+mm(L)+' mm':'')}
+    var on=!!d;['kxSkEdge','kxSkClose','kxSkBack'].forEach(function(id){var e=$(id);if(e)e.style.display=on?'':'none'});var nb=$('kxSkNewRow');if(nb)nb.style.display=on?'none':'';
+  }
+  function setDir(i){E.dir=i;[].forEach.call(document.querySelectorAll('#kxSkDirs button'),function(b,k){b.classList.toggle('on',k===i)})}
+  function newRoom(){var n=($('kxSkName').value||'').trim()||('部屋'+(S.rooms.length+1));var st=E.start;
+    if(!st){if(S.rooms.length){var r=S.rooms[S.rooms.length-1];var xs=r.pts.map(function(p){return p[0]}),ys=r.pts.map(function(p){return p[1]});st=[Math.max.apply(null,xs),Math.min.apply(null,ys)]}else st=[0,0]}
+    S.draft={name:n,start:st,edges:[]};E.start=null;store();draw();info();var l=$('kxSkLen');if(l)l.focus()}
+  function addEdge(){var v=+($('kxSkLen').value||0);if(!(v>0)){toast('長さ（mm）を入れてください');return}S.draft.edges.push({d:E.dir,l:v/1000});$('kxSkLen').value='';
+    /* 次はたいてい直角に曲がるので、向きを右回りに1つ進めておく */
+    setDir((E.dir+1)%4);store();draw();info();
+    var P=draftPts();if(P.length>3&&Math.hypot(P[P.length-1][0]-P[0][0],P[P.length-1][1]-P[0][1])<1e-6)closeRoom()}
+  function rect(){var w=+($('kxSkW').value||0),h=+($('kxSkH').value||0);if(!(w>0&&h>0)){toast('幅と奥行（mm）を入れてください');return}
+    if(!S.draft)newRoom();S.draft.edges=[{d:0,l:h/1000},{d:1,l:w/1000},{d:2,l:h/1000},{d:3,l:w/1000}];closeRoom();$('kxSkW').value='';$('kxSkH').value=''}
+  function closeRoom(){var P=draftPts();if(P.length<3){toast('辺を2つ以上入れてください');return}
+    if(Math.hypot(P[P.length-1][0]-P[0][0],P[P.length-1][1]-P[0][1])<1e-6)P.pop();
+    if(area(P)<0.01){toast('部屋の形になっていません');return}
+    S.rooms.push({name:S.draft.name,pts:P.map(function(p){return[Math.round(p[0]*1000)/1000,Math.round(p[1]*1000)/1000]})});S.draft=null;store();
+    var nm=$('kxSkName');if(nm)nm.value='';draw();info();toast('「'+S.rooms[S.rooms.length-1].name+'」を足しました（'+area(P).toFixed(2)+'㎡）')}
+  function back(){if(S.draft&&S.draft.edges.length){S.draft.edges.pop();}else if(S.draft){S.draft=null}else if(S.rooms.length){if(!confirm('最後の部屋「'+S.rooms[S.rooms.length-1].name+'」を消しますか？'))return;S.rooms.pop()}store();draw();info()}
+  /* ---------- 図面にする ---------- */
+  function toPlan(){if(!S.rooms.length){toast('部屋がありません');return}
+    var segs=[],faces=[];S.rooms.forEach(function(r,i){var P=r.pts;for(var k=0;k<P.length;k++){var a=P[k],b=P[(k+1)%P.length];segs.push([a[0],a[1],b[0],b[1]])}
+      faces.push({i:i,name:r.name,area:+area(P).toFixed(3),peri:+peri(P).toFixed(3),poly:P.map(function(p){return p.slice()})})});
+    var hasRooms=cur().rooms.some(function(r){return r.plan});
+    if(hasRooms&&!confirm('今の図面と、図面から作った部屋を、この間取りに入れ替えます。よろしいですか？'))return;
+    cur().rooms=cur().rooms.filter(function(r){return!r.plan});
+    KAKU_preparePlan({segs:segs,dsegs:[],gsegs:[],faces:faces});KAKU_savePlan();
+    try{KAKU_fix=null;localStorage.removeItem('kaku-fix-'+cur().id)}catch(_){}
+    KAKU_sel.faces.clear();KAKU_plan.faces.forEach(function(f){KAKU_sel.faces.add(f.i)});KAKU_makeRooms(true);
+    KAKU_closeSheet('kxSketch');var st=$('drawingStatus');if(st)st.textContent=faces.length+'部屋の間取りを作りました。下の図で確かめてください';
+    try{switchTab('drawing')}catch(_){}toast(faces.length+'部屋を作りました')}
+  function dxf(){if(!S.rooms.length){toast('部屋がありません');return}var L=['0','SECTION','2','ENTITIES'];var u=function(v){return(Math.round(v*1000)).toString()};
+    S.rooms.forEach(function(r){var P=r.pts;for(var k=0;k<P.length;k++){var a=P[k],b=P[(k+1)%P.length];L.push('0','LINE','8','壁','10',u(a[0]),'20',u(a[1]),'30','0','11',u(b[0]),'21',u(b[1]),'31','0');
+      var Lm=Math.hypot(b[0]-a[0],b[1]-a[1]);L.push('0','TEXT','8','寸法','10',u((a[0]+b[0])/2),'20',u((a[1]+b[1])/2),'30','0','40','150','1',String(Math.round(Lm*1000)),'72','1','11',u((a[0]+b[0])/2),'21',u((a[1]+b[1])/2),'31','0')}
+      var c=P.reduce(function(s,p){return[s[0]+p[0]/P.length,s[1]+p[1]/P.length]},[0,0]);L.push('0','TEXT','8','室名','10',u(c[0]),'20',u(c[1]),'30','0','40','250','1',r.name,'72','1','11',u(c[0]),'21',u(c[1]),'31','0')});
+    L.push('0','ENDSEC','0','EOF');KAKU_share((cur().name||'間取り')+'.dxf',L.join('\r\n'),'application/dxf')}
+  function open(){if(!cur()){toast('先に案件を開いてください');return}load();E.start=null;
+    KAKU_sheet('kxSketch','寸法で間取りを作る','<div class="kxsk"><p class="mini">手書きの図面を見ながら、壁の向きと長さ（mm）を順番に入れてください。最初の点に戻ると部屋になります。長方形の部屋は「幅×奥行」でまとめて入れられます。</p>'+
+      '<div class="kxskpv" id="kxSkPv"></div><div class="mini" id="kxSkInfo"></div>'+
+      '<div class="row" id="kxSkNewRow"><input type="text" id="kxSkName" placeholder="部屋の名前（例：洋室）" style="flex:1 1 160px"><button type="button" class="btn orange" id="kxSkNew">部屋を描き始める</button></div>'+
+      '<div class="row" id="kxSkRectRow"><span class="lab">長方形：</span><input type="number" id="kxSkW" inputmode="numeric" placeholder="幅 mm" style="flex:1 1 90px"><span>×</span><input type="number" id="kxSkH" inputmode="numeric" placeholder="奥行 mm" style="flex:1 1 90px"><button type="button" class="btn light" id="kxSkRect">長方形で足す</button></div>'+
+      '<div class="row" id="kxSkEdge"><div class="dirs" id="kxSkDirs">'+DIRS.map(function(d,i){return '<button type="button" data-i="'+i+'" aria-label="'+['上','右','下','左'][i]+'へ">'+d[0]+'</button>'}).join('')+'</div><input type="number" class="len" id="kxSkLen" inputmode="numeric" placeholder="長さ mm" enterkeyhint="done"><button type="button" class="btn orange" id="kxSkAdd">足す</button></div>'+
+      '<div class="row"><button type="button" class="btn light" id="kxSkClose">最初の点まで閉じる</button><button type="button" class="btn light" id="kxSkBack">1つ戻す</button></div>'+
+      '<div class="row" style="border-top:1px solid var(--line);padding-top:10px"><button type="button" class="btn orange" id="kxSkPlan">この間取りで部屋を作る</button><button type="button" class="btn light" id="kxSkDxf">DXFで書き出す</button></div></div>');
+    $('kxSkNew').onclick=newRoom;$('kxSkAdd').onclick=addEdge;$('kxSkClose').onclick=closeRoom;$('kxSkBack').onclick=back;$('kxSkRect').onclick=rect;$('kxSkPlan').onclick=toPlan;$('kxSkDxf').onclick=dxf;
+    $('kxSkLen').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();addEdge()}});
+    [].forEach.call(document.querySelectorAll('#kxSkDirs button'),function(b){b.onclick=function(){setDir(+b.dataset.i)}});setDir(E.dir);draw();info()}
+  window.KAKU_sketch=open;
+  function card(){var p=$('panel-drawing');if(!p||$('kxSkCard'))return;var c=document.createElement('div');c.className='card';c.id='kxSkCard';
+    c.innerHTML='<div class="sectionhead" style="margin:0"><div><h3 style="margin:0">寸法で間取りを作る</h3><div class="mini">図面のデータがない時に。手書きの図面を見ながら、壁の向きと長さを入れて部屋を作ります。</div></div><button type="button" class="btn orange" id="kxSkOpen">間取りを作る</button></div>';
+    p.insertBefore(c,p.firstChild);$('kxSkOpen').onclick=open}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',card);else card();
 })();
 </script>
 
