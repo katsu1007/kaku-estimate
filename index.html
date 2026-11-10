@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-10.16";
+var KAKU_VERSION="2026-11-11.1";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -1395,7 +1395,7 @@ function KF_face(i){const P=KF_P();return P&&P.faces.find(f=>f.i===i)}
 function KF_angle(P){const H=new Array(180).fill(0);P.segs.forEach(q=>{const L=Math.hypot(q[2]-q[0],q[3]-q[1]);if(L<.3)return;let a=Math.atan2(q[3]-q[1],q[2]-q[0])*180/Math.PI;a=((a%90)+90)%90;H[Math.floor(a*2)%180]+=L});
   let k=0;H.forEach((v,i)=>{if(v>H[k])k=i});const c=(k+.5)/2;let sw=0,sa=0;P.segs.forEach(q=>{const L=Math.hypot(q[2]-q[0],q[3]-q[1]);if(L<.3)return;let a=Math.atan2(q[3]-q[1],q[2]-q[0])*180/Math.PI;a=((a%90)+90)%90;let d=a-c;if(d>45)d-=90;if(d<-45)d+=90;if(Math.abs(d)<=1){sw+=L;sa+=L*(c+d)}});
   let a=sw?sa/sw:0;if(a>45)a-=90;return Math.abs(a)<.5?0:a*Math.PI/180}
-function KF_save(){if(!current||!KAKU_fix)return;try{localStorage.setItem(KF_key(current.id),JSON.stringify(KAKU_fix))}catch(e){const g=KAKU_fix.g;KAKU_fix.g='';try{localStorage.setItem(KF_key(current.id),JSON.stringify(KAKU_fix))}catch(e2){}KAKU_fix.g=g}}
+function KF_save(){if(!current||!KAKU_fix)return;try{localStorage.setItem(KF_key(current.id),JSON.stringify(KAKU_fix))}catch(e){const g=KAKU_fix.g;KAKU_fix.g='';const _k=KF_key(current.id),_j=JSON.stringify(KAKU_fix);try{localStorage.setItem(_k,_j)}catch(e2){if(window.KAKU_quota)KAKU_quota(()=>localStorage.setItem(_k,_j))}KAKU_fix.g=g}}
 function KF_load(){KAKU_fix=null;KF.sel=null;KF.dot=null;if(!current)return;try{const v=JSON.parse(localStorage.getItem(KF_key(current.id))||'null');if(v&&v.fx)KAKU_fix=v}catch(e){}}
 function KF_drop(id){try{localStorage.removeItem(KF_key(id))}catch(e){}}
 
@@ -1597,7 +1597,7 @@ function KF_pts(p){return KF_items(p).map(o=>o.p)}
 /* 薄く描く線（保存はmmの整数）をmに直す。拡大縮小の変換を重ねない方が、iPhoneでも線の太さが正しく出る */
 const KF_gmc=new Map(),KF_gmc2=new Map();function KF_gm2(g){let v=KF_gmc2.get(g);if(v==null){v=g.replace(/-?\d+/g,n=>String(+n/1000));KF_gmc2.clear();KF_gmc2.set(g,v)}return v}
 function KF_gm(g){let v=KF_gmc.get(g);if(v==null){v=g.replace(/-?\d+/g,n=>String(+n/1000));KF_gmc.clear();KF_gmc.set(g,v)}return v}
-function KF_svg(V){if(!KAKU_fix)return'';const r=v=>Math.round(v*1000)/1000,el=KAKU_mode==='elec';let s=(KAKU_fix.g?`<path class="kfg" d="${KF_gm(KAKU_fix.g)}"/>`:'')+(KAKU_fix.gd?`<path class="kfg kfgd" d="${KF_gm2(KAKU_fix.gd)}"/>`:'');
+function KF_svg(V){if(!KAKU_fix)return'';const r=v=>Math.round(v*1000)/1000,el=KAKU_mode==='elec';let s=(KAKU_fix.g&&KAKU_fix.g!=='sketch'?`<path class="kfg" d="${KF_gm(KAKU_fix.g)}"/>`:'')+(KAKU_fix.gd?`<path class="kfg kfgd" d="${KF_gm2(KAKU_fix.gd)}"/>`:'');
   if(el)KAKU_fix.fx.forEach(x=>{if(x.t==='other')return;const b=x.b,on=KF.sel===x.id;s+=`<rect class="kfx kf-${x.t}${on?' on':''}${x.v?' v':''}" x="${r(b[0])}" y="${r(-b[3])}" width="${r(b[2]-b[0])}" height="${r(b[3]-b[1])}"/>`;if(x.t==='unknown'){const m=Math.min(b[2]-b[0],b[3]-b[1]);s+=`<text class="kfq" x="${r((b[0]+b[2])/2)}" y="${r(-(b[1]+b[3])/2+m*.3)}" font-size="${r(m*.8)}">?</text>`}
     if(x.back){const [nx,ny]=KF_SIDES[x.back];const ln=ny?`M${r(b[0])} ${r(-(ny>0?b[3]:b[1]))}H${r(b[2])}`:`M${r(nx>0?b[2]:b[0])} ${r(-b[3])}V${r(-b[1])}`;s+=`<path class="kfback" d="${ln}"/>`}});
   const deg=KF_rot()*180/Math.PI;if(deg)s=`<g transform="rotate(${-deg.toFixed(4)})">${s}</g>`;
@@ -2892,7 +2892,7 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
     if(hasRooms&&!confirm('今の図面と、図面から作った部屋を、この間取りに入れ替えます。よろしいですか？'))return;
     if(window.KX_specMirrorAll)KX_specMirrorAll();cur().rooms=cur().rooms.filter(function(r){return!r.plan});
     KAKU_preparePlan({segs:segs,dsegs:[],gsegs:[],faces:faces});KAKU_savePlan();
-    try{KAKU_fix={fx:[],g:'sketch',doors:[]};KF_save()}catch(_){}
+    try{KAKU_fix={fx:[],g:'',doors:[]};KF_save()}catch(_){}
     KAKU_sel.faces.clear();KAKU_plan.faces.forEach(function(f){KAKU_sel.faces.add(f.i)});KAKU_makeRooms(true);
     cur().rooms.forEach(function(rr){if(rr.plan&&rr.faces&&rr.faces.length===1){var f=KAKU_faceById(rr.faces[0]);if(f&&f.sk)rr.sk=f.sk}});save();if(window.KX_specApplyAll)KX_specApplyAll();
     KAKU_closeSheet('kxSketch');var st=$('drawingStatus');if(st)st.textContent=faces.length+'部屋の間取りを作りました。下の図で確かめてください';
@@ -3080,9 +3080,18 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
   window.KX_gridFor=function(fi){return CUR&&CUR.grid&&CUR.grid[fi]||null};
   /* ---- 置く時 ---- */
   var LONG=false,T=null;
-  document.addEventListener('touchstart',function(e){var v=$('pickView');if(!v||!v.contains(e.target))return;LONG=false;clearTimeout(T);T=setTimeout(function(){LONG=true},450)},{passive:true});
-  document.addEventListener('touchmove',function(){clearTimeout(T)},{passive:true});
-  document.addEventListener('touchend',function(){clearTimeout(T);setTimeout(function(){LONG=false},700)},{passive:true});
+  var TS=null,gotClick=false;
+  function ptMode(){return typeof KAKU_mode!=='undefined'&&KAKU_mode==='elec'&&typeof KF!=='undefined'&&KF.tool==='place'&&KP.where==='pt'}
+  document.addEventListener('touchstart',function(e){var v=$('pickView');LONG=false;clearTimeout(T);TS=null;if(!v||!v.contains(e.target)||e.touches.length!==1||!ptMode())return;
+    var t=e.touches[0];TS={x:t.clientX,y:t.clientY,moved:false};T=setTimeout(function(){if(TS&&!TS.moved){LONG=true;if(navigator.vibrate)try{navigator.vibrate(15)}catch(_){}}},450)},{passive:true});
+  /* 指のわずかなブレ（8px未満）では長押しを取り消さない */
+  document.addEventListener('touchmove',function(e){if(!TS)return;var t=e.touches[0];if(e.touches.length!==1||!t||Math.hypot(t.clientX-TS.x,t.clientY-TS.y)>8){TS.moved=true;LONG=false;clearTimeout(T)}},{passive:true});
+  document.addEventListener('click',function(){gotClick=true},true);
+  document.addEventListener('touchend',function(){clearTimeout(T);var was=TS;TS=null;if(!LONG||!was||was.moved){LONG=false;return}
+    /* 長押しのあとタップが届かない端末のために、少し待って届かなければ代わりに送る */
+    gotClick=false;setTimeout(function(){if(!gotClick&&LONG){try{KAKU_noClickUntil=0}catch(_){}var el=document.elementFromPoint(was.x,was.y);if(el)el.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,clientX:was.x,clientY:was.y,view:window}))}
+      setTimeout(function(){LONG=false},60)},380)},{passive:true});
+  document.addEventListener('touchcancel',function(){clearTimeout(T);TS=null;LONG=false},{passive:true});
   function faceAt(q){var P=KF_P();if(!P)return null;return P.faces.find(function(f){return KAKU_pip(q[0],q[1],f.poly)})||null}
   function rectsOf(f){var P=f.poly,x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;P.forEach(function(q){x0=Math.min(x0,q[0]);x1=Math.max(x1,q[0]);y0=Math.min(y0,q[1]);y1=Math.max(y1,q[1])});
     var fill=f.area/((x1-x0)*(y1-y0)||1);return fill>.97?[[x0,y0,x1,y1]]:(KF_rects(P)||[[x0,y0,x1,y1]])}
@@ -3280,7 +3289,7 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
   if(typeof window.duplicateProject==='function'){var dp=window.duplicateProject;window.duplicateProject=function(){if(!current)return dp.apply(this,arguments);var old=current.id,vals={};pkeys(old).forEach(function(k){vals[k]=localStorage.getItem(k)});
     var o=dp.apply(this,arguments);try{var nid=current&&current.id;if(nid&&nid!==old){var n=0;Object.keys(vals).forEach(function(k){try{localStorage.setItem(k.slice(0,-String(old).length)+nid,vals[k]);n++}catch(e){}});if(n)openProject(nid)}}catch(e){console.error(e)}return o}}
   /* 消した案件の図面などは、次に開いた時に片付ける（消してすぐなら「元に戻す」で図面ごと戻せるように） */
-  setTimeout(function(){try{if(typeof data==='undefined'||!Array.isArray(data))return;var ids={};data.forEach(function(p){ids[String(p.id)]=1});var del=[];
+  setTimeout(function(){try{if(typeof data==='undefined'||!Array.isArray(data)||!data.length)return;var ids={};data.forEach(function(p){ids[String(p.id)]=1});var del=[];
     for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i),m=k&&k.match(/^kaku-[a-z]+-(\d{10,})$/);if(m&&!ids[m[1]])del.push(k)}del.forEach(function(k){localStorage.removeItem(k)})}catch(e){}},4000);
   /* ---- 計算：壁ごとに選んだ部屋は、壁1面ずつに分けて計算する ---- */
   function expand(p){if(!p||!p.rooms||!p.rooms.some(function(r){return r.sk}))return p;var Dd=SKread(p.id);if(!Dd||!Dd.rooms)return p;var out=[],virt=[];
@@ -3289,8 +3298,9 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
       var L=[],P=0;for(var k=0;k<n;k++){var len=D(R.v[k],R.v[(k+1)%n]);L.push(len);P+=len}if(!(P>0)){out.push(q);return}
       var h=+q.ch>0?+q.ch:defH(),win=+q.win||0,door=+q.door||0;
       L.forEach(function(len,k){var w=W[k]||{},o=w.o!==undefined?w.o:(q.dWall||''),nn=w.n!==undefined?w.n:(q.wallFin||'');if(!(len>0))return;
-        virt.push({name:(q.name||'部屋')+' 壁'+(k+1),w:len/2,h:0,qty:q.qty||1,ch:h,plan:true,win:win*len/P,door:door*len/P,dFloor:'',dCeil:'',dWall:o,wallFin:nn,wallBoard:q.wallBoard||'',dWallMore:o?(q.dWallMore||[]):[],kxWall:true})});
-      q.dWall='';q.wallFin='';q.wallBoard='';q.dWallMore=[];out.push(q)});
+        virt.push({name:(q.name||'部屋')+' 壁'+(k+1),w:len/2,h:0,qty:q.qty||1,ch:h,plan:true,win:win*len/P,door:door*len/P,dFloor:'',dCeil:'',dWall:o,wallFin:nn,wallBoard:'',dWallMore:o?(q.dWallMore||[]):[],kxWall:true})});
+      /* 壁の下地（軽鉄・ボード）は部屋まるごとで数える（壁ごとに分けると本数の端数が変わるため） */
+      q.dWall='';q.wallFin='';q.dWallMore=[];out.push(q)});
     return Object.assign({},p,{rooms:out.concat(virt)})}
   window.KX_specExpand=expand;
   function wrapEngine(e){if(!e||e.__kxSpec)return;var cv=e.csv;if(cv)e.csv=function(){var t=cv.apply(this,arguments);try{t=t.replace(/^((?:"[^"]*"|[^,\r\n]*) 壁\d+),([\d.]+),,/gm,function(m0,a,b){return a+','+(Math.round(+b*2*1000)/1000)+',（壁の長さ）,'})}catch(_){}return t};var sn=e.snapshot;e.snapshot=function(){var o=sn.apply(this,arguments);try{(o.rows||[]).forEach(function(x){if(x.src)x.src=x.src.replace(/( 壁\d+)：周り/g,'$1：長さ')})}catch(_){}return o};var s0=e.sync;e.sync=function(p){var q=expand(p);if(q!==p&&p===current&&typeof KAKU_hatsuForEngine==='function')q.hatsu=KAKU_hatsuForEngine();return s0.call(this,q)};e.__kxSpec=true}
@@ -3307,7 +3317,7 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
   function usage(){var t=0,per={},img={};for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(!k)continue;var s=size(k);t+=s;var m=k.match(/^kaku-([a-z]+)-(\d{10,})$/);if(m){per[m[2]]=(per[m[2]]||0)+s;if(m[1]==='sketchimg'||m[1]==='trace')img[m[2]]=(img[m[2]]||0)+s}}return{t:t,per:per,img:img}}
   function mb(b){return(b/1048576).toFixed(1)+' MB'}
   /* 消した案件の残りを片付ける */
-  function gc(){var n=0;try{if(typeof data==='undefined'||!Array.isArray(data))return 0;var ids={};data.forEach(function(p){ids[String(p.id)]=1});var del=[];
+  function gc(){var n=0;try{if(typeof data==='undefined'||!Array.isArray(data)||!data.length)return 0;var ids={};data.forEach(function(p){ids[String(p.id)]=1});var del=[];
     for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i),m=k&&k.match(/^kaku-[a-z]+-(\d{10,})$/);if(m&&!ids[m[1]])del.push(k)}del.forEach(function(k){localStorage.removeItem(k);n++})}catch(e){}return n}
   var lastWarn=0;
   /* 保存に失敗した時に呼ぶ：片付けてもう一度。だめなら知らせる。保存できたら true */
