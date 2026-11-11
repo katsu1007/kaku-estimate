@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-11.9";
+var KAKU_VERSION="2026-11-11.10";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -3501,10 +3501,7 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
     if(w.out)Os.forEach(function(d){var f=owner(d,.35);if(!f)return;(byFace[f.i]=byFace[f.i]||{f:f,L:[],O:[]}).O.push(d)});
     var allSw={};Ss.forEach(function(s){allSw[s.key]=s});
     Object.keys(byFace).forEach(function(fi){var B=byFace[fi],f=B.f,rm=(current.rooms||[]).find(function(r){return(r.faces||[]).indexOf(f.i)>=0}),ch=rm&&+rm.ch>0?+rm.ch:defH(),head=null;
-      var SEN=B.L.filter(function(d){return d.item==='e-dl100s'});B.L=B.L.filter(function(d){return d.item!=='e-dl100s'});
-      if(SEN.length){/* 人感センサー付きはスイッチなし。入口に近い物から順に結ぶ */var ent=autoSwitch(f,P),ordS=chain(ent,SEN),c0=ordS[0].l,ptsS=[c0],lS=0;
-        ordS.forEach(function(d,i){if(i){leg(c0,d.l,f.poly).forEach(function(q){ptsS.push(q)});lS+=man(c0,d.l)}c0=d.l});
-        if(ptsS.length>1)res.paths.push({pts:ptsS});res.circ++;res.lenL+=lS+ordS.length*.2;res.nSen=(res.nSen||0)+ordS.length;if(!head)head=ordS[0].l}
+      res.nSen=(res.nSen||0)+B.L.filter(function(d){return d.item==='e-dl100s'}).length;
       if(B.L.length){var S=Ss.filter(function(s){return polyD(s.l,f.poly)<=.35});
         if(!S.length){var ak='a:'+f.i,al=autoSwitch(f,P),as={key:ak,item:w.sw,l:al,g:KF_G(al),auto:true};S=[as];allSw[ak]=as}
         var grp={};B.L.forEach(function(d){var sk=w.link[d.key],s=sk&&allSw[sk]?allSw[sk]:null;if(!s){var bd=1e9;S.forEach(function(x){var dd=man(x.l,d.l);if(dd<bd){bd=dd;s=x}})}(grp[s.key]=grp[s.key]||{s:s,L:[]}).L.push(d)});
@@ -3546,7 +3543,7 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
     var r=calc(),nLink=Object.keys(w.link).length;
     h+='<div class="kwpanel"><button type="button" class="btn '+(KW.panel?'orange':'light')+'" onclick="KW_panel()">'+(KW.panel?'置く所をタップしてください（やめる）':'分電盤をタップで置く')+'</button>'+(r.panel?'<span class="mini">分電盤から各部屋のスイッチまで、青い点線で線を引いています。分電盤を動かす・消す時は「自分で並べる」→「1個ずつ置く」で分電盤をタップしてください。</span>':'<span class="mini">置くと、分電盤から各部屋のスイッチまでの線を引いて、長さを明細に入れます。</span>')+'</div>';
     if(!r.nL)h+='<p class="mini"><b>照明がまだありません。</b>「自分で並べる」か「器具に合わせて自動」で照明を置くと、線が引かれます。</p>';
-    h+='<div class="kwsum">回路 <b>'+r.circ+'</b>　照明 <b>'+r.nL+'</b> 台　スイッチ <b>'+r.sws.length+'</b> 個'+(r.autoSw?'（うち自動で置いた物 '+r.autoSw+' 個）':'')+(r.nSen?'　人感センサー付き <b>'+r.nSen+'</b> 台（スイッチなし）':'')+
+    h+='<div class="kwsum">回路 <b>'+r.circ+'</b>　照明 <b>'+r.nL+'</b> 台　スイッチ <b>'+r.sws.length+'</b> 個'+(r.autoSw?'（うち自動で置いた物 '+r.autoSw+' 個）':'')+(r.nSen?'　（うち人感センサー付き <b>'+r.nSen+'</b> 台）':'')+
       '<br>照明の線：<b>'+qty(r.lenL,w)+' m</b>'+(w.out?'　コンセントの線：<b>'+qty(r.lenO,w)+' m</b>（'+r.nO+' 個）':'')+(r.panel?'　分電盤から：<b>'+qty(r.lenH,w)+' m</b>':'')+'</div>'+
       '<div class="kwgrid"><label>照明の線<select onchange="KW_set(\'cL\',this.value)">'+opts(cab,w.cL)+'</select></label><label>コンセント・分電盤からの線<select onchange="KW_set(\'cO\',this.value)">'+opts(cab,w.cO)+'</select></label>'+
       '<label>自動で置くスイッチ<select onchange="KW_set(\'sw\',this.value)">'+opts(sws,w.sw)+'</select></label><label>余りを足す %<input type="number" inputmode="numeric" min="0" max="100" step="5" value="'+(+w.extra||0)+'" onchange="KW_set(\'extra\',this.value)"></label></div>'+
