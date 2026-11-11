@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-12.4";
+var KAKU_VERSION="2026-11-12.5";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -1314,11 +1314,12 @@ const KP_ROW_TOL=.3;
 function KP_group(p,k,ax){const its=KF_items(p),me=its.find(o=>String(o.k)===String(k));if(!me)return[];const face=String(k).split(':')[0],r=-KF_rot();
   const L=q=>KF_G(q,r);const m=L(me.p);return its.filter(o=>String(o.k).split(':')[0]===face&&Math.abs(L(o.p)[ax]-m[ax])<KP_ROW_TOL).map(o=>String(o.k))}
 function KP_dragSetup(v){const svg=v.querySelector('svg');if(!svg)return;let D=null;
-  const pt=(cx,cy)=>{const m=svg.getScreenCTM();if(!m)return null;const q=new DOMPoint(cx,cy).matrixTransform(m.inverse());return[q.x,-q.y]};
-  const can=g=>KAKU_mode==='elec'&&g&&(g.dataset.k!=null?KF.tool==='fix':KF.tool==='place'&&KP.where==='pt');
+  /* 動かしている間は、触り始めた時の図の位置で計算する（動かしている途中で図の大きさや位置が変わっても、指の動きどおりに動くように） */
+  const pt=(cx,cy)=>{let mi=D&&D.mi;if(!mi){const m=svg.getScreenCTM();if(!m)return null;mi=m.inverse()}const q=new DOMPoint(cx,cy).matrixTransform(mi);return[q.x,-q.y]};
+  const can=g=>KAKU_mode==='elec'&&g&&(g.dataset.k!=null?KF.tool==='fix':(KF.tool==='place'&&KP.where==='pt')||(KF.tool==='wire'&&(current.places||[]).some(p=>p.id===g.dataset.pid&&p.where==='pt'&&p.item==='e-panel')));
   const els=d=>d.keys?d.keys.map(k=>svg.querySelector(`g[data-pid="${d.g.dataset.pid}"][data-k="${CSS.escape(k)}"]`)).filter(Boolean):[d.g];
   const clear=d=>{els(d).forEach(e=>{e.removeAttribute('transform');e.classList.remove('drag','grp')});d.g.classList.remove('one')};
-  const start=(g,cx,cy)=>{if(!can(g))return false;const p=pt(cx,cy);if(!p)return false;D={g,cx,cy,p0:p,moved:false,d:[0,0],one:g.dataset.k==null,keys:null};
+  const start=(g,cx,cy)=>{if(!can(g))return false;const m0=svg.getScreenCTM();if(!m0)return false;D=null;const p=pt(cx,cy);if(!p)return false;D={g,cx,cy,p0:p,moved:false,d:[0,0],one:g.dataset.k==null,keys:null,mi:m0.inverse()};
     /* 自動の照明：長押しで1個だけ動かすモード */
     if(g.dataset.k!=null)D.t=setTimeout(()=>{if(D&&!D.moved){D.one=true;g.classList.add('one');KAKU_noClickUntil=Date.now()+900;if(navigator.vibrate)try{navigator.vibrate(30)}catch(_){}toast('この1個だけ動かします')}},450);return true};
   const move=(cx,cy)=>{if(!D)return;if(!D.moved&&Math.hypot(cx-D.cx,cy-D.cy)<6)return;const p=pt(cx,cy);if(!p)return;let d=[p[0]-D.p0[0],p[1]-D.p0[1]];
@@ -1330,7 +1331,7 @@ function KP_dragSetup(v){const svg=v.querySelector('svg');if(!svg)return;let D=n
     D.d=d;els(D).forEach(e=>{e.setAttribute('transform',`translate(${d[0]},${-d[1]})`);e.classList.add('drag');if(D.keys&&D.keys.length>1)e.classList.add('grp')})};
   const end=()=>{if(!D)return;const d=D;D=null;clearTimeout(d.t);if(!d.moved){d.g.classList.remove('one');return}KAKU_noClickUntil=Date.now()+400;const p=(current.places||[]).find(q=>q.id===d.g.dataset.pid);if(!p){clear(d);return}
     const r3=v=>Math.round(v*1000)/1000;
-    if(p.where==='pt'){p.p=[r3(p.p[0]+d.d[0]),r3(p.p[1]+d.d[1])];KP.ptSel=p.id}
+    if(p.where==='pt'){p.p=[r3(p.p[0]+d.d[0]),r3(p.p[1]+d.d[1])];KP.ptSel=KF.tool==='wire'?null:p.id}
     else{const its=KF_items(p);p.mv=p.mv||{};(d.keys||[d.g.dataset.k]).forEach(k=>{const o=its.find(o=>String(o.k)===k);if(o)p.mv[k]=[r3(o.p[0]+d.d[0]),r3(o.p[1]+d.d[1])]})}
     KP_sync();KAKU_renderEditor()};
   const cancel=()=>{if(D){clearTimeout(D.t);clear(D)}D=null};
@@ -3542,7 +3543,7 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
     if(!KAKU_plan)return h+'<p class="mini">先に図面を読み込むか、手書きの間取りから部屋を作ってください。</p></div>';
     if(!w.on)return h+'<p class="mini">入れると、部屋ごとにスイッチから照明までを線で結んで、ケーブルの長さ（目安）を明細に入れます。スイッチを置いていない部屋には、ドアのそばに自動で置きます。</p></div>';
     var r=calc(),nLink=Object.keys(w.link).length;
-    h+='<div class="kwpanel"><button type="button" class="btn '+(KW.panel?'orange':'light')+'" onclick="KW_panel()">'+(KW.panel?'置く所をタップしてください（やめる）':'分電盤をタップで置く')+'</button>'+(r.panel?'<span class="mini">分電盤から各部屋のスイッチまで、青い点線で線を引いています。分電盤をタップすると向きが90°ずつ変わります。分電盤を動かす・消す時は「自分で並べる」→「1個ずつ置く」で分電盤をタップしてください。</span>':'<span class="mini">置くと、分電盤から各部屋のスイッチまでの線を引いて、長さを明細に入れます。</span>')+'</div>';
+    h+='<div class="kwpanel"><button type="button" class="btn '+(KW.panel?'orange':'light')+'" onclick="KW_panel()">'+(KW.panel?'置く所をタップしてください（やめる）':'分電盤をタップで置く')+'</button>'+(r.panel?'<span class="mini">分電盤から各部屋のスイッチまで、青い点線で線を引いています。分電盤をタップすると向きが90°ずつ変わり、指でなぞると動かせます。分電盤を動かす・消す時は「自分で並べる」→「1個ずつ置く」で分電盤をタップしてください。</span>':'<span class="mini">置くと、分電盤から各部屋のスイッチまでの線を引いて、長さを明細に入れます。</span>')+'</div>';
     if(!r.nL)h+='<p class="mini"><b>照明がまだありません。</b>「自分で並べる」か「器具に合わせて自動」で照明を置くと、線が引かれます。</p>';
     h+='<div class="kwsum">回路 <b>'+r.circ+'</b>　照明 <b>'+r.nL+'</b> 台　スイッチ <b>'+r.sws.length+'</b> 個'+(r.autoSw?'（うち自動で置いた物 '+r.autoSw+' 個）':'')+(r.nSen?'　（うち人感センサー付き <b>'+r.nSen+'</b> 台）':'')+
       '<br>照明の線：<b>'+qty(r.lenL,w)+' m</b>'+(w.out?'　コンセントの線：<b>'+qty(r.lenO,w)+' m</b>（'+r.nO+' 個）':'')+(r.panel?'　分電盤から：<b>'+qty(r.lenH,w)+' m</b>':'')+'</div>'+
