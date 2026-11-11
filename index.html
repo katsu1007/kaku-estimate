@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-12.3";
+var KAKU_VERSION="2026-11-12.4";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -3789,7 +3789,7 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
   function eye(){var cp=Math.cos(S.pitch);return[S.tx+S.dist*cp*Math.cos(S.yaw),S.ty+S.dist*cp*Math.sin(S.yaw),S.tz+S.dist*Math.sin(S.pitch)]}
   function matrix(){var cv=S.cv,as=cv.width/cv.height;return mul(persp(.8,as,Math.max(.05,S.dist/200),S.dist*20+100),look(eye(),[S.tx,S.ty,S.tz],[0,0,1]))}
   function draw(){S.raf=0;if(!S.dirty||!S.gl)return;S.dirty=false;var gl=S.gl,cv=S.cv,dpr=Math.min(2,window.devicePixelRatio||1),w=Math.round(cv.clientWidth*dpr),h=Math.round(cv.clientHeight*dpr);if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h}
-    gl.viewport(0,0,w,h);var dark=document.documentElement.getAttribute('data-theme')==='dark'||document.documentElement.getAttribute('data-sk')==='dark';if(dark)gl.clearColor(.11,.12,.10,1);else gl.clearColor(.93,.94,.92,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+    gl.viewport(0,0,w,h);var dark=document.documentElement.getAttribute('data-theme')==='dark'||document.documentElement.getAttribute('data-sk')==='dark';if(S.white)gl.clearColor(1,1,1,1);else if(dark)gl.clearColor(.11,.12,.10,1);else gl.clearColor(.93,.94,.92,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
     gl.useProgram(S.prog);var M=matrix();gl.uniformMatrix4fv(S.loc.M,false,new Float32Array(M));gl.enable(gl.DEPTH_TEST);
     var bind=function(b){gl.bindBuffer(gl.ARRAY_BUFFER,b);var L=S.loc,st=44;gl.enableVertexAttribArray(L.p);gl.vertexAttribPointer(L.p,3,gl.FLOAT,false,st,0);gl.enableVertexAttribArray(L.n);gl.vertexAttribPointer(L.n,3,gl.FLOAT,false,st,12);gl.enableVertexAttribArray(L.c);gl.vertexAttribPointer(L.c,4,gl.FLOAT,false,st,24);gl.enableVertexAttribArray(L.e);gl.vertexAttribPointer(L.e,1,gl.FLOAT,false,st,40)};
     gl.disable(gl.BLEND);gl.depthMask(true);gl.enable(gl.POLYGON_OFFSET_FILL);gl.polygonOffset(1,1);
@@ -3827,13 +3827,30 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
     [].forEach.call(S.root.querySelectorAll('.k3bar button'),function(btn){btn.onclick=function(){var k=btn.dataset.k;
       if(k==='home')home();else if(k==='top')home(true);else{S[k]=!S[k];if(k==='lab')req();else rebuild(true);bar()}}})}
   function open(){if(!plan()){toast('先に図面を読み込んでください');return}
-    if(!S.root){var r=document.createElement('div');r.id='k3d';r.innerHTML='<canvas></canvas><div class="k3labs"></div><div class="k3top"><b>3Dで見る</b><button type="button" class="k3close">閉じる</button></div><div class="k3bar"></div><div class="k3hint">1本指で回す・2本指で拡大と移動</div>';
+    if(!S.root){var r=document.createElement('div');r.id='k3d';r.innerHTML='<canvas></canvas><div class="k3labs"></div><div class="k3top"><b>3Dで見る</b><button type="button" class="k3print">印刷・PDF</button><button type="button" class="k3close">閉じる</button></div><div class="k3bar"></div><div class="k3hint">1本指で回す・2本指で拡大と移動</div>';
       document.body.appendChild(r);S.root=r;S.cv=r.querySelector('canvas');S.labBox=r.querySelector('.k3labs');
       if(!initGL(S.cv)){r.remove();S.root=null;toast('この端末では3Dを表示できません');return}
-      bindInput(S.cv);r.querySelector('.k3close').onclick=close;window.addEventListener('resize',function(){if(S.root&&S.root.classList.contains('on'))req()})}
+      bindInput(S.cv);r.querySelector('.k3close').onclick=close;r.querySelector('.k3print').onclick=printShot;window.addEventListener('resize',function(){if(S.root&&S.root.classList.contains('on'))req()})}
     var h=S.root.querySelector('.k3hint');if(h)h.style.opacity=1;
     S.root.classList.add('on');document.documentElement.style.overflow='hidden';bar();rebuild(false);setTimeout(hideHint,2500)}
   function close(){if(S.root)S.root.classList.remove('on');document.documentElement.style.overflow=''}
+  /* 今の見え方を1枚の絵にして、印刷・PDFにする（アプリは共有メニューから印刷・保存、ブラウザは印刷の画面） */
+  function shot(){S.dirty=true;S.white=true;if(S.raf){cancelAnimationFrame(S.raf);S.raf=0}try{draw()}finally{S.white=false}var cv=S.cv,c=document.createElement('canvas');c.width=cv.width;c.height=cv.height;var x=c.getContext('2d');
+    x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(cv,0,0);
+    if(S.lab&&S.labBox.style.display!=='none'){var k=cv.width/(cv.clientWidth||1);x.font='800 '+Math.round(11*k)+'px sans-serif';x.textAlign='center';x.textBaseline='middle';
+      S.labs.forEach(function(el){if(el.style.display==='none')return;var t=el.textContent,px=parseFloat(el.style.left)*k,py=parseFloat(el.style.top)*k,w=x.measureText(t).width+10*k,h=16*k;
+        x.fillStyle='rgba(255,255,255,.85)';x.fillRect(px-w/2,py-h/2,w,h);x.fillStyle='#20221f';x.fillText(t,px,py)})}
+    var u=c.toDataURL('image/jpeg',.92);req();return{url:u,w:c.width,h:c.height}}
+  function printShot(){var im;try{im=shot()}catch(e){console.error(e);toast('絵を作れませんでした');return}
+    var land=im.w>im.h,pw=land?841.8:595.2,ph=land?595.2:841.8,nm=(current&&current.name)||'名称未設定',d=new Date(),ds=d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日';
+    var html='<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;font-family:-apple-system,"Hiragino Sans",sans-serif;color:#20221f}h1{font-size:15pt;margin:0 0 2pt}p{margin:0 0 8pt;font-size:9pt;color:#555}img{display:block;max-width:100%;max-height:'+Math.round(ph-120)+'pt;margin:0 auto;object-fit:contain}</style></head><body><h1>'+esc(nm)+'　完成イメージ（3D）</h1><p>'+ds+'　KAKU</p><img src="'+im.url+'"></body></html>';
+    var nat=window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.pdf;
+    if(nat){nat.postMessage({name:nm+'_3D.pdf',html:html,w:pw,h:ph});toast('PDFを作っています。共有メニューから印刷・保存できます');return}
+    var root=document.getElementById('k3printRoot');if(!root){root=document.createElement('div');root.id='k3printRoot';document.body.appendChild(root)}
+    var st=document.getElementById('k3printStyle');if(!st){st=document.createElement('style');st.id='k3printStyle';document.head.appendChild(st)}
+    st.textContent='#k3printRoot{display:none}@page{size:'+(land?'A4 landscape':'A4 portrait')+';margin:12mm}@media print{body>*:not(#k3printRoot){display:none!important}#k3printRoot{display:block!important}#k3printRoot h1{font-size:15pt;margin:0 0 2pt}#k3printRoot p{margin:0 0 8pt;font-size:9pt;color:#555}#k3printRoot img{display:block;max-width:100%;max-height:'+(land?'165mm':'250mm')+';margin:0 auto;object-fit:contain}}';
+    root.innerHTML='<h1>'+esc(nm)+'　完成イメージ（3D）</h1><p>'+ds+'　KAKU</p><img src="'+im.url+'">';
+    var img=root.querySelector('img');var go=function(){setTimeout(function(){window.print()},150)};if(img.complete)go();else img.onload=go}
   window.KAKU_open3D=open;
   /* 視点を数字で決める（確かめる時に使う） */
   window.KAKU_3Dcam=function(o){for(var k in o)S[k]=o[k];req()};
