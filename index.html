@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-11.7";
+var KAKU_VERSION="2026-11-11.8";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -3422,6 +3422,8 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
 #planSvg .kwire path{fill:none;stroke:#d2382a;stroke-width:2;vector-effect:non-scaling-stroke;stroke-linejoin:round;stroke-linecap:round;pointer-events:none}
 #planSvg .kwire .kwsel{fill:none;stroke:#3d6fb6;stroke-width:3;vector-effect:non-scaling-stroke}
 #planSvg .kwire .kwauto{opacity:.95}
+.kwire path.kwhome{stroke:#3d6fb6;stroke-dasharray:6 4}
+.kwpanel{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}
 .kftool{display:grid;grid-template-columns:1.15fr 1.55fr .8fr}.kftool button{padding-left:4px;padding-right:4px;white-space:nowrap}
 .kwbox{display:grid;gap:8px}
 .kwbox .kwon{display:flex;align-items:center;gap:10px;font-weight:700;min-height:44px}
@@ -3450,21 +3452,41 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
       if(p.where==='fix'){try{it=KF_items(p).map(function(x){return{k:p.id+':'+x.k,g:x.p}})}catch(e){it=[]}}
       else{var pts=null;try{pts=KP_pts(p)}catch(e){}it=(pts||[]).map(function(g,i){return{k:p.id+':'+i,g:g}})}
       it.forEach(function(x){o.push({key:x.k,item:p.item,g:x.g,l:KF_L(x.g)})})});return o}
-  /* ドアのそばにスイッチを置く：ドアの軸と反対側（取っ手側）の壁、部屋の内側 */
-  function autoSwitch(f){var poly=f.poly,best=null;((typeof KAKU_fix!=='undefined'&&KAKU_fix&&KAKU_fix.doors)||[]).forEach(function(d){if(!d.c)return;
-      for(var k=0;k<poly.length;k++){var a=poly[k],b=poly[(k+1)%poly.length],s=segD(d.c,a,b);if(s.d<.3&&(!best||s.d<best.s.d))best={d:d,a:a,b:b,s:s}}});
-    var pt,a,b;
-    if(best){a=best.a;b=best.b;var L=Math.hypot(b[0]-a[0],b[1]-a[1])||1,u=[(b[0]-a[0])/L,(b[1]-a[1])/L],m=best.d.m||best.d.c,sg=((m[0]-best.d.c[0])*u[0]+(m[1]-best.d.c[1])*u[1])>=0?1:-1,r=+best.d.r||.8;
-      var t=best.s.t*L+sg*(r+.15);if(t<.1||t>L-.1)t=best.s.t*L-sg*.15;t=Math.max(.1,Math.min(L-.1,t));pt=[a[0]+u[0]*t,a[1]+u[1]*t]}
-    else{/* ドアが分からない部屋：いちばん長い壁の端から30cm */var bk=0,bl=0;for(var k=0;k<poly.length;k++){var l2=Math.hypot(poly[(k+1)%poly.length][0]-poly[k][0],poly[(k+1)%poly.length][1]-poly[k][1]);if(l2>bl){bl=l2;bk=k}}
-      a=poly[bk];b=poly[(bk+1)%poly.length];var t2=Math.min(.3,bl/2)/(bl||1);pt=[a[0]+(b[0]-a[0])*t2,a[1]+(b[1]-a[1])*t2]}
-    var L3=Math.hypot(b[0]-a[0],b[1]-a[1])||1,n=[-(b[1]-a[1])/L3,(b[0]-a[0])/L3],p1=[pt[0]+n[0]*.07,pt[1]+n[1]*.07],p2=[pt[0]-n[0]*.07,pt[1]-n[1]*.07];
+  /* 入口のそばにスイッチを置く。入口の候補は「ドア」と「壁の線がない開口（扉のない入口）」。
+     ブースや物入れのドアではなく、部屋の外側（廊下・建物の外・大きい部屋）へ出る所を入口とみなす。
+     ドアは軸と反対側（取っ手側）、開口は開口の横の壁。どちらも部屋の内側に置く */
+  function autoSwitch(f,P){var poly=f.poly,cs=[];
+    var faces=(P&&P.faces)||[],segs=(P&&P.segs)||[];
+    /* 入口の向こう側の広さ（区画がなければ外＝いちばん広い） */
+    var beyond=function(pt,n){var q1=[pt[0]+n[0]*.3,pt[1]+n[1]*.3],q2=[pt[0]-n[0]*.3,pt[1]-n[1]*.3],q=KAKU_pip(q1[0],q1[1],poly)?q2:q1,A=Infinity;
+      faces.forEach(function(g){if(g.i===f.i||!g.poly)return;if(KAKU_pip(q[0],q[1],g.poly)&&g.area<A)A=g.area});return A};
+    var edge=function(k){var a=poly[k],b=poly[(k+1)%poly.length],L=Math.hypot(b[0]-a[0],b[1]-a[1])||1;return{a:a,b:b,L:L,u:[(b[0]-a[0])/L,(b[1]-a[1])/L],n:[-(b[1]-a[1])/L,(b[0]-a[0])/L]}};
+    var at=function(e,t){return[e.a[0]+e.u[0]*t,e.a[1]+e.u[1]*t]};
+    /* ドア */
+    ((typeof KAKU_fix!=='undefined'&&KAKU_fix&&KAKU_fix.doors)||[]).forEach(function(d){if(!d.c)return;var best=null;
+      for(var k=0;k<poly.length;k++){var e=edge(k),sd=segD(d.c,e.a,e.b);if(sd.d<.3&&(!best||sd.d<best.sd.d))best={e:e,sd:sd}}
+      if(!best)return;var e=best.e,L=e.L,m=d.m||d.c,sg=((m[0]-d.c[0])*e.u[0]+(m[1]-d.c[1])*e.u[1])>=0?1:-1,r=+d.r||.8;
+      var t=best.sd.t*L+sg*(r+.15);if(t<.1||t>L-.1)t=best.sd.t*L-sg*.15;t=Math.max(.1,Math.min(L-.1,t));
+      var mid=at(e,Math.max(0,Math.min(L,best.sd.t*L+sg*r/2)));cs.push({e:e,t:t,A:beyond(mid,e.n),door:1})});
+    /* 壁の線がない開口：区画の辺のうち、図面の線が重なっていない所が60cm以上続く所 */
+    for(var k=0;k<poly.length;k++){var e=edge(k);if(e.L<.6)continue;var iv=[];
+      segs.forEach(function(q){var p1=[q[0],q[1]],p2=[q[2],q[3]],d1=(p1[0]-e.a[0])*e.n[0]+(p1[1]-e.a[1])*e.n[1],d2=(p2[0]-e.a[0])*e.n[0]+(p2[1]-e.a[1])*e.n[1];
+        if(Math.abs(d1)>.06||Math.abs(d2)>.06)return;var t1=(p1[0]-e.a[0])*e.u[0]+(p1[1]-e.a[1])*e.u[1],t2=(p2[0]-e.a[0])*e.u[0]+(p2[1]-e.a[1])*e.u[1];
+        var lo=Math.max(0,Math.min(t1,t2)),hi=Math.min(e.L,Math.max(t1,t2));if(hi-lo>.01)iv.push([lo,hi])});
+      iv.sort(function(x,y){return x[0]-y[0]});var c=0,gaps=[];iv.forEach(function(v){if(v[0]-c>=.6)gaps.push([c,v[0]]);c=Math.max(c,v[1])});if(e.L-c>=.6)gaps.push([c,e.L]);
+      gaps.forEach(function(g){var w=g[1]-g[0];if(w>3.6)return;/* 辺の全部が開いている所は、部屋の分け目（壁のない区切り）なので入口にしない */if(g[0]<.05&&g[1]>e.L-.05)return;
+        var t=g[0]>=.25?g[0]-.15:g[1]+.15;if(t>e.L-.1)t=Math.max(.1,g[0]-.15);cs.push({e:e,t:t,A:beyond(at(e,(g[0]+g[1])/2),e.n),door:0})})}
+    var pt,e0;
+    if(cs.length){cs.sort(function(x,y){return(y.A-x.A)||(y.door-x.door)});var c0=cs[0];e0=c0.e;pt=at(e0,c0.t)}
+    else{/* 入口が分からない部屋：いちばん長い壁の端から30cm */var bk=0,bl=0;for(var k2=0;k2<poly.length;k2++){var l2=edge(k2).L;if(l2>bl){bl=l2;bk=k2}}
+      e0=edge(bk);pt=at(e0,Math.min(.3,bl/2))}
+    var p1=[pt[0]+e0.n[0]*.07,pt[1]+e0.n[1]*.07],p2=[pt[0]-e0.n[0]*.07,pt[1]-e0.n[1]*.07];
     return KAKU_pip(p1[0],p1[1],poly)?p1:p2}
   /* 2点を、縦と横の線でつなぐ（曲がり角が部屋の中に入る方を選ぶ） */
   function leg(a,b,poly){var dx=b[0]-a[0],dy=b[1]-a[1];if(Math.abs(dx)<.03||Math.abs(dy)<.03)return[b];var e1=[b[0],a[1]],e2=[a[0],b[1]],i1=KAKU_pip(e1[0],e1[1],poly),i2=KAKU_pip(e2[0],e2[1],poly);
     var e=i1&&!i2?e1:i2&&!i1?e2:(Math.abs(dx)>=Math.abs(dy)?e1:e2);return[e,b]}
   function chain(start,items){var left=items.slice(),cur=start,out=[];while(left.length){var bi=0,bd=1e9;left.forEach(function(x,i){var d=man(cur,x.l);if(d<bd){bd=d;bi=i}});var x=left.splice(bi,1)[0];out.push(x);cur=x.l}return out}
-  function calc(){var w=W(),res={paths:[],sws:[],lights:[],lenL:0,lenO:0,lenH:0,circ:0,autoSw:0,nL:0,nO:0,panel:false,noSw:0};
+  function calc(){var w=W(),res={paths:[],home:[],sws:[],lights:[],lenL:0,lenO:0,lenH:0,circ:0,autoSw:0,nL:0,nO:0,panel:false,noSw:0};
     if(!w||typeof KAKU_plan==='undefined'||!KAKU_plan)return res;var P=KF_P();if(!P)return res;var D=devices();
     var Ls=D.filter(function(d){return isLight(d.item)}),Ss=D.filter(function(d){return isSw(d.item)}),Os=D.filter(function(d){return isOut(d.item)}),pns=D.filter(function(d){return d.item==='e-panel'});
     res.lights=Ls;res.nL=Ls.length;res.panel=pns.length>0;res.far=0;var used={};
@@ -3480,14 +3502,14 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
     var allSw={};Ss.forEach(function(s){allSw[s.key]=s});
     Object.keys(byFace).forEach(function(fi){var B=byFace[fi],f=B.f,rm=(current.rooms||[]).find(function(r){return(r.faces||[]).indexOf(f.i)>=0}),ch=rm&&+rm.ch>0?+rm.ch:defH(),head=null;
       if(B.L.length){var S=Ss.filter(function(s){return polyD(s.l,f.poly)<=.35});
-        if(!S.length){var ak='a:'+f.i,al=autoSwitch(f),as={key:ak,item:w.sw,l:al,g:KF_G(al),auto:true};S=[as];allSw[ak]=as}
+        if(!S.length){var ak='a:'+f.i,al=autoSwitch(f,P),as={key:ak,item:w.sw,l:al,g:KF_G(al),auto:true};S=[as];allSw[ak]=as}
         var grp={};B.L.forEach(function(d){var sk=w.link[d.key],s=sk&&allSw[sk]?allSw[sk]:null;if(!s){var bd=1e9;S.forEach(function(x){var dd=man(x.l,d.l);if(dd<bd){bd=dd;s=x}})}(grp[s.key]=grp[s.key]||{s:s,L:[]}).L.push(d)});
         Object.keys(grp).forEach(function(k){var g=grp[k],s=g.s;if(!used[s.key]){used[s.key]=1;res.sws.push(s);if(s.auto)res.autoSw++}
           var ord=chain(s.l,g.L),pts=[s.l],cur=s.l,len=0;ord.forEach(function(d){leg(cur,d.l,f.poly).forEach(function(q){pts.push(q)});len+=man(cur,d.l);cur=d.l});
           res.paths.push({pts:pts});res.circ++;res.lenL+=len+Math.max(0,ch-1.2)+ord.length*.2;if(!head)head=s.l})}
       if(B.O.length){var st=head||B.O[0].l,ordO=chain(st,B.O),c2=st,l2=0;ordO.forEach(function(d,i){if(i||head)l2+=man(c2,d.l);c2=d.l});res.lenO+=l2+ordO.length*Math.max(0,ch-.25);res.nO+=ordO.length;if(!head)head=B.O[0].l}
       /* 分電盤を置いてあれば、分電盤から部屋までの線も入れる */
-      if(pns.length&&head){var pn=null,pd=1e9;pns.forEach(function(d){if(d.grp!==fgrp[f.i])return;var dd=man(d.l,head);if(dd<pd){pd=dd;pn=d}});if(pn)res.lenH+=pd+Math.max(0,ch-1.5);else res.far++}});
+      if(pns.length&&head){var pn=null,pd=1e9;pns.forEach(function(d){if(d.grp!==fgrp[f.i])return;var dd=man(d.l,head);if(dd<pd){pd=dd;pn=d}});if(pn){res.lenH+=pd+Math.max(0,ch-1.5);res.home.push({pts:[pn.l].concat(leg(pn.l,head,f.poly))})}else res.far++}});
     return res}
   window.KW_calc=calc;
   function qty(m,w){return Math.ceil(m*(1+(+w.extra||0)/100))}
@@ -3505,7 +3527,7 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
       var q1=[p[0]-(p[0]-a[0])/l1*R,p[1]-(p[1]-a[1])/l1*R],q2=[p[0]+(n[0]-p[0])/l2*R,p[1]+(n[1]-p[1])/l2*R];d+='L'+r(q1[0])+' '+r(q1[1])+'Q'+r(p[0])+' '+r(p[1])+' '+r(q2[0])+' '+r(q2[1])}
     return d}
   if(typeof window.KP_svg==='function'){var kv=window.KP_svg;window.KP_svg=function(V){var base=kv.apply(this,arguments);try{var w=W();if(!w||!w.on||KAKU_mode!=='elec'||!KAKU_plan)return base;
-      var r=calc(),R=Math.min(V.fs*0.42,.13),s='';r.paths.forEach(function(p){s+='<path d="'+pathD(p.pts)+'"/>'});
+      var r=calc(),R=Math.min(V.fs*0.42,.13),s='';r.paths.forEach(function(p){s+='<path d="'+pathD(p.pts)+'"/>'});(r.home||[]).forEach(function(p){s+='<path class="kwhome" d="'+pathD(p.pts)+'"/>'});
       r.sws.forEach(function(x){if(x.auto)s+='<g class="kwauto">'+KP_sym(x.item,x.g[0],-x.g[1],R,'#d2382a')+'</g>'});
       if(KF.tool==='wire'&&KW.sel){var L=r.lights.find(function(d){return d.key===KW.sel});if(L)s+='<circle class="kwsel" cx="'+L.g[0]+'" cy="'+(-L.g[1])+'" r="'+(R*2)+'"/>'}
       return'<g class="kwire">'+s+'</g>'+base}catch(e){console.error(e);return base}}}
@@ -3518,6 +3540,7 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
     if(!KAKU_plan)return h+'<p class="mini">先に図面を読み込むか、手書きの間取りから部屋を作ってください。</p></div>';
     if(!w.on)return h+'<p class="mini">入れると、部屋ごとにスイッチから照明までを線で結んで、ケーブルの長さ（目安）を明細に入れます。スイッチを置いていない部屋には、ドアのそばに自動で置きます。</p></div>';
     var r=calc(),nLink=Object.keys(w.link).length;
+    h+='<div class="kwpanel"><button type="button" class="btn '+(KW.panel?'orange':'light')+'" onclick="KW_panel()">'+(KW.panel?'置く所をタップしてください（やめる）':'分電盤をタップで置く')+'</button>'+(r.panel?'<span class="mini">分電盤から各部屋のスイッチまで、青い点線で線を引いています。分電盤を動かす・消す時は「自分で並べる」→「1個ずつ置く」で分電盤をタップしてください。</span>':'<span class="mini">置くと、分電盤から各部屋のスイッチまでの線を引いて、長さを明細に入れます。</span>')+'</div>';
     if(!r.nL)h+='<p class="mini"><b>照明がまだありません。</b>「自分で並べる」か「器具に合わせて自動」で照明を置くと、線が引かれます。</p>';
     h+='<div class="kwsum">回路 <b>'+r.circ+'</b>　照明 <b>'+r.nL+'</b> 台　スイッチ <b>'+r.sws.length+'</b> 個'+(r.autoSw?'（うち自動で置いた物 '+r.autoSw+' 個）':'')+
       '<br>照明の線：<b>'+qty(r.lenL,w)+' m</b>'+(w.out?'　コンセントの線：<b>'+qty(r.lenO,w)+' m</b>（'+r.nO+' 個）':'')+(r.panel?'　分電盤から：<b>'+qty(r.lenH,w)+' m</b>':'')+'</div>'+
@@ -3530,12 +3553,14 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
     return h+'</div>'}
   if(typeof window.KAKU_panelHTML==='function'){var ph=window.KAKU_panelHTML;window.KAKU_panelHTML=function(){if(KAKU_mode==='elec'&&KF.tool==='wire'){try{return KF_toolBar()+panel()}catch(e){console.error(e)}}return ph.apply(this,arguments)}}
   window.KW_set=function(k,v){var w=W();if(!w)return;if(k==='extra')v=Math.max(0,Math.min(100,+v||0));w[k]=v;KW.sel=null;save();KP_sync();KAKU_renderEditor()};
+  window.KW_panel=function(){KW.panel=!KW.panel;KW.sel=null;KAKU_renderEditor();if(KW.panel){var v=document.getElementById('pickView');if(v)v.scrollIntoView({block:'center',behavior:'smooth'});toast('分電盤を置く所をタップしてください')}};
   window.KW_clear=function(){var w=W();if(!w)return;w.link={};KW.sel=null;save();KP_sync();KAKU_renderEditor();toast('つなぎ替えを元に戻しました')};
   /* タップ：照明 → スイッチ の順でつなぎ替え */
   if(typeof window.KAKU_tap==='function'){var kt=window.KAKU_tap;window.KAKU_tap=function(ev){
     if(typeof KAKU_mode!=='undefined'&&KAKU_mode==='elec'&&typeof KF!=='undefined'&&KF.tool==='wire'){try{if(Date.now()<KAKU_pinchUntil)return;var w=W();if(!w||!w.on)return;
         var svg=ev.currentTarget,m=svg.getScreenCTM();if(!m)return;var pt=new DOMPoint(ev.clientX,ev.clientY).matrixTransform(m.inverse()),x=pt.x,y=-pt.y,tol=Math.max(22/Math.abs(m.a),.15),r=calc();
         var near=function(list){var b=null,bd=tol;list.forEach(function(d){var dd=Math.hypot(d.g[0]-x,d.g[1]-y);if(dd<bd){bd=dd;b=d}});return b};
+        if(KW.panel){current.places=current.places||[];current.places.push({id:'p'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),item:'e-panel',where:'pt',p:[Math.round(x*1000)/1000,Math.round(y*1000)/1000],count:1});KW.panel=false;KW.sel=null;KP_sync();KAKU_renderEditor();toast('分電盤を置きました');return}
         var s=near(r.sws),l=near(r.lights);
         if(KW.sel&&s){w.link[KW.sel]=s.key;KW.sel=null;save();KP_sync();KAKU_renderEditor();toast('つなぎ替えました');return}
         if(l){KW.sel=l.key;KAKU_renderEditor();toast('つなぐスイッチをタップしてください');return}
