@@ -1529,15 +1529,16 @@ function jwwRead(buf){
   if(sj.decode(u8.subarray(0,8))!=="JwwData.")throw new Error("jwwではありません");
   p=8;const ver=D();
   /* ヘッダ：縮尺とレイヤ名まで */
-  S();D();D();const scale=[],lay=[];
-  for(let g=0;g<16;g++){D();D();scale.push(F());D();for(let k=0;k<16;k++){D();D()}}
+  S();D();D();const scale=[],lay=[],gst=[],lst=[];
+  /* レイヤグループ・レイヤの状態：0=非表示、1=表示のみ、2=編集できる、3=書込 */
+  for(let g=0;g<16;g++){gst.push(D());D();scale.push(F());D();const a=[];for(let k=0;k<16;k++){a.push(D());D()}lst.push(a)}
   for(let i=0;i<14;i++)D();for(let i=0;i<5;i++)D();D();D();F();F();F();D();D();F();F();F();F();F();
   for(let g=0;g<16;g++){lay.push([]);for(let k=0;k<16;k++)lay[g].push(S())}
   const glayName=[];for(let g=0;g<16;g++)glayName.push(S());
   /* 図形のリスト：最初のクラス名の手前の個数から読む */
   const find=s=>{const t=new TextEncoder().encode(s);outer:for(let i=p;i<u8.length-t.length;i++){for(let j=0;j<t.length;j++)if(u8[i+j]!==t[j])continue outer;return i}return -1};
   let start=-1;["CDataSen","CDataMoji","CDataEnko","CDataSolid","CDataTen","CDataSunpou","CDataBlock","CDataList"].forEach(n=>{const i=find(n);if(i>=0&&(start<0||i<start))start=i});
-  if(start<0)return {ver,items:[],lists:[],scale,lay,glayName};
+  if(start<0)return {ver,items:[],lists:[],scale,lay,glayName,gst,lst};
   const load=[null];
   const base=()=>{const o={grp:D(),style:B(),color:W()};if(ver>=351)o.width=W();o.lay=W();o.glay=W();o.flg=W();return o};
   const sen=()=>{const o=base();o.t="sen";o.x1=F();o.y1=F();o.x2=F();o.y2=F();return o};
@@ -1546,7 +1547,7 @@ function jwwRead(buf){
   const body=c=>{switch(c){
     case "CDataSen":return sen();case "CDataMoji":return moji();case "CDataTen":return ten();
     case "CDataEnko":{const o=base();o.t="enko";o.x=F();o.y=F();o.r=F();o.a0=F();o.da=F();o.tilt=F();o.flat=F();o.full=D();return o}
-    case "CDataSolid":{const o=base();o.t="solid";for(let i=0;i<8;i++)F();if(o.color===10)D();return o}
+    case "CDataSolid":{const o=base();o.t="solid";o.p=[];for(let i=0;i<8;i++)o.p.push(F());if(o.color===10)D();return o}
     case "CDataBlock":{const o=base();o.t="block";o.x=F();o.y=F();o.sx=F();o.sy=F();o.rot=F();o.num=D();return o}
     case "CDataSunpou":{const o=base();o.t="sunpou";o.sen=sen();o.moji=moji();if(ver>=420){W();sen();sen();ten();ten();ten();ten()}return o}
     case "CDataList":{const o=base();o.t="list";o.num=D();D();D();o.name=S();o.items=list();return o}
@@ -1558,9 +1559,10 @@ function jwwRead(buf){
     load.push(null);const i=load.length-1;const o=body(cls);load[i]=o;return o};
   const list=()=>{let n=W();if(n===0xFFFF)n=D();const a=[];for(let i=0;i<n;i++)a.push(obj());return a};
   let items=null,lists=[];
-  for(const back of [2,6]){p=start-6-back;load.length=1;try{items=list();try{lists=list()}catch(_){lists=[]}break}catch(e){items=null}}
+  let listErr=false;
+  for(const back of [2,6]){p=start-6-back;load.length=1;try{items=list();try{lists=list()}catch(_){lists=[];listErr=true}break}catch(e){items=null}}
   if(!items)throw new Error("jwwの図形を読めませんでした");
-  return {ver,items,lists,scale,lay,glayName};
+  return {ver,items,lists,scale,lay,glayName,gst,lst,listErr};
 }
 const KE_U=s=>String(s==null?'':s).replace(/\\U\+([0-9A-Fa-f]{4})/g,(_,h)=>String.fromCharCode(parseInt(h,16)));
 function KE_parseDXF(str){
@@ -1600,6 +1602,7 @@ function KE_parseDXF(str){
     const h=(cl/2)/Math.tan(th/2),cx=(a[0]+b[0])/2-dy/cl*h,cy=(a[1]+b[1])/2+dx/cl*h,r=Math.hypot(a[0]-cx,a[1]-cy),a0=Math.atan2(a[1]-cy,a[0]-cx);
     const k=Math.max(2,Math.ceil(Math.abs(th)/(Math.PI/12))),pts=[];for(let i=1;i<=k;i++){const t=a0+th*i/k;pts.push(i===k?b:[cx+r*Math.cos(t),cy+r*Math.sin(t)])}return pts};
   const walk=(ents,m,inLy,owner,depth)=>{for(const e of ents){const g=e.g;if(num(g,67,0)===1)continue;  /* 紙面（ペーパー空間）は数えない */
+    if(num(g,60,0)===1)continue;  /* 図形ごとに非表示にした物（コード60）は数えない */
     let ly=KE_U(String(str1(g,8,'0')).trim());if((ly==='0'||!ly)&&inLy)ly=inLy;const o=owner;
     switch(e.type){
       case 'LINE':out.push({k:'line',ly,a:P(m,num(g,10,0),num(g,20,0)),b:P(m,num(g,11,0),num(g,21,0)),o});break;
@@ -1632,7 +1635,11 @@ function KE_parseDXF(str){
         break}
     }}};
   walk(top,[1,0,0,1,0,0],null,null,0);
-  return{ents:out,insunits:ins,ltab}}
+  /* 非表示・フリーズのレイヤーの図形は使わない（器具の読み取りでも）。非表示側が半分より多い時は、作業の途中で隠しただけと見て全部使う */
+  const hidL=n=>{const t=ltab[n];return!!t&&(t.color<0||!!(t.flags&1))};
+  const geo=out.filter(e=>e.k!=='text'&&e.k!=='insert'),nH=geo.filter(e=>hidL(e.ly)).length;
+  const ents=nH>0&&nH<=geo.length*0.5?out.filter(e=>!hidL(e.ly)):out;
+  return{ents,insunits:ins,ltab,hidden:ents===out?0:nH}}
 
 /* ---------- 読む（JWW、概算くんの読み取りを使う） ---------- */
 async function KE_parseJWW(buf,opt){opt=opt||{};const J=jwwRead(buf);const out=[];
@@ -1649,14 +1656,18 @@ async function KE_parseJWW(buf,opt){opt=opt||{};const J=jwwRead(buf);const out=[
     else if(o.t==='block'){const p=Q(o.x,o.y);out.push({k:'insert',ly,name:'ブロック'+o.num,p,id:out.length+1,o:null,noGeom:true});
       if(opt.blocks&&depth<8){const L=lists[o.num];if(!L)return;const c=Math.cos(o.rot||0),sn=Math.sin(o.rot||0),bx=o.sx||1,by=o.sy||1;const loc=[c*bx,sn*bx,-sn*by,c*by,o.x,o.y];
         walk(L.items||[],[m[0]*loc[0]+m[2]*loc[1],m[1]*loc[0]+m[3]*loc[1],m[0]*loc[2]+m[2]*loc[3],m[1]*loc[2]+m[3]*loc[3],m[0]*loc[4]+m[2]*loc[5]+m[4],m[1]*loc[4]+m[3]*loc[5]+m[5]],g,depth+1)}}});
-  walk(J.items||[],[1,0,0,1,0,0],null,0);
-  return{ents:out,insunits:4}}
+  /* 非表示のレイヤ・レイヤグループの図形は使わない（Jw_cadの画面にも印刷にも出ない）。非表示側に半分より多くの線がある時は、作業の途中で隠しただけと見て全部使う */
+  const hid=o=>!!(J.gst&&J.lst)&&(J.gst[o.glay||0]===0||(J.lst[o.glay||0]||[])[o.lay||0]===0);
+  let nAll=0,nHid=0;(J.items||[]).forEach(o=>{if(o.t==='sen'||o.t==='enko'||o.t==='block'){nAll++;if(hid(o))nHid++}});
+  const items=nHid>0&&nHid<=nAll*0.5?(J.items||[]).filter(o=>!hid(o)):(J.items||[]);
+  walk(items,[1,0,0,1,0,0],null,0);
+  return{ents:out,insunits:4,hidden:items.length===(J.items||[]).length?0:nHid}}
 
 /* ---------- 下ごしらえ ---------- */
 function KE_len(e){if(e.k==='line')return Math.hypot(e.b[0]-e.a[0],e.b[1]-e.a[1]);if(e.k==='poly'||e.k==='arc'){let s=0;for(let i=1;i<e.pts.length;i++)s+=Math.hypot(e.pts[i][0]-e.pts[i-1][0],e.pts[i][1]-e.pts[i-1][1]);return s}if(e.k==='circle')return 2*Math.PI*e.r;return 0}
 function KE_bb(e){let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;const a=p=>{if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<y0)y0=p[1];if(p[1]>y1)y1=p[1]};
   if(e.k==='line'){a(e.a);a(e.b)}else if(e.k==='circle'){a([e.c[0]-e.r,e.c[1]-e.r]);a([e.c[0]+e.r,e.c[1]+e.r])}else if(e.pts)e.pts.forEach(a);else if(e.p)a(e.p);return[x0,y0,x1,y1]}
-function KE_scaleUnits(R){let f=1;const u=R.insunits;if(u===4)f=1;else if(u===5)f=10;else if(u===6)f=1000;else if(u===1)f=25.4;else{
+function KE_scaleUnits(R){let f=1;const u=R.insunits;if(u===4)f=1;else if(u===5)f=10;else if(u===6)f=1000;else if(u===1)f=25.4;else if(u===2)f=304.8;else{
     let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity;R.ents.forEach(e=>{if(e.k==='text'||e.k==='insert')return;const b=KE_bb(e);if(b[0]<x0)x0=b[0];if(b[2]>x1)x1=b[2];if(b[1]<y0)y0=b[1];if(b[3]>y1)y1=b[3]});const ext=Math.max(x1-x0,y1-y0);f=ext>0&&ext<200?1000:1}
   if(f!==1){const S=p=>[p[0]*f,p[1]*f];R.ents.forEach(e=>{if(e.a)e.a=S(e.a);if(e.b)e.b=S(e.b);if(e.c)e.c=S(e.c);if(e.r)e.r*=f;if(e.pts)e.pts=e.pts.map(S);if(e.ell)e.ell=e.ell.map(S);if(e.p)e.p=S(e.p);if(e.h)e.h*=f})}
   return f}
@@ -1896,6 +1907,8 @@ function KF_guess(w,h,cv,circ,n,burn,bowl,tub){const s=Math.min(w,h),l=Math.max(
   if(s>=.4&&s<=.72&&l>=.7&&l<=3.6){if(l>=1.6&&burn>=2)return'kitchen';if(bowl>=1||s<=.66)return'counter'}
   if(s>=.65&&s<=.9&&l>=1.1&&l<=1.8)return'bath';
   if(s>=.25&&s<=.55&&l>=.28&&l<=.6&&(n>=2||circ===0))return'sink';
+  /* 小さい手洗い（奥行15〜25cm・幅25〜45cm）：排水口などの丸があって線が3本以上 */
+  if(s>=.15&&s<.25&&l>=.25&&l<=.45&&circ>=1&&n>=3)return'sink';
   return null}
 /* 背面（壁に付いている側）を探す。N=上 S=下 E=右 W=左 */
 const KF_SIDES={N:[0,1],S:[0,-1],E:[1,0],W:[-1,0]};
@@ -1909,9 +1922,9 @@ function KF_wallAt(b,side,P,maxd,x){return KF_wallAt1(b,side,P,maxd,x&&x.t==='si
 function KF_wallAt1(b,side,P,maxd,strict){const [nx,ny]=KF_SIDES[side],hor=!!ny;const pos=hor?(ny>0?b[3]:b[1]):(nx>0?b[2]:b[0]);const lo=hor?b[0]:b[1],hi=hor?b[2]:b[3];let best=null;
   const L=KF_lines(P);L.forEach(l=>{if(l.h!==hor)return;const ov=Math.min(hi,l.z)-Math.max(lo,l.a);if(ov<(hi-lo)*.3)return;const d=(l.at-pos)*(hor?ny:nx);if(d<-.03||d>maxd)return;
     /* 壁の線：器具より十分長いか、壁の厚みぶん離れた平行な線（壁のもう片面）がある */
-    if(l.z-l.a<.6)return;if((strict||l.z-l.a<hi-lo+.15)&&!L.some(m=>m!==l&&m.h===hor&&Math.abs(m.at-l.at)>=.04&&Math.abs(m.at-l.at)<=.32&&Math.min(l.z,m.z)-Math.max(l.a,m.a)>=(l.z-l.a)*.5))return;if(!best||d<best.d)best={d,at:l.at}});return best}
+    if(l.z-l.a<.6)return;if((strict||l.z-l.a<hi-lo+.15)&&!L.some(m=>m!==l&&m.h===hor&&Math.abs(m.at-l.at)>=.04&&Math.abs(m.at-l.at)<=.32&&Math.min(l.z,m.z)-Math.max(l.a,m.a)>=(l.z-l.a)*.5))return;if(!best||d<best.d-.02||(Math.abs(d-best.d)<=.02&&l.z-l.a>best.len))best={d,at:l.at,len:l.z-l.a}});return best}
 function KF_cands(t,b){const w=b[2]-b[0],h=b[3]-b[1],tall=h>=w;if(t==='toilet')return tall?['N','S']:['E','W'];if(t==='counter'||t==='kitchen'||t==='bath')return tall?['E','W']:['N','S'];return['N','S','E','W']}
-function KF_orient(x,P){if(x.L)return;let best=null;KF_cands(x.t,x.b).forEach(sd=>{const w=KF_wallAt(x.b,sd,P,.35,x);if(w&&(!best||w.d<best.w.d))best={sd,w}});x.back=best?best.sd:null;x.bd=best?Math.round(best.w.d*1000)/1000:null;x.side=x.side||KF_freeSide(x,P)}
+function KF_orient(x,P){if(x.L)return;let best=null;KF_cands(x.t,x.b).forEach(sd=>{const w=KF_wallAt(x.b,sd,P,.35,x);if(w&&(!best||w.d<best.w.d-.02||(Math.abs(w.d-best.w.d)<=.02&&(w.len||0)>(best.w.len||0))))best={sd,w}});  /* 両側とも同じくらい近い時は、長く続く壁の方 */x.back=best?best.sd:null;x.bd=best?Math.round(best.w.d*1000)/1000:null;x.side=x.side||KF_freeSide(x,P)}
 /* 便器の横のコンセントは、壁が長く続く側（仕切りから遠い側）にする */
 function KF_freeSide(x,P){if(!x.back)return 1;const [nx,ny]=KF_SIDES[x.back],hor=!!ny,b=x.b,c=hor?(b[0]+b[2])/2:(b[1]+b[3])/2;let lo=-Infinity,hi=Infinity;
   P.segs.forEach(s=>{const sh=Math.abs(s[1]-s[3])<.01,sv=Math.abs(s[0]-s[2])<.01;if(hor?!sv:!sh)return;const at=hor?s[0]:s[1],a=Math.min(hor?s[1]:s[0],hor?s[3]:s[2]),z=Math.max(hor?s[1]:s[0],hor?s[3]:s[2]);const mid=hor?(b[1]+b[3])/2:(b[0]+b[2])/2;if(mid<a||mid>z)return;if(at>c)hi=Math.min(hi,at);else lo=Math.max(lo,at)});
@@ -1934,6 +1947,8 @@ async function read(f,opt){opt=opt||{};const ext=(f.name.split('.').pop()||'').t
   let roles={};try{const c=KE_classify(R.ents,R.ltab||{});Object.keys(c).forEach(k=>roles[k]=c[k].role)}catch(e){}
   KAKU_fix={rot};const P0=KF_P();const P={segs:P0.segs,faces:SF_rooms(R,0)};
   const X=KF_build(R.ents,P,fac,roles);X.rot=rot;KAKU_fix=X;
+  /* 手洗い・流しのうち、大きくて（幅40cm以上・奥行37cm以上）線の数が多い物（6本以上：水栓・排水口・縁の二重線など）は SK にする（KAKU と同じ決め方） */
+  X.fx.forEach(x=>{if(x.t==='sink'&&(+x.w||0)>=.4&&(+x.d||0)>=.37&&(+x.n||0)>=6)x.t='slop'});
   const fx=X.fx.filter(x=>x.t!=='other').map((x,i)=>({id:i+1,t:x.t,b:KF_gbox(x.b),back:KF_gback(x.back),bw:x.bw||0}));
   let bb=[Infinity,Infinity,-Infinity,-Infinity];KAKU_plan.segs.forEach(s=>{bb=[Math.min(bb[0],s[0],s[2]),Math.min(bb[1],s[1],s[3]),Math.max(bb[2],s[0],s[2]),Math.max(bb[3],s[1],s[3])]});
   /* 下絵：元の向きの線（m） */
@@ -1972,7 +1987,7 @@ function renderCad(){cadLoad();const box=$("cadCard");if(!box)return;const ov=$(
     $("cadIn").onchange=e=>cadFile(e.target.files[0]);return}
   const c=cadCounts(),sel=CAD.fx.find(x=>x.id===CAD.sel);
   const rows=Object.keys(CAD_KEY).filter(t=>c[t]).map(t=>`<tr><td><i class="cadsw" style="background:${CAD_COL[t]}"></i>${esc(cadT(t))}</td><td><select data-to="${t}" aria-label="${esc(cadT(t))}の入れ先">${CAD_TO.map(k=>`<option value="${k}"${k===cadTo(t)?" selected":""}>${esc(FXM[k].n)}</option>`).join("")}</select></td><td class="num">${t==="counter"?`${c[t]}台${c.bowl!==c[t]?`<br><span class="mini">ボウル ${c.bowl}個</span>`:""}`:c[t]}</td></tr>`).join("");
-  box.innerHTML=`<div class="sectionhead"><h2>CAD図面から器具を数える</h2><label class="btn light" style="position:relative;overflow:hidden">${CAD.busy?"読み込み中…":"図面を替える"}${pick}</label></div>
+  box.innerHTML=`<div class="sectionhead"><h2>CAD図面から器具を数える</h2><span style="display:flex;gap:6px"><button type="button" class="btn light" id="cadClr">図面を外す</button><label class="btn light" style="position:relative;overflow:hidden">${CAD.busy?"読み込み中…":"図面を替える"}${pick}</label></span></div>
     <p class="mini" style="margin:0 0 6px">${esc(CAD.name)}</p>
     ${CAD.segs?`<div class="trbar"><span class="mini" style="flex:1">四角をタップすると種類を直せます。見つかっていない器具は、何もない所をタップして足せます。</span><button class="btn light" id="cadOut" aria-label="小さく">－</button><button class="btn light" id="cadZin" aria-label="大きく">＋</button></div><div class="cadview" id="cadView">${cadSvg()}</div>`:`<p class="note">図面の絵は保存していません。もう一度見る時は「図面を替える」で同じ図面を選んでください。</p>`}
     ${sel?`<div class="cadsel"><b>${sel.id}番</b><select id="cadT" aria-label="器具の種類">${CAD_TYPES.map(t=>`<option value="${t}"${t===sel.t?" selected":""}>${esc(cadT(t))}</option>`).join("")}</select><button class="btn light" id="cadX">閉じる</button></div>`:""}
@@ -1996,7 +2011,10 @@ function renderCad(){cadLoad();const box=$("cadCard");if(!box)return;const ov=$(
   $("cadMode").querySelectorAll("button").forEach(b=>b.onclick=()=>{CAD.mode=b.dataset.v;cadSave();renderCad()});
   if($("cadWb"))$("cadWb").querySelectorAll("button").forEach(b=>b.onclick=()=>{CAD.wb=b.dataset.v;cadSave();renderCad()});
   box.querySelectorAll("[data-to]").forEach(s=>s.onchange=()=>{CAD.to={...CAD.to,[s.dataset.to]:s.value};cadSave();renderCad()});
-  $("cadPut").onclick=cadPut}
+  $("cadPut").onclick=cadPut;
+  if($("cadClr"))$("cadClr").onclick=()=>ask("読み込んだ図面を外しますか？（「図面から」で器具に入れた数はそのまま残ります）",cadClear)}
+/* 読んだ図面を外す（「図面から」で器具に入れた数はそのまま。いらなければ器具の欄で消してください） */
+function cadClear(){const j=J();delete j.cad;Object.assign(CAD,{name:"",segs:null,bb:null,fx:null,sel:0,add:null,err:"",to:{}});save();renderCad();toast("図面を外しました")}
 function cadSvg(){/* 器具のある所を中心に（離れた所の線で小さくならないように） */let b=CAD.bb;if(CAD.fx.length){const f=[Infinity,Infinity,-Infinity,-Infinity];CAD.fx.forEach(x=>{f[0]=Math.min(f[0],x.b[0]);f[1]=Math.min(f[1],x.b[1]);f[2]=Math.max(f[2],x.b[2]);f[3]=Math.max(f[3],x.b[3])});const m=2.5;b=[Math.max(b[0],f[0]-m),Math.max(b[1],f[1]-m),Math.min(b[2],f[2]+m),Math.min(b[3],f[3]+m)]}const pad=.5,W=b[2]-b[0]+2*pad,H=b[3]-b[1]+2*pad,r=v=>Math.round(v*1000)/1000,sw=Math.max(W,H)/900;
   let d="";CAD.segs.forEach(s=>{d+=`M${r(s[0])} ${r(-s[1])}L${r(s[2])} ${r(-s[3])}`});
   let g=`<path d="${d}" fill="none" stroke="#8a8f99" stroke-width="${r(sw)}"/>`;
