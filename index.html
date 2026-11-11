@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-12.2";
+var KAKU_VERSION="2026-11-12.3";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -3717,7 +3717,14 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
       if(S.ceil)M.flat(f.poly,fH[f.i],[1,1,1,.35],0,true)});
     /* 壁：線ごとに厚さ3cmの板。高さはとなりの区画の天井高（大きい方）。「腰まで」の時は1m */
     var near=function(x,y){var h=0;P.faces.forEach(function(f){if(!f.poly)return;var P2=f.poly;for(var i=0;i<P2.length;i++){var a=P2[i],b=P2[(i+1)%P2.length],dx=b[0]-a[0],dy=b[1]-a[1],L=dx*dx+dy*dy,t=L?Math.max(0,Math.min(1,((x-a[0])*dx+(y-a[1])*dy)/L)):0;if(Math.hypot(x-a[0]-dx*t,y-a[1]-dy*t)<.3){h=Math.max(h,fH[f.i]);break}}});return h||H0};
-    P.segs.forEach(function(s){var dx=s[2]-s[0],dy=s[3]-s[1],L=Math.hypot(dx,dy);if(L<.04)return;var n=[-dy/L*.015,dx/L*.015],h=S.low?Math.min(1,near((s[0]+s[2])/2,(s[1]+s[3])/2)):near((s[0]+s[2])/2,(s[1]+s[3])/2);
+    /* 扉の開く線（円弧）・扉の板の線は壁にしない。ドアが分からない円弧も、短い斜めの線のつながりは壁にしない */
+    var DR=((fx&&fx.doors)||[]).filter(function(d){return d.c}).map(function(d){return{c:G(d.c),r:+d.r||.8}});
+    var isDoorLine=function(s){var a=[s[0],s[1]],b=[s[2],s[3]];return DR.some(function(d){var da=Math.hypot(a[0]-d.c[0],a[1]-d.c[1]),db=Math.hypot(b[0]-d.c[0],b[1]-d.c[1]);
+      if(Math.abs(da-d.r)<.07&&Math.abs(db-d.r)<.07)return true;
+      if((da<.06&&Math.abs(db-d.r)<.07)||(db<.06&&Math.abs(da-d.r)<.07)){var ang=Math.abs(Math.atan2(b[1]-a[1],b[0]-a[0]))%(Math.PI/2);return ang>.05&&ang<Math.PI/2-.05}
+      return false})};
+    var arcish=function(s){var dx=s[2]-s[0],dy=s[3]-s[1],L=Math.hypot(dx,dy);if(L>=.35)return false;var ang=Math.abs(Math.atan2(dy,dx))%(Math.PI/2);return ang>.06&&ang<Math.PI/2-.06};
+    P.segs.forEach(function(s){var dx=s[2]-s[0],dy=s[3]-s[1],L=Math.hypot(dx,dy);if(L<.04||isDoorLine(s)||arcish(s))return;var n=[-dy/L*.015,dx/L*.015],h=S.low?Math.min(1,near((s[0]+s[2])/2,(s[1]+s[3])/2)):near((s[0]+s[2])/2,(s[1]+s[3])/2);
       M.prism([[s[0]+n[0],s[1]+n[1]],[s[2]+n[0],s[3]+n[1]],[s[2]-n[0],s[3]-n[1]],[s[0]-n[0],s[1]-n[1]]],0,h,WALL.concat(1),{top:WALLTOP.concat(1)})});
     /* ドア：扉の板（半分あけた向き）と、上の垂れ壁（2.0m〜天井） */
     ((fx&&fx.doors)||[]).forEach(function(d){if(!d.c||!d.m)return;var c=G(d.c),m=G(d.m),r=+d.r||.8,v=[m[0]-c[0],m[1]-c[1]],vl=Math.hypot(v[0],v[1])||1;v=[v[0]/vl,v[1]/vl];
@@ -3737,7 +3744,11 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
       switch(x.t){
         case'toilet':{var tk=Math.min(.22,dp*.3);M.prism(rect(-hw*.9,hw*.9,hd-tk,hd),0,.82,C(CERAMIC),{edge:[.6,.6,.6,1]});
           var bl=dp-tk;M.prism(el(0,hd-tk-bl*.48,hw*.78,bl*.5),0,.40,C(CERAMIC));M.flat(el(0,hd-tk-bl*.45,hw*.5,bl*.34),.402,C([.86,.88,.9]));break}
-        case'urinal':{var ud=Math.min(.32,dp);M.prism(el(0,hd-ud*.5,hw*.85,ud*.5),.35,1.0,C(CERAMIC));M.flat(el(0,hd-ud*.55,hw*.55,ud*.32),1.003,C([.82,.85,.88]));break}
+        case'urinal':{var ud=Math.min(.36,Math.max(.26,dp)),vb=hd-.03,rx=Math.min(.2,hw*.95),half=function(r1,d1,n){var o=[pt(-r1,vb)];n=n||16;for(var i=0;i<=n;i++){var a=i/n*Math.PI;o.push(pt(Math.cos(a)*r1,vb-Math.sin(a)*d1))}o.push(pt(r1,vb));return o};
+          /* 背板（壁に付く所） */M.prism(rect(-rx*1.05,rx*1.05,vb-.04,vb),.30,1.08,C(CERAMIC));
+          /* 本体：前に丸く出た形。下ほど細く */M.prism(half(rx*.82,ud*.72),.36,.48,C(CERAMIC));M.prism(half(rx,ud),.48,.98,C(CERAMIC),{edge:[.62,.62,.62,1]});M.prism(half(rx*.9,ud*.85),.98,1.04,C(CERAMIC));
+          /* 前の口：前の面に縦長の楕円 */(function(){var zc=.74,ru=rx*.66,rz=.2,n=18,fv=function(u){return vb-ud*Math.sqrt(Math.max(0,1-(u/rx)*(u/rx)))-.004},hz=function(u){return rz*Math.sqrt(Math.max(0,1-(u/ru)*(u/ru)))};/* 本体の丸い前の面に沿って、細い帯に分けて貼る */for(var i=0;i<n;i++){var u1=-ru+2*ru*i/n,u2=-ru+2*ru*(i+1)/n,p1=pt(u1,fv(u1)),p2=pt(u2,fv(u2)),h1=hz(u1),h2=hz(u2),col=[.80,.84,.88,1];M.quad([p1[0],p1[1],zc-h1],[p2[0],p2[1],zc-h2],[p2[0],p2[1],zc+h2],[p1[0],p1[1],zc+h1],col,1)}})();
+          /* 洗浄弁（上のめっきの管） */M.prism(el(0,vb-.06,.025,.025,10),1.08,1.30,C(STEEL));M.prism(el(0,vb-.06,.045,.045,12),1.22,1.30,C(STEEL));break}
         case'counter':{M.prism(rect(-hw,hw,-hd,hd),0,.76,C(WOOD));M.prism(rect(-hw,hw,-hd,hd),.76,.80,C(STONE),{edge:[.5,.5,.5,1]});
           var nb=Math.max(1,+x.bw||1);for(var i=0;i<nb;i++){var u=-hw+wl*(i+.5)/nb;M.flat(el(u,-hd*.1,Math.min(.22,wl/nb*.36),Math.min(.17,dp*.32)),.803,C([.80,.82,.84]))}break}
         case'sink':{M.prism(rect(-hw,hw,-hd,hd),.70,.80,C(CERAMIC),{edge:[.6,.6,.6,1]});M.flat(el(0,0,hw*.65,hd*.6),.803,C([.82,.85,.88]));break}
@@ -3824,6 +3835,8 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
     S.root.classList.add('on');document.documentElement.style.overflow='hidden';bar();rebuild(false);setTimeout(hideHint,2500)}
   function close(){if(S.root)S.root.classList.remove('on');document.documentElement.style.overflow=''}
   window.KAKU_open3D=open;
+  /* 視点を数字で決める（確かめる時に使う） */
+  window.KAKU_3Dcam=function(o){for(var k in o)S[k]=o[k];req()};
   /* 図の上に「3Dで見る」ボタン */
   function addBtn(){var box=$('kakuPlan');if(!box)return;var b=$('k3btn');
     if(!plan()){if(b)b.parentNode.style.display='none';return}
