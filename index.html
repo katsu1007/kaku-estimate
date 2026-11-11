@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-11.6";
+var KAKU_VERSION="2026-11-11.7";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -3558,5 +3558,70 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
     var keep=L.filter(function(q){return!out(q,P)});if(keep.length)return keep;
     /* 形がつぶれた区画（線のかたまりで、外まわりがほとんど面積を持たない所）には置かない */
     var a2=0;for(var i=0;i<P.length;i++){var p0=P[i],p1=P[(i+1)%P.length];a2+=p0[0]*p1[1]-p1[0]*p0[1]}return Math.abs(a2)/2<0.2?[]:L}})();
+</script>
+<style id="kaku-v21">
+/* ==== 2026-11-11.7 図面を消す・写真を入れた時に前の図面が残っていることを知らせる ==== */
+#kxClear{margin:10px 0 0}
+#kxClear .kxwarn{margin:0 0 8px;padding:10px 12px;border-radius:10px;border:1px solid var(--orange,#d2502a);color:var(--orange,#d2502a);font-weight:700;font-size:14px;line-height:1.5}
+</style>
+<script id="kaku-v21-js">
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var IMG=/\.(jpe?g|png|heic|heif|gif|webp|bmp|tiff?)$/i;
+  var X={img:false};
+  function cur(){return typeof current!=='undefined'&&current?current:null}
+  function plan(){try{return KAKU_plan}catch(e){return null}}
+  function fix(){try{return KAKU_fix}catch(e){return null}}
+  /* 消せる図面のデータがあるか */
+  function has(){var p=cur();if(!p)return false;var f=fix();
+    return !!(plan()||(f&&f.fx&&f.fx.length)||(p.rooms||[]).some(function(r){return r.plan})||(p.walls||[]).length||(p.hatsu||[]).some(function(h){return h.rect})||(p.picks||[]).some(function(x){return x.fx}))}
+  function render(){
+    var st=$('drawingStatus');if(!st)return;var b=$('kxClear');
+    if(!b){b=document.createElement('div');b.id='kxClear'}
+    if(b.previousSibling!==st)st.parentNode.insertBefore(b,st.nextSibling);
+    if(!cur()||!has()){b.innerHTML='';b.style.display='none';return}
+    b.style.display='';
+    b.innerHTML=(X.img?'<p class="kxwarn">前の図面のデータ（部屋・器具など）が残っています。写真・画像は自動で読めないため、前の図面は置き換わっていません。使わない場合は「図面を消す」を押してください。</p>':'')+
+      '<button type="button" class="btn light" id="kxClearGo">図面を消す</button>';
+    $('kxClearGo').onclick=clearAll;
+  }
+  function clearAll(){
+    var p=cur();if(!p)return;
+    if(!confirm('今の図面を消します。\n図面から作った部屋・読み取った器具・壁の解体・カッターの範囲・図面の上に並べた照明なども一緒に消えます。\n自分で入れた明細と、図面を使わずに入れた部屋はそのまま残ります。\nよろしいですか？'))return;
+    var id=p.id;
+    try{localStorage.removeItem(KAKU_planKey(id))}catch(e){}
+    try{KF_drop(id)}catch(e){}
+    try{KAKU_fix=null}catch(e){}
+    try{KAKU_plan=null}catch(e){}
+    try{KF_Pc=null}catch(e){}
+    try{KAKU_sel.faces.clear();KAKU_sel.segs.clear();KAKU_sel.cut=null;KAKU_sel.meas=[]}catch(e){}
+    try{KF.sel=null;KF.dot=null}catch(e){}
+    p.rooms=(p.rooms||[]).filter(function(r){return!r.plan});
+    var ids={};p.rooms.forEach(function(r){if(r.id!=null)ids[r.id]=1});
+    p.walls=[];
+    p.hatsu=(p.hatsu||[]).filter(function(h){return!h.rect});
+    /* 図面の上に置いた物は消す。図面を使っていない部屋に並べた物だけ残す */
+    p.places=(p.places||[]).filter(function(q){return!q.faces&&q.where!=='fix'&&q.where!=='line'&&q.where!=='pt'&&q.roomId!=null&&ids[q.roomId]});
+    p.picks=(p.picks||[]).filter(function(x){return!x.fx});
+    delete p.fixMap;
+    X.img=false;
+    try{KP_sync()}catch(e){}
+    save();
+    try{renderRooms()}catch(e){}
+    try{refreshEngineRows()}catch(e){}
+    try{KAKU_renderEditor()}catch(e){}
+    try{if(window.KAKU_renderFix)KAKU_renderFix()}catch(e){}
+    var st=$('drawingStatus');if(st)st.textContent='図面を消しました';
+    render();toast('図面を消しました');
+  }
+  window.KAKU_clearDrawing=clearAll;
+  window.KAKU_renderClear=render;
+  /* ファイルを選んだ時：写真・画像なら、前の図面が残っていることを知らせる */
+  if(typeof window.loadFile==='function'){var lf=window.loadFile;window.loadFile=function(inp){var f=inp&&inp.files&&inp.files[0];
+    X.img=!!(f&&((f.type||'').indexOf('image/')===0||IMG.test(f.name||'')));var r=lf.apply(this,arguments);try{render()}catch(e){}return r}}
+  if(typeof window.runDrawingImport==='function'){var rd=window.runDrawingImport;window.runDrawingImport=function(){var r=rd.apply(this,arguments);setTimeout(function(){try{render()}catch(e){}},1500);return r}}
+  if(typeof window.KAKU_renderEditor==='function'){var re=window.KAKU_renderEditor;window.KAKU_renderEditor=function(){var r=re.apply(this,arguments);try{render()}catch(e){}return r}}
+  if(typeof window.openProject==='function'){var op=window.openProject;window.openProject=function(){X.img=false;var r=op.apply(this,arguments);setTimeout(function(){try{render()}catch(e){}},350);return r}}
+})();
 </script>
 </body></html>
