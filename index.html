@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-12.11";
+var KAKU_VERSION="2026-11-12.12";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -3744,7 +3744,7 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
       var per=+f.peri>0?+f.peri:0,same=rm&&(rm.faces||[]).length>1?'（この部屋は '+rm.faces.length+' 区画をまとめています。見積もりは部屋の合計 '+num(+rm.area||0,2)+' ㎡）':'';
       var fc=surf(f.i,['floor'],'dFloor',c),at={area:+f.area,peri:per,height:fH[f.i],room:rname(f.i)};
       if(S.show.floor){part({type:'floor',key:rk(f.i),fi:f.i,attr:Object.assign({floor:mat(f.i,'floor')},at),title:'床：'+rname(f.i),rows:[['床の面積',num(f.area,2)+' ㎡'],['周りの長さ',per?num(per,2)+' m':'—'],['天井高',num(fH[f.i],2)+' m'],['床の仕上げ',mat(f.i,'floor')||'なし'],['床の解体',mat(f.i,'dFloor')||'なし'],['巾木',mat(f.i,'haba')||'なし']],note:(rm?'':'まだ部屋にしていない区画です。見積もりには入っていません。')+same});M.flat(f.poly,0,fc.concat(1));
-        if(rm){var fp=PT.length-1;qadd('floor','床の仕上げ',rm.floor,fp,f.area,'㎡');qadd('dFloor','床の解体',rm.dFloor,fp,f.area,'㎡');qadd('haba','巾木',rm.haba,fp,per,'m')}}
+        if(rm){var fp=PT.length-1;qadd('floor','床の仕上げ',rm.floor,fp,f.area,'㎡');qadd('dFloor','床の解体',rm.dFloor,fp,f.area,'㎡');qadd('haba','巾木',rm.haba,fp,Math.max(0,per-((rm.faces||[]).length===1&&current.openAuto!==false?(+rm.openW||0):0)),'m')}}
       if(S.ceil){var cc=S.colorBy==='fin'?surf(f.i,['ceilFin','ceilBoard'],'dCeil',[1,1,1]):[1,1,1];part({type:'ceil',key:rk(f.i),fi:f.i,attr:Object.assign({ceil:mat(f.i,'ceilFin'),board:mat(f.i,'ceilBoard')},at),title:'天井：'+rname(f.i),rows:[['天井の面積',num(f.area,2)+' ㎡'],['天井高',num(fH[f.i],2)+' m'],['天井の下地',mat(f.i,'ceilBoard')||'なし'],['天井の仕上げ',mat(f.i,'ceilFin')||'なし'],['天井の解体',mat(f.i,'dCeil')||'なし']],note:(rm?'':'まだ部屋にしていない区画です。見積もりには入っていません。')+same});M.flat(f.poly,fH[f.i],cc.concat(S.colorBy==='fin'?.6:.35),0,true)}
       if(rm&&(S.ceil||S.show.floor)){var cp=PT.length-1;qadd('ceilFin','天井の仕上げ',rm.ceilFin,cp,f.area,'㎡');qadd('ceilBoard','天井の下地',rm.ceilBoard,cp,f.area,'㎡');qadd('dCeil','天井の解体',rm.dCeil,cp,f.area,'㎡')}});M.cur=-1;
     /* 壁：線ごとに厚さ3cmの板。高さはとなりの区画の天井高（大きい方）。「腰まで」の時は1m */
@@ -3794,7 +3794,7 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
           PR.push({i:i,j:j,d:d,lo:lo,hi:hi,sh:sh})}
         PR.sort(function(a,b){return Math.abs(a.d)-Math.abs(b.d)});
         PR.forEach(function(p){var A=WS[p.i],B=WS[p.j],out=[];isect(A.free,p.lo,p.hi).forEach(function(q){isect(B.free.map(function(x){return[x[0]+p.sh,x[1]+p.sh]}),q[0],q[1]).forEach(function(z){out.push(z)})});
-          out.forEach(function(z){A.free=sub(A.free,z[0],z[1]);B.free=sub(B.free,z[0]-p.sh,z[1]-p.sh);WB.push({u:A.u,n:A.n,oA:Math.min(A.o,A.o+p.d),oB:Math.max(A.o,A.o+p.d),s0:z[0],s1:z[1],A:A,B:B,sh:p.sh})})});
+          out.forEach(function(z){A.free=sub(A.free,z[0],z[1]);B.free=sub(B.free,z[0]-p.sh,z[1]-p.sh);WB.push({u:A.u,n:A.n,oA:Math.min(A.o,A.o+p.d),oB:Math.max(A.o,A.o+p.d),s0:z[0],s1:z[1],e0:z[0],e1:z[1],A:A,B:B,sh:p.sh})})});
         /* 角：片方の線だけが少し（46cmまで）先に伸びている時は、壁をそこまで伸ばす */
         WB.forEach(function(b){[0,1].forEach(function(end){var e=end?b.s1:b.s0,ext=0;[[b.A,0],[b.B,b.sh]].forEach(function(w){w[0].free.forEach(function(q){var q0=q[0]+w[1],q1=q[1]+w[1],len=q1-q0;if(len>.46)return;if(end?Math.abs(q0-e)<.012:Math.abs(q1-e)<.012)ext=Math.max(ext,len)})});
           if(ext>0){var lo=end?e:e-ext,hi=end?e+ext:e;b.A.free=sub(b.A.free,lo-1e-3,hi+1e-3);b.B.free=sub(b.B.free,lo-b.sh-1e-3,hi-b.sh+1e-3);if(end)b.s1=hi;else b.s0=lo}})})}
@@ -3802,7 +3802,7 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
       WS.forEach(function(W){W.free.forEach(function(q){var len=q[1]-q[0];if(len<.06)return;if(len<=.46&&inBody(wpt(W,(q[0]+q[1])/2)))return;WB.push({u:W.u,n:W.n,oA:W.o-.015,oB:W.o+.015,s0:q[0],s1:q[1],thin:true})})});
       /* 部材ごとに：面している部屋・高さ・窓を調べて、描く */
       var WN=(current.win3d||[]),usedW={};
-      WB.forEach(function(b){var cuts=[b.s0,b.s1],t=b.thin?0:b.oB-b.oA;
+      WB.forEach(function(b){var cuts=[b.s0,b.s1],t=b.thin?0:b.oB-b.oA;if(b.e0!=null){if(b.e0-b.s0>.031)cuts.push(b.e0);if(b.s1-b.e1>.031)cuts.push(b.e1)}
         /* ほかの壁が突き当たる所で区切る（面している部屋ごとに色と面積を分けるため。部材は1枚のまま） */
         WS.forEach(function(W){if(Math.abs(W.u[0]*b.u[0]+W.u[1]*b.u[1])>.3)return;[W.s0,W.s1].forEach(function(sv){var p=wpt(W,sv),ss=dot(p,b.u),oo=dot(p,b.n);if(ss>b.s0+.05&&ss<b.s1-.05&&(Math.abs(oo-b.oA)<.035||Math.abs(oo-b.oB)<.035))cuts.push(ss)})});
         b.wins=[];WN.forEach(function(w,wi){if(!w||!w.p||usedW[wi])return;var sv=dot(w.p,b.u),o=dot(w.p,b.n);if(sv<b.s0-.02||sv>b.s1+.02||o<b.oA-.06||o>b.oB+.06)return;var a=Math.max(b.s0+.02,sv-w.w/2),c=Math.min(b.s1-.02,sv+w.w/2);if(c-a<.1||b.wins.some(function(x){return a<x.b&&c>x.a}))return;usedW[wi]=1;b.wins.push({a:a,b:c,z0:+w.sill||0,z1:(+w.sill||0)+(+w.h||1),wi:wi});cuts.push(a,c)});
@@ -3835,7 +3835,10 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
       var wt=host&&!host.thin?host.oB-host.oA:0;
       part({type:'door',key:df?rk(df.i):'',attr:{width:r,height:dh,wallThickness:wt||null},title:'ドア',rows:[['扉の幅（図面の開く線から）',Math.round(r*1000)+' mm'],['扉の高さ（仮）',Math.round(dh*1000)+' mm'],['付いている壁の厚み',wt?Math.round(wt*1000)+' mm':'—'],['ある所',df?rname(df.i):'—']],note:'高さは図面に無いので 2.0m で描いています。ドアの数は、部屋の「工事内容」で入れた数を見積もりに使っています。'});
       M.prism([[c[0]+nn[0],c[1]+nn[1]],[lf[0]+nn[0],lf[1]+nn[1]],[lf[0]-nn[0],lf[1]-nn[1]],[c[0]-nn[0],c[1]-nn[1]]],0,dh,[.78,.62,.42,1]);
-      if(!S.low&&h-dh>.05){var hu=cl[0]<-1e-9||(Math.abs(cl[0])<1e-9&&cl[1]<0)?[-cl[0],-cl[1]]:cl,hn=[-hu[1],hu[0]],hb=host||{u:hu,n:hn,oA:dot(c,hn)-.025,oB:dot(c,hn)+.025},sa=dot(c,hb.u),sb=dot(e2,hb.u);
+      var hu=cl[0]<-1e-9||(Math.abs(cl[0])<1e-9&&cl[1]<0)?[-cl[0],-cl[1]]:cl,hn=[-hu[1],hu[0]],hb=host||{u:hu,n:hn,oA:dot(c,hn)-.025,oB:dot(c,hn)+.025},sa=dot(c,hb.u),sb=dot(e2,hb.u);
+      /* ドアの上の垂れ壁の面積も、両側の部屋の壁の数量に入れる */
+      if(h-dh>.05){var dpi=PT.length-1,sm=(sa+sb)/2;[hb.oA-.08,hb.oB+.08].forEach(function(o){var hf=faceAt(hb.u[0]*sm+hb.n[0]*o,hb.u[1]*sm+hb.n[1]*o),hrm=hf&&roomOf[hf.i];if(!hrm)return;var ha=r*(h-dh);qadd('wallFin','壁の仕上げ',hrm.wallFin,dpi,ha,'㎡');qadd('wallBoard','壁の下地',hrm.wallBoard,dpi,ha,'㎡');qadd('dWall','壁の解体',hrm.dWall,dpi,ha,'㎡')})}
+      if(!S.low&&h-dh>.05){
         part({type:'wall',attr:{length:r,thickness:wt||null,height:h-dh},title:'垂れ壁（ドアの上）',rows:[['幅',Math.round(r*1000)+' mm'],['高さ',Math.round((h-dh)*1000)+' mm'],['厚み',wt?Math.round(wt*1000)+' mm':'—']],note:'ドアの高さを 2.0m と仮に決めて、その上を壁にしています。'});
         box(hb,Math.min(sa,sb),Math.max(sa,sb),dh,h,WALL,WALL,true,true)}});
     /* 器具 */
@@ -3985,7 +3988,7 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
       var ER=[];try{ER=engine.snapshot().rows||[]}catch(e){ER=current.items||[]}
       var hitR=ER.filter(function(r){return r&&(r.id===g.id||String(r.id||'').indexOf(g.id)>=0)});if(!hitR.length)hitR=ER.filter(function(r){return r&&r.desc&&g.name&&String(r.desc).indexOf(g.name.split(' ')[0])>=0}).slice(0,1);
       if(hitR.length)est={qty:Math.round(hitR.reduce(function(a,r){return a+(+r.qty||0)},0)*100)/100,unit:hitR[0].unit};
-      selectMany(g.parts,{title:g.label+'：'+g.name,rows:[['3Dの部材から測った数量',fmt(g)],['もとになっている部材',g.parts.length+' 個'],['見積もりの明細の数量',est?(est.qty+' '+(est.unit||'')):'同じ名前の行が見つかりません']],note:'3Dの数量は図面の形そのままです（ロスや割増なし。'+(/[wW]all/.test(g.kind)?'壁はドアの開口と3Dで足した窓を除いた面積です。見積もりは部屋の周りの長さ×天井高から、工事内容で入れた窓・ドアの数だけ引くので、差が出ます。':'')+(/^(ceil|dCeil)/.test(g.kind)&&!S.ceil?'天井は「表示」で出すと天井が光ります。今は床を光らせています。':'')+'）。見積もりの数量は今までどおりの計算で、ここでは変えていません。'})}})}
+      selectMany(g.parts,{title:g.label+'：'+g.name,rows:[['3Dの部材から測った数量',fmt(g)],['もとになっている部材',g.parts.length+' 個'],['見積もりの明細の数量',est?(est.qty+' '+(est.unit||'')):'同じ名前の行が見つかりません']],note:'3Dの数量は図面の形そのままです（ロスや割増なし。'+(/[wW]all/.test(g.kind)?'壁はドアの開口と3Dで足した窓を除いた面積です（ドアの上の垂れ壁は入っています）。見積もりも、図面から見つけた開口を引いて計算しています。3Dは壁の線から線まで、見積もりは区画の内側の周りの長さで測るので、少し差が出ます。':'')+(/^(ceil|dCeil)/.test(g.kind)&&!S.ceil?'天井は「表示」で出すと天井が光ります。今は床を光らせています。':'')+'）。見積もりの数量は今までどおりの計算で、ここでは変えていません。'})}})}
   function lift(box){var br=S.root.querySelector('.k3bar');box.style.bottom=((br?br.offsetHeight:56)+4)+'px'}
   function tap(x,y){var r=S.cv.getBoundingClientRect();select(pick(x-r.left,y-r.top))}
   /* 表示の切り替え（壁・床・天井・器具・電気・配線、部屋ごと） */
@@ -4206,6 +4209,72 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
       if(nw.length&&S.use){nw.forEach(function(p){p.use=S.use;if(S.use==='custom')p.lux=+S.lux||500});KP_sync();save();KAKU_renderEditor();renderRooms();
         var t=nw.map(window.KX_luxResult).filter(Boolean);if(t.length){var x=t[0];toast('照明 '+x.n+'台を並べました（約 '+Math.round(x.got/10)*10+' lx・目標 '+x.E+' lx）')}}}
     catch(e){console.error(e)}return r}}
+})();
+</script>
+<script id="kaku-v25-open">
+/* ==== 2026-11-12.12 壁の面積から、図面で見つけた開口を引く
+   ・ドア：開く線（円弧）から、扉を閉めた位置を決めて、その幅×高さ2.0m（天井が低い時は天井高−5cm）
+   ・扉の無い開口：区画の辺のうち、図面に壁の線が無い所（30cm〜3m）×天井高
+   ・部屋ごとの面積を部屋に覚えて（図面を読み込んでいない時も同じ数字で計算できるように）、計算エンジンに渡す時だけ「ドアの数」に換算する
+     （エンジンの式：壁＝周り×高さ−窓×1.6−ドア×1.6、巾木＝周り−ドア×0.8。ドア＝開口の面積÷1.6 にすると、壁はぴったり、巾木は開口の幅ぶん短くなる）
+   ・開口を見つけた部屋は、手で入れた「ドア（か所）」は使わない（二重に引かないため）。窓の数は今までどおり
+   ・案件ごとに「引かない」に戻せる。数字が変わった時はポップアップで知らせる ==== */
+(function(){
+  var DOOR_A=1.6,cache=null;
+  function closedDir(P,c,v,r){var rt=function(a){return[v[0]*Math.cos(a)-v[1]*Math.sin(a),v[0]*Math.sin(a)+v[1]*Math.cos(a)]},cand=[rt(Math.PI/4),rt(-Math.PI/4)],E=cand.map(function(u){return[c[0]+u[0]*r,c[1]+u[1]*r]}),h=function(p,q){return Math.hypot(p[0]-q[0],p[1]-q[1])};
+    var leaf=E.map(function(e){return P.segs.some(function(s){var a=[s[0],s[1]],b=[s[2],s[3]];return(h(a,c)<.06&&h(b,e)<.08)||(h(b,c)<.06&&h(a,e)<.08)})});
+    if(leaf[0]!==leaf[1])return leaf[0]?cand[1]:cand[0];
+    var jamb=E.map(function(e){var n=0;P.segs.forEach(function(s){var L=Math.hypot(s[2]-s[0],s[3]-s[1]);if(L>.2||L<.003)return;if(Math.abs(s[0]-s[2])>.003&&Math.abs(s[1]-s[3])>.003)return;if(h([s[0],s[1]],e)<.06||h([s[2],s[3]],e)<.06)n++});return n});
+    if(jamb[0]!==jamb[1])return jamb[0]>jamb[1]?cand[0]:cand[1];
+    var sc=cand.map(function(u){var best=0;P.segs.forEach(function(s){var sx=s[2]-s[0],sy=s[3]-s[1],sl=Math.hypot(sx,sy);if(sl<.2)return;var mx=Math.min(h([s[0],s[1]],c),h([s[2],s[3]],c));if(mx>.25)return;best=Math.max(best,Math.abs((sx*u[0]+sy*u[1])/sl))});return best});
+    return sc[0]>=sc[1]?cand[0]:cand[1]}
+  /* 区画ごとの開口（辺の上の、ドアの区間と、壁の線が無い区間） */
+  function scan(){var P,F;try{P=KAKU_plan;F=KAKU_fix}catch(e){return null}if(!P||!F||F.g==='sketch'||!P.segs||!P.segs.length||!P.faces)return null;
+    var key=P.segs.length+'|'+P.faces.length+'|'+(F.doors||[]).length+'|'+(P.segs[0]||[]).slice(0,4).join(',')+'|'+(P.segs[P.segs.length-1]||[]).slice(0,4).join(',');if(cache&&cache.key===key)return cache.v;
+    var D=(F.doors||[]).filter(function(d){return d.c&&d.m}).map(function(d){var c=KF_G(d.c),m=KF_G(d.m),r=+d.r||.8,v=[m[0]-c[0],m[1]-c[1]],l=Math.hypot(v[0],v[1])||1;v=[v[0]/l,v[1]/l];return{c:c,r:r,cl:closedDir(P,c,v,r)}});
+    var out={};P.faces.forEach(function(f){var poly=f.poly;if(!poly||poly.length<3)return;var ar=0;for(var k=0;k<poly.length;k++){var a=poly[k],b=poly[(k+1)%poly.length];ar+=a[0]*b[1]-b[0]*a[1]}var runs=[];
+      for(var k2=0;k2<poly.length;k2++){var a2=poly[k2],b2=poly[(k2+1)%poly.length],L=Math.hypot(b2[0]-a2[0],b2[1]-a2[1]);if(L<.05)continue;var u=[(b2[0]-a2[0])/L,(b2[1]-a2[1])/L],n=ar>0?[u[1],-u[0]]:[-u[1],u[0]];
+        var x0=Math.min(a2[0],b2[0])-.1,x1=Math.max(a2[0],b2[0])+.1,y0=Math.min(a2[1],b2[1])-.1,y1=Math.max(a2[1],b2[1])+.1;
+        var SG=P.segs.filter(function(s){return Math.max(s[0],s[2])>=x0&&Math.min(s[0],s[2])<=x1&&Math.max(s[1],s[3])>=y0&&Math.min(s[1],s[3])<=y1&&Math.hypot(s[2]-s[0],s[3]-s[1])>=.04&&Math.abs(((s[2]-s[0])*u[0]+(s[3]-s[1])*u[1])/Math.hypot(s[2]-s[0],s[3]-s[1]))>.9});
+        var DD=D.filter(function(d){return Math.abs(u[0]*d.cl[0]+u[1]*d.cl[1])>.97&&Math.abs((a2[0]-d.c[0])*d.cl[1]-(a2[1]-d.c[1])*d.cl[0])<=.3});
+        var st=.01,cur=null;for(var t=st/2;t<L;t+=st){var p=[a2[0]+u[0]*t,a2[1]+u[1]*t],ty='c';
+          if(DD.some(function(d){var w=(p[0]-d.c[0])*d.cl[0]+(p[1]-d.c[1])*d.cl[1];return w>=-.005&&w<=d.r+.005}))ty='d';
+          else if(!SG.some(function(s){return KAKU_segDist(s,p[0],p[1]).d<.05}))ty='g';
+          if(ty==='c'){cur=null;continue}if(!cur||cur.ty!==ty){cur={ty:ty,a:p,b:p,len:0,n:n};runs.push(cur)}cur.b=p;cur.len+=st}}
+      runs=runs.filter(function(r){return r.ty==='d'?r.len>=.3:(r.len>=.3&&r.len<=3)});if(runs.length)out[f.i]=runs});
+    cache={key:key,v:out};return out}
+  /* 部屋ごとにまとめて、部屋に覚える。まとめた部屋の中の境目（となりも同じ部屋）は数えない */
+  function update(p){var O=scan();if(!O||!p||!p.rooms)return;var P=KAKU_plan,defH=(KAKU_cat&&+KAKU_cat.defH)||2.4;
+    p.rooms.forEach(function(r){if(!r.plan||r.sk||!r.faces||!r.faces.length)return;var h=+r.ch>0?+r.ch:defH,dh=Math.min(2,h-.05),A=0,W=0,nd=0,ng=0,list=[];
+      r.faces.forEach(function(i){(O[i]||[]).forEach(function(run){var mx=(run.a[0]+run.b[0])/2,my=(run.a[1]+run.b[1])/2,inner=[.1,.2,.35].some(function(o){var x=mx+run.n[0]*o,y=my+run.n[1]*o;return r.faces.some(function(j){if(j===i)return false;var f=P.faces.find(function(z){return z.i===j});return f&&f.poly&&KAKU_pip(x,y,f.poly)})});
+          if(inner)return;var a=run.len*(run.ty==='d'?dh:h);A+=a;W+=run.len;if(run.ty==='d')nd++;else ng++;list.push([run.ty,Math.round(run.len*100)/100,Math.round(a*100)/100])})});
+      A=Math.round(A*100)/100;W=Math.round(W*100)/100;if(A>0){r.openA=A;r.openW=W;r.openD=nd;r.openG=ng;r.openL=list}else{delete r.openA;delete r.openW;delete r.openD;delete r.openG;delete r.openL}})}
+  function total(p){var t=0;(p.rooms||[]).forEach(function(r){t+=+r.openA||0});return Math.round(t*100)/100}
+  function adjust(p){if(!p||!p.rooms)return p;var cur=false;try{cur=p===current||(current&&p.id===current.id)}catch(e){}
+    if(cur){try{update(current)}catch(e){console.error(e)}if(p!==current)p=Object.assign({},p,{rooms:p.rooms.map(function(r){var o=current.rooms.find(function(x){return x.id&&x.id===r.id});return o&&o.openA?Object.assign({},r,{openA:o.openA}):r})});
+      var tt=total(current);if(current.openAuto!==false&&Math.abs(tt-(+current.openShown||0))>.005&&(tt>0||current.openShown)){current.openShown=tt;setTimeout(function(){try{if(tt>0)sheet(true)}catch(e){console.error(e)}},300)}}
+    if(p.openAuto===false||!p.rooms.some(function(r){return r.openA>0}))return p;
+    return Object.assign({},p,{rooms:p.rooms.map(function(r){return r.openA>0&&!r.kxWall?Object.assign({},r,{door:r.openA/DOOR_A}):r})})}
+  window.KX_openAdjust=adjust;window.KX_openScan=scan;
+  function wrapEngine(e){if(!e||e.__kxOpen)return;var s0=e.sync;e.sync=function(p){return s0.call(this,adjust(p))};e.__kxOpen=true}
+  setInterval(function(){try{if(typeof engine!=='undefined'&&engine&&engine.__kxSpec&&!engine.__kxOpen){wrapEngine(engine);if(typeof current!=='undefined'&&current&&typeof refreshEngineRows==='function')refreshEngineRows()}}catch(e){}},250);
+  /* ポップアップ：何を引いたかの内訳と、引く・引かないの切り替え */
+  function sheet(changed){if(typeof current==='undefined'||!current||typeof KAKU_sheet!=='function')return;var on=current.openAuto!==false,R=(current.rooms||[]).filter(function(r){return r.openA>0}),tt=total(current),tw=0;R.forEach(function(r){tw+=+r.openW||0});
+    var li=R.map(function(r){var a=[];if(r.openD)a.push('ドア '+r.openD+' か所');if(r.openG)a.push('扉の無い開口 '+r.openG+' か所');return'<li>'+esc(r.name||'部屋')+'：'+a.join('・')+'（幅の合計 '+(+r.openW).toFixed(2)+' m）→ <b>'+(+r.openA).toFixed(2)+' ㎡</b></li>'}).join('');
+    var body='<p>'+(on?(changed?'図面から開口（ドアと、扉の無い出入り口）を見つけたので、<b>壁の面積から合計 '+tt.toFixed(2)+' ㎡ を引いて</b>計算しました。':'図面から見つけた開口を、壁の面積から合計 '+tt.toFixed(2)+' ㎡ 引いて計算しています。'):'今は、図面から見つけた開口を<b>引かずに</b>計算しています（見つけた開口は合計 '+tt.toFixed(2)+' ㎡）。')+'</p>'+
+      '<ul class="mini" style="padding-left:18px;margin:8px 0">'+li+'</ul>'+
+      '<p class="mini">・ドアは「幅×高さ2.0m」、扉の無い開口は「幅×天井高」で引きます。ドアの高さは図面に無いので 2.0m と仮に決めています。<br>・巾木も、開口の幅の合計（'+tw.toFixed(2)+' m）ぶん短くなります。<br>・開口を見つけた部屋では、「工事内容」の「ドア（か所）」に入れた数は使いません（二重に引かないため）。「窓（か所）」は今までどおり引きます。<br>・図面の描き方によっては、開口を見落としたり、壁のある所を開口と見間違えたりすることがあります。上の内訳を確かめてください。</p>'+
+      '<div style="display:grid;gap:8px;margin-top:12px"><button type="button" class="btn orange" id="kxOpenOk">'+(on?'この計算でよい':'閉じる')+'</button><button type="button" class="btn light" id="kxOpenTg">'+(on?'開口を引かない（前の計算に戻す）':'開口を引いて計算する')+'</button></div>';
+    KAKU_sheet('kxOpenSheet','壁の面積と開口',body);
+    document.getElementById('kxOpenOk').onclick=function(){KAKU_closeSheet('kxOpenSheet')};
+    document.getElementById('kxOpenTg').onclick=function(){current.openAuto=on?false:true;current.openShown=total(current);save();try{refreshEngineRows();renderRooms()}catch(e){}KAKU_closeSheet('kxOpenSheet');toast(on?'開口を引かない計算に戻しました':'開口を引いて計算します')}}
+  window.KX_openSheet=sheet;
+  /* 部屋の「工事内容」に、引いている面積を書く */
+  function notes(){if(typeof current==='undefined'||!current)return;var on=current.openAuto!==false;[].forEach.call(document.querySelectorAll('#rooms details.roomwork'),function(d){var r=current.rooms[+d.dataset.i],old=d.querySelector('.kxopen-note');if(old)old.remove();if(!r||!(r.openA>0))return;
+      var p=document.createElement('p');p.className='mini kxopen-note';p.style.cssText='margin:8px 0;padding:8px 10px;border-radius:10px;background:rgba(214,120,40,.12)';
+      p.innerHTML=(on?'図面から見つけた開口（'+[r.openD?'ドア '+r.openD+' か所':'',r.openG?'扉の無い開口 '+r.openG+' か所':''].filter(Boolean).join('・')+'）を、壁の面積から <b>'+(+r.openA).toFixed(2)+' ㎡</b> 引いています。この部屋では「ドア（か所）」の数は使いません。':'図面から開口を見つけていますが、今は引かずに計算しています。')+' <button type="button" class="btn light" style="min-height:36px;margin-left:4px">内訳を見る</button>';
+      p.querySelector('button').onclick=function(e){e.preventDefault();sheet(false)};d.appendChild(p)})}
+  if(typeof window.renderRooms==='function'){var rr=window.renderRooms;window.renderRooms=function(){var r=rr.apply(this,arguments);try{notes()}catch(e){console.error(e)}return r}}
 })();
 </script>
 </body></html>
