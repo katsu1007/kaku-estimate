@@ -8,7 +8,10 @@ import { planView, roomColor } from './planview.js';
 import { USES, DEF_LM, needCount, pitchFor, luxOf, wirePlan, cableQty, pip } from './lighting.js';
 import { uid } from './store.js';
 import { open3D } from './view3d.js';
-import { icon, esc, yen, fmt, pct, toast, modal, ask, matchItem, showError, $, $$ } from './ui.js';
+import { openSketch } from './sketchui.js';
+import { toPlan as sketchPlan, geomOf } from './sketch.js';
+import { jww as jwwBytes, dxf as dxfBytes } from './cad.js';
+import { icon, esc, yen, fmt, pct, toast, modal, ask, matchItem, showError, share, $, $$ } from './ui.js';
 import { STATUS } from './home.js';
 import { docsStep } from './docs.js';
 
@@ -191,12 +194,16 @@ function drawingCard(p) {
   const d = p.drawing;
   if (!d || !d.plan) return `<div class="card" style="margin-bottom:14px"><div class="row"><div style="flex:1;min-width:220px"><h2>図面から部屋を作る</h2>
       <div class="sub" style="margin:0">JWW・DXF・PDF の図面を読み込むと、部屋の区画が自動で見つかります。区画をタップして部屋にしてください。</div></div>
-      <label class="btn primary" style="cursor:pointer">${icon('up')}図面を選ぶ<input type="file" id="dwgFile" accept=".jww,.jwc,.dxf,.pdf,application/pdf" hidden></label></div>
+      <label class="btn primary" style="cursor:pointer">${icon('up')}図面を選ぶ<input type="file" id="dwgFile" accept=".jww,.jwc,.dxf,.pdf,application/pdf" hidden></label>
+      <button class="btn" data-act="sketch">${icon('grid')}寸法で間取りを作る</button></div>
+      <div class="small muted" style="margin-top:6px">図面ファイルが無い時は「寸法で間取りを作る」：四角の寸法・向きと長さ・写真や手描きの図の角をタップして、間取りを作れます。</div>
       <div class="small muted" id="dwgStatus" style="margin-top:8px"></div></div>`;
   return `<div class="card" style="margin-bottom:14px">
     <div class="row" style="margin-bottom:10px"><div style="flex:1;min-width:200px"><h2>${icon('layers').replace('<svg', '<svg style="width:18px;height:18px;vertical-align:-3px"')} ${esc(d.fileName || '図面')}</h2>
       <div class="sub" style="margin:0">区画 ${d.plan.faces.length} 個${planCH(d.plan) ? `・図面の天井高 ${planCH(d.plan)}m` : ''}。区画をタップして選び、下のボタンで部屋にしてください。</div></div>
       ${d.fixtures ? `<button class="btn sm primary" data-act="open3d">${icon('cube')}3Dで見る</button>` : ''}
+      ${d.sketch ? `<button class="btn sm" data-act="sketch">${icon('grid')}間取りを直す</button>` : ''}
+      <button class="btn sm" data-act="cadOut">${icon('down')}JWW・DXF</button>
       <label class="btn sm" style="cursor:pointer">${icon('up')}読み直す<input type="file" id="dwgFile" accept=".jww,.jwc,.dxf,.pdf,application/pdf" hidden></label>
       <button class="btn sm ghost danger" data-act="dwgClear">${icon('trash')}図面を消す</button></div>
     <div class="seg" id="dwgMode" style="margin-bottom:8px"><button data-mode="room">部屋を作る</button><button data-mode="fix">器具を直す</button><button data-mode="wall">壁の解体</button><button data-mode="cut">カッター</button><button data-mode="light">照明・配線</button><button data-mode="meas">測る</button></div>
@@ -603,6 +610,26 @@ function stepRooms(ctx) {
       if (a === 'fixLines') return fixLinesDialog(p, () => {});
       if (a === 'measClear') { meas.pts = []; paintSel(); return; }
       if (a === 'wallClear') { wsel.clear(); paintSel(); return; }
+      if (a === 'sketch') {
+        openSketch(p, { onSave: () => touch(p), onApply: async sk => {
+          const had = p.rooms.some(r => r.src === 'plan');
+          if (had && !(await ask('間取りを入れ替えますか？', '今の図面と、図面から作った部屋を、この間取りに入れ替えます。手で足した部屋はそのままです。', { ok: '入れ替える' }))) return false;
+          const keep = p.drawing && p.drawing.sketch ? p.drawing : null;
+          const plan = sketchPlan(sk.rooms); orderFacesOf(plan); plan.order = 2;
+          p.drawing = { fileName: '寸法で作った間取り', at: Date.now(), plan, fixtures: [], open: {}, doors: [], fixG: '', fixGd: '', sketch: true,
+            lights: [], walls: [], hatsu: [], panel: null, wireExtra: keep ? keep.wireExtra : undefined };
+          const old = new Map(p.rooms.filter(r => r.src === 'plan' && r.sk).map(r => [r.sk, r]));
+          p.rooms = p.rooms.filter(r => r.src !== 'plan');
+          plan.faces.slice().sort((a, b) => a.no - b.no).forEach((f, k) => {
+            const o = old.get(f.sk);
+            p.rooms.push({ ...(o || { id: uid('r'), qty: 1, doors: 0, winCount: 0, windows: [], h: '' }), name: f.name || `区画 ${f.no}`, shape: 'free', area: f.area, perim: f.peri, faces: [f.i], src: 'plan', sk: f.sk, color: o ? o.color : k, openRuns: [] });
+          });
+          syncDemoLines(p); touch(p); draw(); toast(`${plan.faces.length} 部屋の間取りを図面にしました`);
+          return true;
+        } });
+        return;
+      }
+      if (a === 'cadOut') { cadExport(p); return; }
       if (a === 'open3d') { flush(); toast('3Dを用意しています…'); open3D(p).catch(e => showError(e)); return; }
       if (a === 'lPanel') { panelMode = !panelMode; paintSel(); return; }
       if (a === 'lClear') { const before = p.drawing.lights; p.drawing.lights = []; syncDemoLines(p); touch(p); paintSel(); toast('照明を全部消しました', { action: '元に戻す', onAction: () => { p.drawing.lights = before; syncDemoLines(p); touch(p); paintSel(); } }); return; }
@@ -936,4 +963,29 @@ async function duplicate(p) {
   const n = newProject({ ...rest, name: (p.name || '案件') + '（コピー）', history: [], status: 'draft', issueDate: '', createdAt: Date.now() });
   go('#/p/' + encodeURIComponent(n.id) + '/1');
   toast('案件を複製しました');
+}
+
+/* 図面を JWW・DXF で書き出す。寸法で作った間取りは寸法と部屋名・面積も、読み込んだ図面は壁の線と部屋名・面積 */
+async function cadExport(p) {
+  const d = p.drawing; if (!d || !d.plan) return;
+  let G;
+  if (d.sketch && p.sketch && p.sketch.rooms.length) G = geomOf(p.sketch.rooms);
+  else {
+    G = { lines: d.plan.segs.map(s => [s[0], s[1], s[2], s[3], 0]), texts: [] };
+    p.rooms.filter(r => r.src === 'plan').forEach(r => {
+      const F = (r.faces || []).map(i => d.plan.faces.find(f => f.i === i)).filter(Boolean); if (!F.length) return;
+      const P = F[0].poly; let cx = 0, cy = 0; P.forEach(q => { cx += q[0] / P.length; cy += q[1] / P.length; });
+      G.texts.push({ s: r.name, x: cx, y: cy + 0.18, h: 4.5, deg: 0, layer: 2 }, { s: (Number(r.area) || 0).toFixed(2) + '㎡', x: cx, y: cy - 0.22, h: 3, deg: 0, layer: 2 });
+    });
+  }
+  const base = (p.name || '間取り').replace(/[\\/:*?"<>|]/g, '_');
+  const ch = await new Promise(res => {
+    const m = modal({ title: 'JWW・DXF で書き出す', body: `<p class="small muted" style="margin:0">壁の線・寸法・部屋の名前と面積を書き出します（文字は Shift_JIS）。JWW は縮尺 1/50 です。</p>`,
+      foot: `<button class="btn" data-fmt="dxf">DXF</button><button class="btn primary" data-fmt="jww">JWW</button>`, onClose: () => res('') });
+    m.el.querySelectorAll('[data-fmt]').forEach(b => { b.onclick = () => { res(b.dataset.fmt); m.el.remove(); }; });
+  });
+  if (!ch) return;
+  const u8 = ch === 'jww' ? jwwBytes(G, 50) : dxfBytes(G);
+  await share(new Blob([u8], { type: ch === 'jww' ? 'application/octet-stream' : 'application/dxf' }), base + '.' + ch);
+  toast(`${ch.toUpperCase()} を書き出しました`);
 }
