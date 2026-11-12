@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-12.14";
+var KAKU_VERSION="2026-11-12.15";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -3676,6 +3676,8 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
 #k3d .k3info td:last-child{font-weight:700;text-align:right}
 #k3d .k3note{font-size:12px;color:#5d6258;margin:6px 0 0}
 #k3d .k3row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+#k3d .k3hq{position:absolute;left:10px;top:calc(env(safe-area-inset-top,0px) + 56px);font-size:11px;font-weight:700;color:#20221f;background:#ffffffb8;border-radius:8px;padding:2px 7px;pointer-events:none;opacity:0;transition:opacity .4s}
+#k3d .k3hq.on{opacity:1}
 #k3d .k3q{display:flex;width:100%;justify-content:space-between;gap:10px;text-align:left;margin-top:6px;font-weight:400}
 #k3d .k3q b{white-space:nowrap}
 #k3d .k3chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;margin:4px 10px 0 0}
@@ -3688,7 +3690,7 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
 /* 図面の壁・床・ドア・器具・照明・配線を立ち上げて、指で回して見る。外のライブラリは使わず WebGL で描く */
 (function(){
   var $=function(id){return document.getElementById(id)};
-  var S={show:{wall:true,floor:true,fix:true,elec:true},hide:{},sel:-1,colorBy:'real',hitP:null,panMode:'',yaw:-Math.PI/2+.6,pitch:.75,dist:10,tx:0,ty:0,tz:0,ceil:false,low:false,wire:true,lab:true,ptr:{},dirty:true,gl:null,prog:null,buf:null,fit:null,labs:[]};
+  var S={slow:0,show:{wall:true,floor:true,fix:true,elec:true},hide:{},sel:-1,colorBy:'real',hitP:null,panMode:'',yaw:-Math.PI/2+.6,pitch:.75,dist:10,tx:0,ty:0,tz:0,ceil:false,low:false,wire:true,lab:true,ptr:{},dirty:true,gl:null,prog:null,buf:null,fit:null,labs:[]};
   function plan(){try{return KAKU_plan}catch(e){return null}}
   function fixD(){try{return KAKU_fix}catch(e){return null}}
   function defH(){try{return KAKU_cat&&+KAKU_cat.defH||2.4}catch(e){return 2.4}}
@@ -3972,21 +3974,30 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
       case'ceil':m=new T.MeshStandardMaterial({vertexColors:true,roughness:.95,transparent:true,opacity:.34,depthWrite:false,side:T.DoubleSide});break;
       case'ceilt':m=new T.MeshStandardMaterial({vertexColors:true,roughness:.8,transparent:true,opacity:.6,depthWrite:false,side:T.DoubleSide});break;
       default:m=std({roughness:.7})}
+    if(m.transparent)alphaFix(m);
     if(m.isMeshStandardMaterial&&!m.transparent){m.polygonOffset=true;m.polygonOffsetFactor=1;m.polygonOffsetUnits=1}
     X.mats[kind]=m;return m}
+  var ENV0=.36;
+  function alphaFix(m){var T=S.T;m.blending=T.CustomBlending;m.blendSrc=T.SrcAlphaFactor;m.blendDst=T.OneMinusSrcAlphaFactor;m.blendSrcAlpha=T.OneFactor;m.blendDstAlpha=T.OneMinusSrcAlphaFactor;return m}
   function initT(cv){var T=S.T,R=new T.WebGLRenderer({canvas:cv,antialias:true,alpha:false});R.setPixelRatio(1);
     R.toneMapping=T.ACESFilmicToneMapping;R.toneMappingExposure=.9;R.shadowMap.enabled=true;R.shadowMap.type=T.PCFSoftShadowMap;R.shadowMap.autoUpdate=false;
     var vs='attribute vec4 col;attribute float e;varying vec4 vc;void main(){gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);vc=col;}',fs='varying vec4 vc;void main(){gl_FragColor=vc;}';
     var sc=new T.Scene(),cam=new T.PerspectiveCamera(.8*180/Math.PI,1,.1,1000);cam.up.set(0,0,1);
     /* 環境光：上が明るく下が少し暗い空を作って、全部の材質に映り込みと回り込む光を付ける */
-    try{var es=new T.Scene(),sg=new T.SphereGeometry(40,24,12),pc=sg.attributes.position,cl=[];for(var i=0;i<pc.count;i++){var t=Math.max(0,Math.min(1,pc.getY(i)/40*.5+.5)),a=.42+.58*t;cl.push(a,a*.99,a*.97)}sg.setAttribute('color',new T.Float32BufferAttribute(cl,3));
-      es.add(new T.Mesh(sg,new T.MeshBasicMaterial({side:T.BackSide,vertexColors:true})));var pm=new T.PMREMGenerator(R);sc.environment=pm.fromScene(es,.03).texture;pm.dispose();if(sc.environmentRotation)sc.environmentRotation.set(Math.PI/2,0,0);sc.environmentIntensity=.5}catch(e){console.warn(e);sc.add(new T.HemisphereLight(0xffffff,0xb8b4ac,2.2))}
+    /* 環境光（HDR）：端末の中で空を作る。上は青みのある明るい空、地平線は白、地面は暗め。真上に明るい面光源（1より明るい値）を置いて、タイルや陶器に自然な映り込みを出す */
+    try{var es=new T.Scene(),sg=new T.SphereGeometry(40,32,16),pc=sg.attributes.position,cl=[];for(var i=0;i<pc.count;i++){var yy=pc.getY(i)/40,t=Math.max(0,yy),g0=Math.max(0,-yy);
+        if(yy>=0)cl.push(1.05-.30*t,1.04-.16*t,1.0+.10*t);else cl.push(.62-.34*g0,.60-.33*g0,.57-.32*g0)}sg.setAttribute('color',new T.Float32BufferAttribute(cl,3));
+      es.add(new T.Mesh(sg,new T.MeshBasicMaterial({side:T.BackSide,vertexColors:true})));
+      [[0,30,0,26,26,4.5],[22,20,8,14,10,3.2],[-20,22,-10,12,12,2.6]].forEach(function(q){var pm2=new T.Mesh(new T.PlaneGeometry(q[3],q[4]),new T.MeshBasicMaterial({color:new T.Color(q[5],q[5]*.98,q[5]*.94),side:T.DoubleSide}));pm2.position.set(q[0],q[1],q[2]);pm2.lookAt(0,0,0);es.add(pm2)});
+      var pm=new T.PMREMGenerator(R);sc.environment=pm.fromScene(es,.02).texture;pm.dispose();if(sc.environmentRotation)sc.environmentRotation.set(Math.PI/2,0,0);sc.environmentIntensity=ENV0}catch(e){console.warn(e);sc.add(new T.HemisphereLight(0xffffff,0xb8b4ac,2.2))}
     /* 太陽：斜め上から。影は部材を作り直した時だけ描き直す（回している間は描き直さないので軽い） */
     var sun=new T.DirectionalLight(0xfff1dc,3.1);sun.castShadow=true;var big=Math.max(window.screen.width,window.screen.height)>=1000;sun.shadow.mapSize.set(big?4096:2048,big?4096:2048);sun.shadow.bias=-.0004;sun.shadow.normalBias=.02;if('intensity'in sun.shadow)sun.shadow.intensity=.85;sc.add(sun);sc.add(sun.target);
-    var gnd=new T.Mesh(new T.PlaneGeometry(1,1),new T.ShadowMaterial({opacity:.22}));gnd.receiveShadow=true;gnd.frustumCulled=false;sc.add(gnd);
-    var X={sc:sc,cam:cam,sun:sun,gnd:gnd,go:new T.Group(),gt:new T.Group(),hl:new T.Group(),byId:{},mats:{},tex:{},mh:new T.MeshBasicMaterial({color:0xff8a1c,transparent:true,opacity:.72,side:T.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2,depthFunc:T.LessEqualDepth,toneMapped:false}),
+    var gnd=new T.Mesh(new T.PlaneGeometry(1,1),alphaFix(new T.ShadowMaterial({opacity:.22})));
+    /* 空の光（高画質の時だけ使う）：毎回ちがう向きから影つきで照らして重ねると、角や物の近くが自然に暗くなる */
+    var sky=new T.DirectionalLight(0xeaf1ff,1);sky.castShadow=true;sky.shadow.mapSize.set(1024,1024);sky.shadow.bias=-.0006;sky.shadow.normalBias=.03;sky.visible=false;sc.add(sky);sc.add(sky.target);gnd.receiveShadow=true;gnd.frustumCulled=false;sc.add(gnd);
+    var X={sc:sc,cam:cam,sun:sun,gnd:gnd,go:new T.Group(),gt:new T.Group(),hl:new T.Group(),byId:{},mats:{},tex:{},sky:sky,mh:alphaFix(new T.MeshBasicMaterial({color:0xff8a1c,transparent:true,opacity:.72,side:T.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2,depthFunc:T.LessEqualDepth,toneMapped:false})),
       l:new T.LineSegments(new T.BufferGeometry(),new T.ShaderMaterial({vertexShader:vs,fragmentShader:fs}))};X.l.frustumCulled=false;X.l.renderOrder=2;sc.add(X.go);sc.add(X.hl);sc.add(X.l);sc.add(X.gt);
-    S.R=R;S.T3=X;return R}
+    S.R=R;S.T3=X;try{hqInit()}catch(e){console.warn(e)}return R}
   function geoL(arr){var T=S.T,g=new T.BufferGeometry();if(arr.length){var ib=new T.InterleavedBuffer(new Float32Array(arr),11);g.setAttribute('position',new T.InterleavedBufferAttribute(ib,3,0));g.setAttribute('col',new T.InterleavedBufferAttribute(ib,4,6))}return g}
   /* 部材の形：位置・面の向き・色（リニアに直す）・模様の座標（実寸のm。水平な面は x,y、立っている面は 横,高さ） */
   function geoT(src){var T=S.T,n=src.length/11,P=new Float32Array(n*3),N=new Float32Array(n*3),C=new Float32Array(n*3),U=new Float32Array(n*2);
@@ -4003,10 +4014,49 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
     /* 太陽と影の範囲を、建物の大きさに合わせる */
     var b=S.scene.bb,cx=(b[0]+b[2])/2,cy=(b[1]+b[3])/2,Rr=Math.hypot(b[2]-b[0],b[3]-b[1])/2+2,sun=X.sun,sh=sun.shadow.camera;sun.target.position.set(cx,cy,0);sun.position.set(cx+Rr*.55,cy-Rr*.85,Rr*1.9);
     sh.left=-Rr;sh.right=Rr;sh.top=Rr;sh.bottom=-Rr;sh.near=.5;sh.far=Rr*4.5;sh.updateProjectionMatrix();sun.target.updateMatrixWorld();
+    X.base={cx:cx,cy:cy,R:Rr,sun:sun.position.clone()};var sk=X.sky.shadow.camera;X.sky.target.position.set(cx,cy,0);sk.left=-Rr;sk.right=Rr;sk.top=Rr;sk.bottom=-Rr;sk.near=.5;sk.far=Rr*5;sk.updateProjectionMatrix();X.sky.target.updateMatrixWorld();
     X.gnd.scale.set(Rr*6,Rr*6,1);X.gnd.position.set(cx,cy,-.162);X.gnd.visible=real;S.R.shadowMap.needsUpdate=true}
+  /* ==== 高画質（止めている間） ====
+     指を離して動きが止まったら、①画面を1画素より小さくずらす（なめらかな輪郭）②太陽を少しずらす（やわらかい影）③空の光を毎回ちがう向きから影つきで当てる（角や物のまわりの自然な暗がり＝アンビエントオクルージョン）
+     を1枚ずつ描いて足し合わせ、平均した絵を ACES のトーンマッピングで出す。触ったらすぐやめて、軽い通常の描き方に戻す。重い端末では枚数と解像度を自動で下げる */
+  function hal(i,b){var f=1,r=0;while(i>0){f/=b;r+=f*(i%b);i=Math.floor(i/b)}return r}
+  function hqInit(){var T=S.T,R=S.R,X=S.T3;if(!R.capabilities.isWebGL2||!(R.extensions.has('EXT_color_buffer_half_float')||R.extensions.has('EXT_color_buffer_float')))return;
+    var mob=(navigator.maxTouchPoints||0)>0&&Math.min(window.screen.width,window.screen.height)<820,vs='varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}';
+    var H={N:mob?32:64,min:mob?6:8,samples:mob?2:4,scale:1,env:.14,skyI:1.7,k:0,run:false,ocam:new T.OrthographicCamera(-1,1,1,-1,0,1),accS:new T.Scene(),preS:new T.Scene()};
+    H.accM=new T.ShaderMaterial({uniforms:{t:{value:null}},vertexShader:vs,fragmentShader:'uniform sampler2D t;varying vec2 vUv;void main(){gl_FragColor=min(texture2D(t,vUv),vec4(40.));}',blending:T.CustomBlending,blendSrc:T.OneFactor,blendDst:T.OneFactor,blendSrcAlpha:T.OneFactor,blendDstAlpha:T.OneFactor,depthTest:false,depthWrite:false,toneMapped:false});
+    H.preM=new T.ShaderMaterial({uniforms:{t:{value:null},n:{value:1}},vertexShader:vs,fragmentShader:'uniform sampler2D t;uniform float n;varying vec2 vUv;void main(){vec4 c=texture2D(t,vUv)/n;gl_FragColor=vec4(c.a>.0001?c.rgb/c.a:vec3(0.),clamp(c.a,0.,1.));\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}',transparent:true,depthTest:false,depthWrite:false});
+    var g=new T.PlaneGeometry(2,2),a=new T.Mesh(g,H.accM),b=new T.Mesh(g,H.preM);a.frustumCulled=b.frustumCulled=false;H.accS.add(a);H.preS.add(b);X.hq=H}
+  function hqInd(t,done){var el=S.root&&S.root.querySelector('.k3hq');if(!el)return;if(!t){el.classList.remove('on');return}el.textContent=t;el.classList.add('on');clearTimeout(S.hqIT);if(done)S.hqIT=setTimeout(function(){el.classList.remove('on')},1600)}
+  function hqRestore(){var X=S.T3;X.cam.clearViewOffset();X.sun.position.copy(X.base.sun);if('intensity'in X.sun.shadow)X.sun.shadow.intensity=.85;X.sky.visible=false;X.sc.environmentIntensity=ENV0;S.R.shadowMap.needsUpdate=true;S.R.setRenderTarget(null)}
+  function hqCancel(){clearTimeout(S.hqT);var X=S.T3,H=X&&X.hq;if(H&&H.run){H.run=false;hqRestore()}if(H)H.done=false}
+  function hqIdle(){clearTimeout(S.hqT);if(!S.R||!S.T3.hq||S.hqOn===false)return;S.hqT=setTimeout(hqStart,260)}
+  function hqStart(){var X=S.T3,H=X&&X.hq,T=S.T,R=S.R;if(!H||H.run||!S.root||!S.root.classList.contains('on')||S.dirty||Object.keys(S.ptr).length||!S.scene)return;var cv=S.cv,w=cv.width,h=cv.height;if(!w||!h)return;
+    var rw=Math.max(8,Math.round(w*H.scale)),rh=Math.max(8,Math.round(h*H.scale));
+    if(!H.rtF||H.rtF.width!==rw||H.rtF.height!==rh){if(H.rtF){H.rtF.dispose();H.rtA.dispose()}H.rtF=new T.WebGLRenderTarget(rw,rh,{type:T.HalfFloatType,samples:H.samples,depthBuffer:true});H.rtA=new T.WebGLRenderTarget(rw,rh,{type:T.HalfFloatType,depthBuffer:false});H.accM.uniforms.t.value=H.rtF.texture;H.preM.uniforms.t.value=H.rtA.texture}
+    /* この端末で、明るさの幅の広い（HDR）絵を描けるか確かめる。だめなら高画質は使わない */
+    R.setRenderTarget(H.rtF);var gl=R.getContext(),ok=gl.checkFramebufferStatus(gl.FRAMEBUFFER)===gl.FRAMEBUFFER_COMPLETE;if(ok){R.setRenderTarget(H.rtA);ok=gl.checkFramebufferStatus(gl.FRAMEBUFFER)===gl.FRAMEBUFFER_COMPLETE}
+    if(!ok){R.setRenderTarget(null);X.hq=null;console.warn('高画質の描画先を作れませんでした');return}
+    R.setClearColor(0x000000,0);R.clear();R.setRenderTarget(null);H.k=0;H.run=true;H.done=false;H.last=0;H.ema=0;H.w=w;H.h=h;requestAnimationFrame(hqStep)}
+  function hqStep(){var X=S.T3,H=X&&X.hq,R=S.R;if(!H||!H.run)return;if(S.dirty||Object.keys(S.ptr).length||S.cv.width!==H.w||S.cv.height!==H.h||!S.root.classList.contains('on')){H.run=false;hqRestore();hqInd('');return}
+    var k=H.k,i=k+1,b=X.base,c=camT(H.w/H.h);c.setViewOffset(H.w,H.h,hal(i,2)-.5,hal(i,3)-.5,H.w,H.h);
+    /* 太陽：見かけの大きさ（半径 約1.6°）の中でずらす */
+    var sp=b.sun,dx=sp.x-b.cx,dy=sp.y-b.cy,dz=sp.z,dl=Math.hypot(dx,dy,dz),ux=-dy,uy=dx,ul=Math.hypot(ux,uy)||1;ux/=ul;uy/=ul;var vx=(dy/dl)*0-(dz/dl)*uy,vy=(dz/dl)*ux-(dx/dl)*0,vz=(dx/dl)*uy-(dy/dl)*ux,rr=Math.sqrt(hal(i,5))*dl*.028,an=hal(i,7)*6.2832;
+    X.sun.position.set(sp.x+(ux*Math.cos(an)+vx*Math.sin(an))*rr,sp.y+(uy*Math.cos(an)+vy*Math.sin(an))*rr,sp.z+vz*Math.sin(an)*rr);
+    /* 空：上向きの半球から、真上ほど多く選ぶ */
+    var r2=Math.sqrt(hal(i,11)*.97),a2=hal(i,13)*6.2832,D=b.R*2.4;X.sky.position.set(b.cx+r2*Math.cos(a2)*D,b.cy+r2*Math.sin(a2)*D,Math.sqrt(1-r2*r2)*D);X.sky.intensity=H.skyI;X.sky.visible=true;
+    if('intensity'in X.sun.shadow)X.sun.shadow.intensity=1;X.sc.environmentIntensity=H.env;R.shadowMap.needsUpdate=true;
+    R.setRenderTarget(H.rtF);R.setClearColor(0x000000,0);R.clear();R.render(X.sc,c);
+    var ac=R.autoClear;R.autoClear=false;R.setRenderTarget(H.rtA);R.render(H.accS,H.ocam);R.autoClear=ac;H.k=++k;
+    if(k>=H.min||k>=H.N){R.setRenderTarget(null);bgT();H.preM.uniforms.n.value=k;R.render(H.preS,H.ocam)}
+    R.setRenderTarget(null);c.clearViewOffset();
+    /* 重い端末：1枚に時間がかかる時は、次から枚数と解像度を下げる */
+    var now=performance.now();if(H.last){var dt=now-H.last;H.ema=H.ema?H.ema*.7+dt*.3:dt;if(k===6&&H.ema>70){H.N=Math.min(H.N,16);H.min=4;if(H.ema>120)H.scale=.75}
+      /* 1枚に0.4秒以上かかる端末では、操作が重くなるので高画質をやめる（「表示」から入れ直せる） */
+      if(k===4&&H.ema>400&&!S.hqForce){H.run=false;hqRestore();S.hqOn=false;hqInd('この端末では重いので、通常の表示にしました',true);S.dirty=true;if(!S.raf)S.raf=requestAnimationFrame(draw);return}}H.last=now;
+    if(k<H.N){hqInd('高画質にしています '+k+'/'+H.N);requestAnimationFrame(hqStep)}else{H.run=false;H.done=true;hqRestore();hqInd('高画質',true)}}
+  function bgT(){var R=S.R,dark=document.documentElement.getAttribute('data-theme')==='dark'||document.documentElement.getAttribute('data-sk')==='dark';if(S.white)R.setClearColor(0xffffff,1);else if(dark)R.setClearColor(new S.T.Color(.11,.12,.10),1);else R.setClearColor(new S.T.Color(.93,.94,.92),1)}
   function camT(as){var c=S.T3.cam,e=eye();c.aspect=as;c.near=Math.max(.05,S.dist/200);c.far=S.dist*20+100;c.updateProjectionMatrix();c.position.set(e[0],e[1],e[2]);c.lookAt(S.tx,S.ty,S.tz);c.updateMatrixWorld();return c}
-  function drawT(w,h,dark){var R=S.R,c=camT(w/h);
-    if(S.white)R.setClearColor(0xffffff,1);else if(dark)R.setClearColor(new S.T.Color(.11,.12,.10),1);else R.setClearColor(new S.T.Color(.93,.94,.92),1);R.render(S.T3.sc,c)}
+  function drawT(w,h,dark){var R=S.R;hqCancel();var c=camT(w/h);bgT();R.setRenderTarget(null);R.render(S.T3.sc,c);if(!S.white)hqIdle()}
   /* three.js のレイキャストで、タップした所の部材と、当たった点を探す */
   function pickT(px,py){var X=S.T3,T=S.T,cv=S.cv,c=camT(cv.clientWidth/cv.clientHeight),rc=X.rc||(X.rc=new T.Raycaster());rc.setFromCamera(new T.Vector2(px/cv.clientWidth*2-1,-(py/cv.clientHeight)*2+1),c);
     var hit=rc.intersectObjects(X.go.children.concat(X.gt.children),false);for(var i=0;i<hit.length;i++){var id=hit[i].object.userData.i;if(id>=0)return{i:id,p:[hit[i].point.x,hit[i].point.y,hit[i].point.z]}}return null}
@@ -4017,7 +4067,7 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
     var y=[z[1]*x[2]-z[2]*x[1],z[2]*x[0]-z[0]*x[2],z[0]*x[1]-z[1]*x[0]];return[x[0],y[0],z[0],0,x[1],y[1],z[1],0,x[2],y[2],z[2],0,-(x[0]*e[0]+x[1]*e[1]+x[2]*e[2]),-(y[0]*e[0]+y[1]*e[1]+y[2]*e[2]),-(z[0]*e[0]+z[1]*e[1]+z[2]*e[2]),1]}
   function eye(){var cp=Math.cos(S.pitch);return[S.tx+S.dist*cp*Math.cos(S.yaw),S.ty+S.dist*cp*Math.sin(S.yaw),S.tz+S.dist*Math.sin(S.pitch)]}
   function matrix(){var cv=S.cv,as=cv.width/cv.height;return mul(persp(.8,as,Math.max(.05,S.dist/200),S.dist*20+100),look(eye(),[S.tx,S.ty,S.tz],[0,0,1]))}
-  function draw(){S.raf=0;if(!S.dirty||(!S.gl&&!S.R))return;S.dirty=false;var gl=S.gl,cv=S.cv,dpr=Math.min(2,window.devicePixelRatio||1),w=Math.round(cv.clientWidth*dpr),h=Math.round(cv.clientHeight*dpr);if(cv.width!==w||cv.height!==h){if(S.R)S.R.setSize(w,h,false);else{cv.width=w;cv.height=h}}
+  function draw(){S.raf=0;if(!S.dirty||(!S.gl&&!S.R))return;S.dirty=false;var gl=S.gl,cv=S.cv,nowT=performance.now();if(S.lastT&&nowT-S.lastT<250){S.fema=S.fema?S.fema*.85+(nowT-S.lastT)*.15:(nowT-S.lastT);if(S.fema>45&&(S.dprCap||2)>1&&++S.slow>12){S.dprCap=Math.max(1,(S.dprCap||2)-.5);S.slow=0;S.fema=0}}else S.slow=0;S.lastT=nowT;var dpr=Math.min(S.dprCap||2,window.devicePixelRatio||1),w=Math.round(cv.clientWidth*dpr),h=Math.round(cv.clientHeight*dpr);if(cv.width!==w||cv.height!==h){if(S.R)S.R.setSize(w,h,false);else{cv.width=w;cv.height=h}}
     var M=matrix();var dark=document.documentElement.getAttribute('data-theme')==='dark'||document.documentElement.getAttribute('data-sk')==='dark';if(S.R)drawT(w,h,dark);else{
     gl.viewport(0,0,w,h);dark=document.documentElement.getAttribute('data-theme')==='dark'||document.documentElement.getAttribute('data-sk')==='dark';if(S.white)gl.clearColor(1,1,1,1);else if(dark)gl.clearColor(.11,.12,.10,1);else gl.clearColor(.93,.94,.92,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
     gl.useProgram(S.prog);gl.uniformMatrix4fv(S.loc.M,false,new Float32Array(M));gl.enable(gl.DEPTH_TEST);
@@ -4088,9 +4138,10 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
   function pan(){var box=S.root.querySelector('.k3pan'),b=function(k,on,t){return'<button type="button" data-k="'+esc(k)+'"'+(on?' class="on"':'')+'>'+esc(t)+'</button>'};
     var chips=S.colorBy==='fin'?Object.keys(S.scene.fin||{}).map(function(n){var c=S.scene.fin[n];return'<span class="k3chip"><i style="background:rgb('+c.map(function(v){return Math.round(v*255)}).join(',')+')"></i>'+esc(n)+'</span>'}).join(''):'';
     box.innerHTML='<h4>表示する物</h4><div class="k3row" style="margin-top:0">'+b('L:wall',S.show.wall,'壁')+b('L:floor',S.show.floor,'床')+b('L:ceil',S.ceil,'天井')+b('L:fix',S.show.fix,'器具')+b('L:elec',S.show.elec,'照明・電気')+((current.wire&&current.wire.on)?b('L:wire',S.wire,'配線'):'')+'</div>'+
-      '<h4 style="margin-top:10px">色</h4><div class="k3row" style="margin-top:0">'+b('C:real',S.colorBy==='real','質感')+b('C:room',S.colorBy==='room','部屋ごと')+b('C:fin',S.colorBy==='fin','仕上げで色分け')+'</div>'+(S.colorBy==='fin'?'<div>'+(chips||'<span class="k3note">まだ仕上げを選んだ部屋がありません（部屋の「工事内容」で選びます）。</span>')+'</div>':'')+'<h4 style="margin-top:10px">表示する部屋</h4><div class="k3row" style="margin-top:0">'+b('R:*',!Object.keys(S.hide).length,'全部')+S.scene.rooms.map(function(r){return b('R:'+r.k,!S.hide[r.k],r.n)}).join('')+'</div><div class="k3row"><button type="button" data-k="X">閉じる</button></div>';
+      '<h4 style="margin-top:10px">色</h4><div class="k3row" style="margin-top:0">'+b('C:real',S.colorBy==='real','質感')+b('C:room',S.colorBy==='room','部屋ごと')+b('C:fin',S.colorBy==='fin','仕上げで色分け')+'</div>'+(S.colorBy==='fin'?'<div>'+(chips||'<span class="k3note">まだ仕上げを選んだ部屋がありません（部屋の「工事内容」で選びます）。</span>')+'</div>':'')+(S.R&&S.T3.hq?'<h4 style="margin-top:10px">画質</h4><div class="k3row" style="margin-top:0">'+b('Q:on',S.hqOn!==false,'高画質（止めている間）')+b('Q:off',S.hqOn===false,'通常だけ')+'</div><p class="k3note">動かしている間は軽い表示、指を離すと少しずつきれいになります。重い時は「通常だけ」にしてください。</p>':'')+'<h4 style="margin-top:10px">表示する部屋</h4><div class="k3row" style="margin-top:0">'+b('R:*',!Object.keys(S.hide).length,'全部')+S.scene.rooms.map(function(r){return b('R:'+r.k,!S.hide[r.k],r.n)}).join('')+'</div><div class="k3row"><button type="button" data-k="X">閉じる</button></div>';
     lift(box);[].forEach.call(box.querySelectorAll('button'),function(btn){btn.onclick=function(){var k=btn.dataset.k;if(k==='X'){box.classList.remove('on');S.panMode='';bar();return}
       if(k.slice(0,2)==='C:'){S.colorBy=k.slice(2);rebuild(true);pan();return}
+      if(k.slice(0,2)==='Q:'){S.hqOn=k==='Q:on';S.hqForce=S.hqOn;try{localStorage.setItem('kaku-3d-hq',S.hqOn?'1':'0')}catch(e){}hqCancel();hqInd('');req();pan();return}
       if(k.slice(0,2)==='L:'){var n=k.slice(2);if(n==='ceil')S.ceil=!S.ceil;else if(n==='wire')S.wire=!S.wire;else S.show[n]=!S.show[n]}
       else if(k==='R:*')S.hide={};else{var rk2=k.slice(2);if(S.hide[rk2])delete S.hide[rk2];else S.hide[rk2]=true}
       rebuild(true);pan()}})}
@@ -4105,7 +4156,7 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
       if(t&&last){if(last.d>0&&t.d>0){S.dist=Math.max(1,Math.min(S.fit*6,S.dist*last.d/t.d))}pan(t.x-last.x,t.y-last.y);last=t;return}
       if(p.b===2||e.shiftKey){pan(dx,dy);return}
       S.yaw-=dx*.008;S.pitch=Math.max(.05,Math.min(1.52,S.pitch+dy*.006));req()});
-    var up=function(e){delete pts[e.pointerId];last=two();if(e.type==='pointerup'&&tp&&tp.id===e.pointerId&&Math.hypot(e.clientX-tp.x,e.clientY-tp.y)<8&&Date.now()-tp.t<600){try{tap(e.clientX,e.clientY)}catch(err){console.error(err)}}tp=null};cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
+    var up=function(e){delete pts[e.pointerId];last=two();if(S.R&&!Object.keys(pts).length)hqIdle();if(e.type==='pointerup'&&tp&&tp.id===e.pointerId&&Math.hypot(e.clientX-tp.x,e.clientY-tp.y)<8&&Date.now()-tp.t<600){try{tap(e.clientX,e.clientY)}catch(err){console.error(err)}}tp=null};cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
     cv.addEventListener('wheel',function(e){e.preventDefault();S.dist=Math.max(1,Math.min(S.fit*6,S.dist*Math.exp(e.deltaY*.0012)));req()},{passive:false});
     cv.addEventListener('contextmenu',function(e){e.preventDefault()})}
   function hideHint(){var h=S.root&&S.root.querySelector('.k3hint');if(h)h.style.opacity=0}
@@ -4123,13 +4174,13 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
       /* three.js がだめな時は、新しいキャンバスで自前の WebGL に切り替える */S.R=null;S.T3=null;S.T=null;var n=document.createElement('canvas');S.cv.parentNode.replaceChild(n,S.cv);S.cv=n}
     return!!initGL(S.cv)}
   function open2(){if(!plan()){toast('先に図面を読み込んでください');return}
-    if(!S.root){var r=document.createElement('div');r.id='k3d';r.innerHTML='<canvas></canvas><div class="k3labs"></div><div class="k3top"><b>3Dで見る</b><button type="button" class="k3print">印刷・PDF</button><button type="button" class="k3close">閉じる</button></div><div class="k3info"></div><div class="k3pan"></div><div class="k3bar"></div><div class="k3hint">1本指で回す・2本指で拡大と移動<br>壁・床・照明をタップすると寸法が出ます</div>';
+    if(!S.root){var r=document.createElement('div');r.id='k3d';r.innerHTML='<canvas></canvas><div class="k3labs"></div><div class="k3top"><b>3Dで見る</b><button type="button" class="k3print">印刷・PDF</button><button type="button" class="k3close">閉じる</button></div><div class="k3hq"></div><div class="k3info"></div><div class="k3pan"></div><div class="k3bar"></div><div class="k3hint">1本指で回す・2本指で拡大と移動<br>壁・床・照明をタップすると寸法が出ます</div>';
       document.body.appendChild(r);S.root=r;S.cv=r.querySelector('canvas');S.labBox=r.querySelector('.k3labs');
       if(!startGL(r)){r.remove();S.root=null;toast('この端末では3Dを表示できません');return}
       bindInput(S.cv);r.querySelector('.k3close').onclick=close;r.querySelector('.k3print').onclick=printShot;window.addEventListener('resize',function(){if(S.root&&S.root.classList.contains('on'))req()})}
     var h=S.root.querySelector('.k3hint');if(h)h.style.opacity=1;
     S.root.classList.add('on');document.documentElement.style.overflow='hidden';bar();rebuild(false);setTimeout(hideHint,2500)}
-  function close(){if(S.root)S.root.classList.remove('on');document.documentElement.style.overflow=''}
+  function close(){try{if(S.T3)hqCancel()}catch(e){}if(S.root)S.root.classList.remove('on');document.documentElement.style.overflow=''}
   /* 今の見え方を1枚の絵にして、印刷・PDFにする（アプリは共有メニューから印刷・保存、ブラウザは印刷の画面） */
   function shot(){S.dirty=true;S.white=true;if(S.raf){cancelAnimationFrame(S.raf);S.raf=0}try{draw()}finally{S.white=false}var cv=S.cv,c=document.createElement('canvas');c.width=cv.width;c.height=cv.height;var x=c.getContext('2d');
     x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(cv,0,0);
@@ -4153,7 +4204,8 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
   /* 確かめる時に使う：部材の一覧、画面の点の部材、選ぶ */
   window.KAKU_3Dparts=function(){return S.scene?S.scene.parts:[]};
   /* 建物モデル：部材の種類と属性（寸法・厚み・高さ・仕上げ）の一覧 */
-  window.KAKU_3Dmodel=function(){var sc=S.scene||build();return sc?sc.parts.map(function(p,i){return{id:i,type:p.type,title:p.title,attr:p.attr||null}}):[]};window.KAKU_3Dqty=function(){return S.scene?S.scene.qg:[]};window.KAKU_3Dobjects=function(){return S.T3?S.T3.go.children.length+S.T3.gt.children.length:0};window.KAKU_3Dpick=function(x,y){return pick(x,y)};window.KAKU_3Dselect=function(i){select(i)};window.KAKU_3Dstate=function(){return S};window.KAKU_3Dengine=function(){return S.R?'three.js r'+S.T.REVISION:S.gl?'webgl':''};
+  window.KAKU_3Dmodel=function(){var sc=S.scene||build();return sc?sc.parts.map(function(p,i){return{id:i,type:p.type,title:p.title,attr:p.attr||null}}):[]};window.KAKU_3Dqty=function(){return S.scene?S.scene.qg:[]};window.KAKU_3Dobjects=function(){return S.T3?S.T3.go.children.length+S.T3.gt.children.length:0};window.KAKU_3Dpick=function(x,y){return pick(x,y)};window.KAKU_3Dselect=function(i){select(i)};window.KAKU_3Dstate=function(){return S};window.KAKU_3Dhq=function(){var H=S.T3&&S.T3.hq;return H?{k:H.k,N:H.N,run:H.run,done:!!H.done,ema:Math.round(H.ema||0),scale:H.scale,on:S.hqOn!==false}:null};try{if(localStorage.getItem('kaku-3d-hq')==='0')S.hqOn=false}catch(e){}
+  window.KAKU_3Dengine=function(){return S.R?'three.js r'+S.T.REVISION:S.gl?'webgl':''};
   /* 図の上に「3Dで見る」ボタン */
   function addBtn(){var box=$('kakuPlan');if(!box)return;var b=$('k3btn');
     if(!plan()){if(b)b.parentNode.style.display='none';return}
