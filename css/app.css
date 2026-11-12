@@ -352,3 +352,10 @@ details.more[open] > summary::before { content: "－ "; }
   .modal-bg { align-items: center; padding: 10px; }
   .modal { border-radius: 16px; max-height: 96vh; width: min(760px, 100%); }
 }
+.kpi.link { text-align: left; color: var(--text); cursor: pointer; font: inherit; width: 100%; }
+.kpi.link:hover { border-color: var(--accent); }
+.kpi.link:active { transform: scale(.98); }
+.kpi.link .s { color: var(--muted); }
+.show-m { display: none; }
+@media (max-width: 900px) { .show-m { display: block; } }
+@media (max-width: 900px) and (orientation: landscape) and (min-width: 600px) { .show-m { display: none; } }

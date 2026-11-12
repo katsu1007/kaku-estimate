@@ -1,5 +1,5 @@
 /* ホームと案件一覧 */
-import { state, registerView, setTop, go, newProject, opts } from './app.js';
+import { state, registerView, setTop, go, newProject, opts, render } from './app.js';
 import { totals, check } from './calc.js';
 import { icon, esc, yen, pct, when, $ } from './ui.js';
 import { showIntro } from './pages.js';
@@ -20,7 +20,7 @@ function rowsHtml(list) {
     const g = Math.max(0, Math.min(100, s.t.grossPct));
     return `<tr class="click" data-open="${esc(p.id)}">
       <td class="pname"><b>${esc(p.name || '名前のない案件')}</b><small>${esc(p.customer || 'お客様 未入力')}${p.address ? '・' + esc(p.address) : ''}</small></td>
-      <td class="r money"><b>${yen(s.t.grand)}</b></td>
+      <td class="r money"><b>${yen(s.t.grand)}</b><small class="show-m small muted">${s.t.net > 0 ? '粗利 ' + pct(s.t.grossPct) : ''}</small></td>
       <td class="hide-m"><div class="row" style="gap:8px;flex-wrap:nowrap"><div class="bar" style="width:70px"><i style="width:${g}%;${s.t.grossPct < 15 ? 'background:var(--warn)' : ''}"></i></div><span class="small num">${s.t.net > 0 ? pct(s.t.grossPct) : '—'}</span></div></td>
       <td><span class="pill ${cls}">${lab}</span>${s.errors ? ` <span class="pill bad" title="確認が必要な所">要確認 ${s.errors}</span>` : ''}</td>
       <td class="hide-m small muted">${when(p.updatedAt)}</td>
@@ -73,10 +73,10 @@ registerView('home', async el => {
       <a class="action" href="#/master"><div class="ic g">${icon('tag')}</div><b>単価を確かめる</b><span>品目と単価、掛け率を会社に合わせます</span></a>
     </div>
     <div class="kpis">
-      <div class="kpi"><div class="k">見積中・提出済の合計</div><div class="v money">${yen(openSum)}</div><div class="s">税込・${open.length} 件</div></div>
-      <div class="kpi"><div class="k">案件</div><div class="v num">${ps.length}<span class="small muted"> 件</span></div><div class="s">今月 ${thisMonth} 件</div></div>
-      <div class="kpi"><div class="k">平均の粗利率</div><div class="v num" style="color:${avgGross < 15 && withNet.length ? 'var(--warn)' : 'var(--ok)'}">${withNet.length ? pct(avgGross) : '—'}</div><div class="s">原価は設定の掛け率から</div></div>
-      <div class="kpi"><div class="k">確認が必要な所</div><div class="v num" style="color:${errs ? 'var(--bad)' : 'var(--ok)'}">${errs}</div><div class="s">${errs ? '単価なし・数量0など' : '問題ありません'}</div></div>
+      <button class="kpi link" data-kpi="open"><div class="k">見積中・提出済の合計</div><div class="v money">${yen(openSum)}</div><div class="s">税込・${open.length} 件 ・ 一覧を見る ›</div></button>
+      <button class="kpi link" data-kpi="all"><div class="k">案件</div><div class="v num">${ps.length}<span class="small muted"> 件</span></div><div class="s">今月 ${thisMonth} 件 ・ 一覧を見る ›</div></button>
+      <button class="kpi link" data-kpi="gross"><div class="k">平均の粗利率</div><div class="v num" style="color:${avgGross < 15 && withNet.length ? 'var(--warn)' : 'var(--ok)'}">${withNet.length ? pct(avgGross) : '—'}</div><div class="s">粗利率の低い順に見る ›</div></button>
+      <button class="kpi link" data-kpi="err"><div class="k">確認が必要な所</div><div class="v num" style="color:${errs ? 'var(--bad)' : 'var(--ok)'}">${errs}</div><div class="s">${errs ? `${sums.filter(x => x.errors).length} 件の案件 ・ 見る ›` : '問題ありません'}</div></button>
     </div>
     <div class="homegrid">
       <div class="card" style="padding:16px 8px 6px">
@@ -90,6 +90,16 @@ registerView('home', async el => {
     </div>`;
   $('#newBtn').onclick = create;
   $('#aNew').onclick = create;
+  el.querySelectorAll('[data-kpi]').forEach(b => b.onclick = () => {
+    const k = b.dataset.kpi;
+    /* 確認が必要な案件が1件だけなら、その案件の「④確認」へ直接 */
+    if (k === 'err') {
+      const bad = sums.filter(x => x.errors);
+      if (bad.length === 1) { go('#/p/' + encodeURIComponent(bad[0].p.id) + '/4'); return; }
+    }
+    state.listFilter = { q: '', status: k === 'open' ? 'open' : k === 'err' ? 'err' : 'all', sort: k === 'gross' ? 'gross' : 'new' };
+    go('#/projects');
+  });
   if (last) $('#aLast').onclick = () => go('#/p/' + encodeURIComponent(last.id) + '/1');
   const sb = $('#sampleBtn'); if (sb) sb.onclick = async () => { const { addSample } = await import('./pages.js'); addSample(); };
   bindOpen(el);
@@ -101,19 +111,26 @@ registerView('projects', async el => {
   const st = state.listFilter || (state.listFilter = { q: '', status: 'all', sort: 'new' });
   const draw = () => {
     const q = st.q.trim().toLowerCase();
-    let list = state.projects.filter(p => (st.status === 'all' || (p.status || 'draft') === st.status) &&
+    const stOk = p => st.status === 'all' ? true
+      : st.status === 'open' ? ['draft', 'sent'].includes(p.status || 'draft')
+        : st.status === 'err' ? check(p, opts()).some(c => c.level === 'error')
+          : (p.status || 'draft') === st.status;
+    let list = state.projects.filter(p => stOk(p) &&
       (!q || [p.name, p.customer, p.address, p.number].join(' ').toLowerCase().includes(q)));
     if (st.sort === 'old') list = [...list].sort((a, b) => a.updatedAt - b.updatedAt);
     if (st.sort === 'name') list = [...list].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ja'));
     if (st.sort === 'amt') list = [...list].sort((a, b) => totals(b, opts()).grand - totals(a, opts()).grand);
-    $('#plist').innerHTML = list.length ? table(list) : `<div class="empty"><b>${state.projects.length ? '当てはまる案件がありません' : 'まだ案件がありません'}</b></div>`;
+    if (st.sort === 'gross') list = [...list].sort((a, b) => { const ta = totals(a, opts()), tb = totals(b, opts()); return (ta.net > 0 ? ta.grossPct : 999) - (tb.net > 0 ? tb.grossPct : 999); });
+    $('#plist').innerHTML = (st.status !== 'all' || st.sort !== 'new' ? `<div class="row small muted" style="padding:6px 10px">${{ open: '見積中・提出済の案件', err: '確認が必要な所がある案件', draft: '見積中の案件', sent: '提出済の案件', won: '受注の案件', lost: '失注の案件' }[st.status] || 'すべての案件'}${st.sort === 'gross' ? '（粗利率が低い順）' : ''}：${list.length} 件<span class="spacer"></span><button class="btn sm ghost" id="clr">条件を外す</button></div>` : '') +
+      (list.length ? table(list) : `<div class="empty"><b>${state.projects.length ? '当てはまる案件がありません' : 'まだ案件がありません'}</b></div>`);
+    const c = $('#clr'); if (c) c.onclick = () => { st.status = 'all'; st.sort = 'new'; render(); };
     bindOpen($('#plist'));
   };
   el.innerHTML = `
     <div class="row" style="margin-bottom:14px">
       <div class="unitwrap" style="flex:1;min-width:220px"><input class="in" id="q" type="search" placeholder="案件名・お客様・住所・番号で探す" value="${esc(st.q)}" enterkeyhint="search"><span>${icon('search')}</span></div>
-      <select class="in" id="fs" style="width:auto"><option value="all">すべての状態</option>${Object.entries(STATUS).map(([k, [l]]) => `<option value="${k}" ${st.status === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
-      <select class="in" id="so" style="width:auto"><option value="new">更新が新しい順</option><option value="old" ${st.sort === 'old' ? 'selected' : ''}>更新が古い順</option><option value="name" ${st.sort === 'name' ? 'selected' : ''}>案件名の順</option><option value="amt" ${st.sort === 'amt' ? 'selected' : ''}>金額が高い順</option></select>
+      <select class="in" id="fs" style="width:auto"><option value="all">すべての状態</option><option value="open" ${st.status === 'open' ? 'selected' : ''}>見積中・提出済</option>${Object.entries(STATUS).map(([k, [l]]) => `<option value="${k}" ${st.status === k ? 'selected' : ''}>${l}</option>`).join('')}<option value="err" ${st.status === 'err' ? 'selected' : ''}>確認が必要な案件</option></select>
+      <select class="in" id="so" style="width:auto"><option value="new">更新が新しい順</option><option value="old" ${st.sort === 'old' ? 'selected' : ''}>更新が古い順</option><option value="name" ${st.sort === 'name' ? 'selected' : ''}>案件名の順</option><option value="amt" ${st.sort === 'amt' ? 'selected' : ''}>金額が高い順</option><option value="gross" ${st.sort === 'gross' ? 'selected' : ''}>粗利率が低い順</option></select>
       <button class="btn primary" id="newBtn">${icon('plus')}新しい見積もり</button>
     </div>
     <div class="card" style="padding:8px" id="plist"></div>`;
