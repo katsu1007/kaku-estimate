@@ -73,15 +73,15 @@ export function showError(msg) {
   b.querySelector('button').onclick = () => b.remove();
 }
 
-export function modal({ title, body, foot = '', wide = false, onClose }) {
+export function modal({ title, body, foot = '', wide = false, onClose, closable = true }) {
   const bg = document.createElement('div');
   bg.className = 'modal-bg';
   bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}" ${wide ? 'style="width:min(980px,100%)"' : ''}>
-    <div class="mh"><h3>${esc(title)}</h3><button class="iconbtn" data-close aria-label="閉じる">${icon('x')}</button></div>
+    <div class="mh"><h3>${esc(title)}</h3>${closable ? `<button class="iconbtn" data-close aria-label="閉じる">${icon('x')}</button>` : ''}</div>
     <div class="mb">${body}</div>${foot ? `<div class="mf">${foot}</div>` : ''}</div>`;
   const close = () => { bg.remove(); document.removeEventListener('keydown', key); onClose && onClose(); };
-  const key = e => { if (e.key === 'Escape') close(); };
-  bg.addEventListener('click', e => { if (e.target === bg || e.target.closest('[data-close]')) close(); });
+  const key = e => { if (e.key === 'Escape' && closable) close(); };
+  bg.addEventListener('click', e => { if ((e.target === bg && closable) || e.target.closest('[data-close]')) close(); });
   document.addEventListener('keydown', key);
   document.body.appendChild(bg);
   return { el: bg, close };

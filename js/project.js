@@ -443,7 +443,8 @@ function stepCheck({ p, body, refresh }) {
             <tr><td>粗利（税抜の合計 − 原価）</td><td style="color:${t.gross < 0 ? 'var(--bad)' : 'var(--ok)'}">${yen(t.gross)}</td></tr>
             <tr><td>粗利率</td><td>${t.net > 0 ? pct(t.grossPct) : '—'}</td></tr>
           </table></div>
-      </div>`;
+      </div>
+      <p class="small muted" style="margin-top:12px">${icon('info').replace('<svg', '<svg style="width:14px;height:14px;vertical-align:-2px"')} この金額は概算です。検算は計算の間違いや入れ忘れを見つけるためのもので、現場に合っているかまでは確かめられません。見積書を出す前に、数量と単価をご自身で確かめてください。</p>`;
     refresh();
   };
   body.addEventListener('change', e => {

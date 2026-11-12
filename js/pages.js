@@ -211,6 +211,7 @@ registerView('help', async el => {
         <div class="st"><span class="n">4</span><div><b>確認</b><span>別の方法で計算し直して、合わない所や単価の抜けを出します。諸経費・利益・値引きもここで入れます。</span></div></div>
         <div class="st"><span class="n">5</span><div><b>書類</b><span>見積書・請求書・内訳書を印刷やPDFで出します。Excel にも書き出せます。見積書を出すたびに版が残り、前の版と比べられます。</span></div></div>
       </div></div>
+    <div class="card"><h2>はじめにお読みください</h2><div class="sub">最初に起動した時に出した注意書きです。</div>${NOTICE_HTML}</div>
     <div class="card"><h2>よくある質問</h2>
       <p><b>PDFにするには？</b><br><span class="muted">見積書を出すと印刷の画面が出ます。iPhone は印刷の画面で共有ボタン →「ファイルに保存」。パソコンは送信先を「PDFに保存」にしてください。</span></p>
       <p><b>図面の読み込みや照明の自動配置は？</b><br><span class="muted">今は「前のKAKU」（左のメニューの「図面・照明・3D」）で使えます。新しい画面にも順番に移していきます。</span></p>
@@ -218,6 +219,26 @@ registerView('help', async el => {
       <p style="margin-bottom:0"><b>数量が思ったより多い</b><br><span class="muted">材料はロス率（最初は10%）を足して切り上げています。行の「くわしく」で行ごとに、設定で全体のロス率を変えられます。</span></p></div>
   </div>`;
 });
+
+
+/* ---------- はじめにお読みください（最初の1回。確認しないと進めない） ---------- */
+export const NOTICE_HTML = `<ul style="margin:0;padding-left:1.2em;display:grid;gap:10px">
+  <li><b>KAKU の数量と金額は概算です。</b>部屋の寸法・図面の読み取り・ロス率・単価の目安から計算しているため、実際の数量や金額と違うことがあります。</li>
+  <li><b>見積書を出す前に、数量・単価・金額を必ずご自身で確かめてください。</b>「④確認」の検算は計算の間違いや入れ忘れを見つけるためのもので、現場に合っているかまでは確かめられません。</li>
+  <li><b>単価は目安です。</b>仕入れ値・地域・時期によって変わります。「単価マスター」と「設定」の掛け率で、会社に合わせてください。</li>
+  <li><b>最終的な見積もりの判断は、ご自身でお願いします。</b>KAKU の計算結果をそのまま使ったことで生じた損害について、責任を負いかねます。</li>
+  <li>データはこの端末の中に保存されます。消えた時に備えて、ときどき「設定 → バックアップ」で書き出してください。</li>
+</ul>`;
+export function showNotice(after) {
+  const m = modal({
+    title: 'はじめにお読みください', closable: false,
+    body: NOTICE_HTML + `<label class="row" style="margin-top:16px;gap:10px;font-weight:700;cursor:pointer"><input type="checkbox" id="nt_ok" style="width:24px;height:24px">内容を確認しました</label>`,
+    foot: `<button class="btn primary" id="nt_go" disabled>使い始める</button>`
+  });
+  const cb = $('#nt_ok', m.el), go2 = $('#nt_go', m.el);
+  cb.onchange = () => { go2.disabled = !cb.checked; };
+  go2.onclick = () => { state.settings.noticeSeen = Date.now(); saveSettings(); m.close(); after && after(); };
+}
 
 /* ---------- 初めての案内 ---------- */
 export function showIntro() {

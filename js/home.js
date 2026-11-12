@@ -2,7 +2,7 @@
 import { state, registerView, setTop, go, newProject, opts, render } from './app.js';
 import { totals, check } from './calc.js';
 import { icon, esc, yen, pct, when, $ } from './ui.js';
-import { showIntro } from './pages.js';
+import { showIntro, showNotice } from './pages.js';
 
 export const STATUS = { draft: ['見積中', 'acc'], sent: ['提出済', 'info'], won: ['受注', 'ok'], lost: ['失注', ''] };
 
@@ -103,7 +103,8 @@ registerView('home', async el => {
   if (last) $('#aLast').onclick = () => go('#/p/' + encodeURIComponent(last.id) + '/1');
   const sb = $('#sampleBtn'); if (sb) sb.onclick = async () => { const { addSample } = await import('./pages.js'); addSample(); };
   bindOpen(el);
-  if (!state.settings.introSeen) showIntro();
+  if (!state.settings.noticeSeen) showNotice(() => { if (!state.settings.introSeen) showIntro(); });
+  else if (!state.settings.introSeen) showIntro();
 });
 
 registerView('projects', async el => {
