@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-12.8";
+var KAKU_VERSION="2026-11-12.9";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -3735,16 +3735,24 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
     /* 壁：線ごとに厚さ3cmの板。高さはとなりの区画の天井高（大きい方）。「腰まで」の時は1m */
     var NF=[];var near=function(x,y){var h=0;NF=[];P.faces.forEach(function(f){if(!f.poly)return;var P2=f.poly;for(var i=0;i<P2.length;i++){var a=P2[i],b=P2[(i+1)%P2.length],dx=b[0]-a[0],dy=b[1]-a[1],L=dx*dx+dy*dy,t=L?Math.max(0,Math.min(1,((x-a[0])*dx+(y-a[1])*dy)/L)):0;if(Math.hypot(x-a[0]-dx*t,y-a[1]-dy*t)<.3){h=Math.max(h,fH[f.i]);NF.push(f.i);break}}});return h||H0};
     /* 扉の開く線（円弧）・扉の板の線は壁にしない。ドアが分からない円弧も、短い斜めの線のつながりは壁にしない */
-    var DR=((fx&&fx.doors)||[]).filter(function(d){return d.c}).map(function(d){return{c:G(d.c),r:+d.r||.8}});
+    /* 扉を閉めた時の向き：開く線（円弧）の両端のうち、蝶番から「扉の板の線」が出ていない方。
+       両方に線がある時（閉めた扉も描いてある図面）は、枠の短い線が集まっている方。それでも決まらない時は、近くの壁の線と平行に近い方（前のやり方） */
+    var clOf=function(c,v,r){var rt=function(a){return[v[0]*Math.cos(a)-v[1]*Math.sin(a),v[0]*Math.sin(a)+v[1]*Math.cos(a)]},cand=[rt(Math.PI/4),rt(-Math.PI/4)],E=cand.map(function(u){return[c[0]+u[0]*r,c[1]+u[1]*r]});
+      var leaf=E.map(function(e){return P.segs.some(function(s){var a=[s[0],s[1]],b=[s[2],s[3]],h=function(p,q){return Math.hypot(p[0]-q[0],p[1]-q[1])};return(h(a,c)<.06&&h(b,e)<.08)||(h(b,c)<.06&&h(a,e)<.08)})});
+      if(leaf[0]!==leaf[1])return leaf[0]?cand[1]:cand[0];
+      var jamb=E.map(function(e){var n=0;P.segs.forEach(function(s){var L=Math.hypot(s[2]-s[0],s[3]-s[1]);if(L>.2||L<.003)return;if(Math.abs(s[0]-s[2])>.003&&Math.abs(s[1]-s[3])>.003)return;if(Math.hypot(s[0]-e[0],s[1]-e[1])<.06||Math.hypot(s[2]-e[0],s[3]-e[1])<.06)n++});return n});
+      if(jamb[0]!==jamb[1])return jamb[0]>jamb[1]?cand[0]:cand[1];
+      var sc=cand.map(function(u){var best=0;P.segs.forEach(function(s){var sx=s[2]-s[0],sy=s[3]-s[1],sl=Math.hypot(sx,sy);if(sl<.2)return;var mx=Math.min(Math.hypot(s[0]-c[0],s[1]-c[1]),Math.hypot(s[2]-c[0],s[3]-c[1]));if(mx>.25)return;best=Math.max(best,Math.abs((sx*u[0]+sy*u[1])/sl))});return best});
+      return sc[0]>=sc[1]?cand[0]:cand[1]};
+    var DR=((fx&&fx.doors)||[]).filter(function(d){return d.c}).map(function(d){var c=G(d.c),r=+d.r||.8,o={c:c,r:r};if(d.m){var m=G(d.m),v=[m[0]-c[0],m[1]-c[1]],vl=Math.hypot(v[0],v[1])||1;v=[v[0]/vl,v[1]/vl];var cl=clOf(c,v,r);o.cl=cl;o.ec=[c[0]+cl[0]*r,c[1]+cl[1]*r];var d2=v[0]*cl[1]-v[1]*cl[0],op=d2>0?[cl[1],-cl[0]]:[-cl[1],cl[0]];/* 開いた側：閉めた向きから扉の開く方へ90° */var s2=(op[0]*v[0]+op[1]*v[1])<0?-1:1;o.eo=[c[0]+op[0]*s2*r,c[1]+op[1]*s2*r]}return o});
     var isDoorLine=function(s){var a=[s[0],s[1]],b=[s[2],s[3]];return DR.some(function(d){var da=Math.hypot(a[0]-d.c[0],a[1]-d.c[1]),db=Math.hypot(b[0]-d.c[0],b[1]-d.c[1]);
       if(Math.abs(da-d.r)<.07&&Math.abs(db-d.r)<.07)return true;
+      if(d.eo&&[d.eo,d.ec].some(function(e){return(da<.06&&Math.hypot(b[0]-e[0],b[1]-e[1])<.08)||(db<.06&&Math.hypot(a[0]-e[0],a[1]-e[1])<.08)}))return true;
       if((da<.06&&Math.abs(db-d.r)<.07)||(db<.06&&Math.abs(da-d.r)<.07)){var ang=Math.abs(Math.atan2(b[1]-a[1],b[0]-a[0]))%(Math.PI/2);return ang>.05&&ang<Math.PI/2-.05}
       return false})};
     var arcish=function(s){var dx=s[2]-s[0],dy=s[3]-s[1],L=Math.hypot(dx,dy);if(L>=.35)return false;var ang=Math.abs(Math.atan2(dy,dx))%(Math.PI/2);return ang>.06&&ang<Math.PI/2-.06};
     /* ドアの開口：扉を閉めた時の線（蝶番から扉の幅ぶん）に重なる壁の線は、その幅だけ切り取る（壁の両面の線・敷居の線・通しで描いた線）。開口の上は垂れ壁を別に描く */
-    var OP=((fx&&fx.doors)||[]).filter(function(d){return d.c&&d.m}).map(function(d){var c=G(d.c),m=G(d.m),r=+d.r||.8,v=[m[0]-c[0],m[1]-c[1]],vl=Math.hypot(v[0],v[1])||1;v=[v[0]/vl,v[1]/vl];
-      var cand=[Math.PI/4,-Math.PI/4].map(function(a){return[v[0]*Math.cos(a)-v[1]*Math.sin(a),v[0]*Math.sin(a)+v[1]*Math.cos(a)]}),sc=cand.map(function(u){var best=0;P.segs.forEach(function(s){var sx=s[2]-s[0],sy=s[3]-s[1],sl=Math.hypot(sx,sy);if(sl<.2)return;var mx=Math.min(Math.hypot(s[0]-c[0],s[1]-c[1]),Math.hypot(s[2]-c[0],s[3]-c[1]));if(mx>.25)return;best=Math.max(best,Math.abs((sx*u[0]+sy*u[1])/sl))});return best});
-      return{c:c,r:r,cl:sc[0]>=sc[1]?cand[0]:cand[1]}});
+    var OP=DR.filter(function(d){return d.cl});
     var cutDoor=function(s){var dx=s[2]-s[0],dy=s[3]-s[1],L=Math.hypot(dx,dy);if(L<.04||!OP.length)return[s];var ux=dx/L,uy=dy/L,iv=[[0,L]];
       OP.forEach(function(d){if(Math.abs(ux*d.cl[0]+uy*d.cl[1])<.97)return;var ax=s[0]-d.c[0],ay=s[1]-d.c[1];if(Math.abs(ax*d.cl[1]-ay*d.cl[0])>.25)return;
         var ta=ax*d.cl[0]+ay*d.cl[1],tb=(s[2]-d.c[0])*d.cl[0]+(s[3]-d.c[1])*d.cl[1];if(Math.abs(tb-ta)<1e-6)return;var t0=(0-ta)/(tb-ta)*L,t1=(d.r-ta)/(tb-ta)*L,lo=Math.max(0,Math.min(t0,t1)),hi=Math.min(L,Math.max(t0,t1));if(hi-lo<.3)return;
@@ -3760,7 +3768,7 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
     M.cur=-1;if(S.show.wall)((fx&&fx.doors)||[]).forEach(function(d){if(!d.c||!d.m)return;var c=G(d.c),m=G(d.m),r=+d.r||.8,v=[m[0]-c[0],m[1]-c[1]],vl=Math.hypot(v[0],v[1])||1;v=[v[0]/vl,v[1]/vl];
       var rot=function(a){return[v[0]*Math.cos(a)-v[1]*Math.sin(a),v[0]*Math.sin(a)+v[1]*Math.cos(a)]};
       /* 閉じた時の向き：±45°のうち、近くの壁の線と平行に近い方 */
-      var cand=[rot(Math.PI/4),rot(-Math.PI/4)],score=cand.map(function(u){var best=0;P.segs.forEach(function(s){var sx=s[2]-s[0],sy=s[3]-s[1],sl=Math.hypot(sx,sy);if(sl<.2)return;var mx=Math.min(Math.hypot(s[0]-c[0],s[1]-c[1]),Math.hypot(s[2]-c[0],s[3]-c[1]));if(mx>.25)return;best=Math.max(best,Math.abs((sx*u[0]+sy*u[1])/sl))});return best}),cl=score[0]>=score[1]?cand[0]:cand[1];
+      var cl=clOf(c,v,r);
       var h=hAt(c[0]+v[0]*r*.5,c[1]+v[1]*r*.5),dh=Math.min(2.0,h-.05),t=.02,lf=[c[0]+v[0]*r,c[1]+v[1]*r],nn=[-v[1]*t,v[0]*t];
       var df=faceAt(c[0]+v[0]*r*.5,c[1]+v[1]*r*.5);if(df&&!fvis(df.i))return;
       part({type:'door',key:df?rk(df.i):'',title:'ドア',rows:[['扉の幅（図面の開く線から）',Math.round(r*1000)+' mm'],['扉の高さ（仮）',Math.round(dh*1000)+' mm'],['ある所',df?rname(df.i):'—']],note:'高さは図面に無いので 2.0m で描いています。ドアの数は、部屋の「工事内容」で入れた数を見積もりに使っています。'});
