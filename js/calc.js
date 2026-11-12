@@ -95,12 +95,21 @@ function linkQty(line, rooms, opt, lines) {
 }
 
 /* 明細1行の正味の数量（ロス前）。basis が無い・manual の時は手で入れた数量 */
+/* 壁の行の種類：図面で壁ごとに入れた解体・下地・仕上げを、部屋の壁から引く時に使う */
+export const wallGroup = cat => ({ demoW: 'demo', board: 'base', wall: 'fin', paint: 'fin' })[cat] || null;
+
 export function netQty(line, rooms, opt, lines) {
   const b = line.basis;
   if (b && b.measure === 'link') return linkQty(line, rooms, opt, lines);
   if (!b || !b.measure || b.measure === 'manual') return Math.max(0, num(line.qty));
   const ids = b.rooms === 'all' || !Array.isArray(b.rooms) ? null : new Set(b.rooms);
-  return round3((rooms || []).filter(r => !ids || ids.has(r.id)).reduce((s, r) => s + (roomGeom(r, opt)[b.measure] || 0), 0));
+  const g = b.measure === 'wall' ? wallGroup(line.cat) : null;
+  return round3((rooms || []).filter(r => !ids || ids.has(r.id)).reduce((s, r) => {
+    let v = roomGeom(r, opt)[b.measure] || 0;
+    /* 図面で壁ごとに同じ種類（解体・下地・仕上げ）を入れた分は、その部屋の壁から引く（二重にしない） */
+    if (g && r.wallOff && r.wallOff[g] > 0) v = Math.max(0, v - r.wallOff[g]);
+    return s + v;
+  }, 0));
 }
 
 /* ロス込みの数量。手間（kind が labor）と手入力の行は正味のまま。

@@ -204,3 +204,17 @@ test('土間のカッター・はつり（概算くんと同じ計算、手計�
   assert.equal(cutItem(120), 'w-cut150');
   assert.equal(hatsuCalc({ w: 1, l: 1, t: 100, d: 0, cut: false, back: false }).cut, 0);
 });
+
+test('壁ごとに入れた分は、その部屋の同じ種類の壁の行から引く', async () => {
+  const { netQty, roomGeom, wallGroup } = await import('../js/calc.js');
+  // 4×3、天井2.4：壁 14×2.4 = 33.6㎡。壁ごとに仕上げ 11.7㎡ を入れた
+  const r = { id: 'a', shape: 'rect', w: 4, d: 3, h: 2.4, qty: 1, doors: 0, winCount: 0, windows: [], wallOff: { fin: 11.7 } };
+  assert.ok(Math.abs(roomGeom(r).wall - 33.6) < 1e-9);
+  const L = cat => ({ cat, basis: { measure: 'wall', rooms: 'all' } });
+  assert.equal(netQty(L('wall'), [r]), 21.9);     // クロス：33.6−11.7
+  assert.equal(netQty(L('board'), [r]), 33.6);    // 下地は入れていないので引かない
+  assert.equal(netQty(L('demoW'), [r]), 33.6);
+  assert.equal(netQty({ cat: 'wall', basis: { measure: 'floor', rooms: 'all' } }, [r]), 12);   // 床は関係ない
+  assert.equal(wallGroup('paint'), 'fin'); assert.equal(wallGroup('floor'), null);
+  r.wallOff.fin = 50; assert.equal(netQty(L('wall'), [r]), 0);   // 部屋の壁より多い時は0
+});

@@ -1,6 +1,6 @@
 /* 案件の画面：① 現場 → ② 部屋 → ③ 工事 → ④ 確認 → ⑤ 書類 */
 import { state, registerView, setTop, go, touch, opts, findProject, masterItems, categories, removeProject, restoreProject, newProject, flush } from './app.js';
-import { roomGeom, lineQty, netQty, totals, check, MEASURES, KINDS, isRoomBased, hatsuCalc, hatsuItem, cutItem, ZANDO_F } from './calc.js';
+import { roomGeom, lineQty, netQty, totals, check, MEASURES, KINDS, isRoomBased, hatsuCalc, hatsuItem, cutItem, ZANDO_F, wallGroup } from './calc.js';
 import { SYS, MANY, sysOptions, rebuild, PIPE_LOSS } from './piping.js';
 import { importDrawing, groupGeom, planCH, orderFaces as orderFacesOf } from './drawing.js';
 import { readWithFixtures, oldFaceLights, roomOpenRuns, FIX_NAMES, FIX_ITEMS, FIX_WORDS } from './legacy.js';
@@ -107,7 +107,8 @@ function refresh(p, step) {
     }
     if (l.applyLoss && !isRoomBased(l)) {
       const loss = l.loss === '' || l.loss == null ? o.loss : Number(l.loss);
-      set('qinfo:' + l.id, Number(l.qty) > 0 ? `長さ ${fmt(l.qty, 3)}m ＋ ロス${fmt(loss, 1)}% → ${fmt(q, 3)}m` : '長さ（m）を入れてください');
+      set('qinfo:' + l.id, l.fromDemo ? `図面で入れた ${fmt(l.qty, 3)}${esc(l.unit || '')} ＋ ロス${fmt(loss, 1)}%${l.sheet > 0 ? `（${fmt(l.sheet, 3)}㎡/枚で枚数に切り上げ ${Math.round(q / l.sheet)}枚）` : ''} → ${fmt(q, 3)}`
+        : Number(l.qty) > 0 ? `長さ ${fmt(l.qty, 3)}m ＋ ロス${fmt(loss, 1)}% → ${fmt(q, 3)}m` : '長さ（m）を入れてください');
     }
     const auto = isRoomBased(l);
     if (auto) {
@@ -116,7 +117,9 @@ function refresh(p, step) {
       const info = !p.rooms.length ? '部屋がまだありません。②部屋で寸法を入れると数量が入ります。'
         : l.kind === 'labor' ? `${MEASURES[l.basis.measure].label}：${fmt(net, 3)}${MEASURES[l.basis.measure].unit}（手間なので正味のまま）`
           : `${MEASURES[l.basis.measure].label} 正味 ${fmt(net, 3)}${MEASURES[l.basis.measure].unit} ＋ ロス${fmt(loss, 1)}%${l.sheet > 0 ? `（${fmt(l.sheet, 3)}㎡/枚で枚数に切り上げ ${Math.round(q / l.sheet)}枚）` : ''} → ${fmt(q, 3)}`;
-      set('qinfo:' + l.id, info);
+      const g = l.basis.measure === 'wall' ? wallGroup(l.cat) : null, ids = l.basis.rooms === 'all' || !Array.isArray(l.basis.rooms) ? null : new Set(l.basis.rooms);
+      const off = g ? p.rooms.filter(r => (!ids || ids.has(r.id)) && r.wallOff && r.wallOff[g] > 0).reduce((t, r) => t + r.wallOff[g], 0) : 0;
+      set('qinfo:' + l.id, info + (off > 0 ? `（図面で壁ごとに入れた ${fmt(off, 3)}㎡ を引いています）` : ''));
       set('qty:' + l.id, fmt(q, 3));
     }
   });
@@ -273,6 +276,21 @@ function nearestSeg(plan, x, y, tol) {
   return best;
 }
 const segLen = s => Math.hypot(s[2] - s[0], s[3] - s[1]);
+
+/* 選んだ壁がどの部屋の壁か：壁の上に点を並べ、部屋の形の辺から6cm以内に来る点が多い順（半分以上の部屋だけ）。
+ * 寸法で作った間取りの間仕切りのように両側の部屋に当たる時は、両方を候補にして先頭を選んでおく */
+export function wallRooms(p, w) {
+  const d = p.drawing, plan = d.plan; if (!plan) return [];
+  const runs = w.pts && w.pts.length > 1 ? w.pts.slice(1).map((q, i) => [w.pts[i][0], w.pts[i][1], q[0], q[1]]) : (w.segs || []).map(i => plan.segs[i]).filter(Boolean);
+  const pts = []; runs.forEach(s => { const L = segLen(s), n = Math.max(2, Math.ceil(L / 0.25)); for (let k = 0; k <= n; k++) { const t = (k + 0.5) / (n + 1); pts.push([s[0] + (s[2] - s[0]) * t, s[1] + (s[3] - s[1]) * t]); } });
+  if (!pts.length) return [];
+  const edgeD = (q, P) => { let m = 1e9; for (let i = 0; i < P.length; i++) { const a = P[i], b = P[(i + 1) % P.length], dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy, t = L2 ? Math.max(0, Math.min(1, ((q[0] - a[0]) * dx + (q[1] - a[1]) * dy) / L2)) : 0; m = Math.min(m, Math.hypot(a[0] + t * dx - q[0], a[1] + t * dy - q[1])); } return m; };
+  return p.rooms.filter(r => r.src === 'plan').map(r => {
+    const F = (r.faces || []).map(i => plan.faces.find(f => f.i === i)).filter(Boolean);
+    const hit = pts.filter(q => F.some(f => edgeD(q, f.poly) < 0.06)).length;
+    return { r, k: hit / pts.length };
+  }).filter(x => x.k >= 0.5).sort((a, b) => b.k - a.k).map(x => x.r);
+}
 const r3 = v => Math.round(v * 1000) / 1000;
 
 /* 図面の壁の解体・カッターから、明細の行を作り直す（単価を変えていた行は単価を引き継ぐ） */
@@ -286,6 +304,15 @@ export function syncDemoLines(p) {
     p.lines.push({ id: o ? o.id : uid('l'), itemId: m.id, name: m.name, spec: [m.spec, note].filter(Boolean).join(' '), unit: m.unit, kind: m.kind, cat: m.cat, price: o ? o.price : (m.price || ''), cost: '', loss: o ? o.loss : '', sheet: m.sheet || 0, qty: r3(qty), basis: null, fromDemo: key, ...(x.loss ? { applyLoss: true } : {}) });
   };
   const d = p.drawing || {};
+  /* 壁ごとに入れた分を、その部屋の壁の行（同じ種類）から引くための量 */
+  p.rooms.forEach(r => { delete r.wallOff; });
+  (d.walls || []).forEach(w => {
+    const r = w.room && p.rooms.find(x => x.id === w.room); if (!r) return;
+    const a = Math.max(0, w.len * w.h - (Number(w.open) || 0)), o = r.wallOff || (r.wallOff = {});
+    if (w.itemId) o.demo = r3((o.demo || 0) + a);
+    if (w.baseId) o.base = r3((o.base || 0) + a);
+    if (w.finId) o.fin = r3((o.fin || 0) + a);
+  });
   (d.walls || []).forEach(w => {
     const a = Math.max(0, w.len * w.h - (Number(w.open) || 0)), note = `長さ${r3(w.len)}m×高さ${r3(w.h)}m${Number(w.open) > 0 ? `−開口${r3(w.open)}㎡` : ''}${w.name ? '（' + w.name + '）' : ''}`;
     if (w.itemId) add('w|' + w.id, w.itemId, a, note);
@@ -394,6 +421,8 @@ function stepRooms(ctx) {
     if (addAt) h += `<circle cx="${addAt[0]}" cy="${-addAt[1]}" r="${lw * 6}" fill="none" stroke="var(--accent)" stroke-width="${lw * 3}"/>`;
     return h;
   };
+  const wallRoomSel = (id, cur, guess = []) => { const pr = p.rooms.filter(r => r.src === 'plan'), ids = new Set(guess.map(r => r.id)), order = [...guess, ...pr.filter(r => !ids.has(r.id))];
+    return `<select class="in" ${id ? `id="${id}"` : 'data-wk="room"'} style="min-height:40px"><option value="">部屋の壁から引かない</option>${order.map(r => `<option value="${esc(r.id)}" ${r.id === cur ? 'selected' : ''}>${esc(r.name)}${ids.has(r.id) ? '（図で当たった部屋）' : ''}</option>`).join('')}</select>`; };
   const demoList = () => {
     const d = p.drawing; if (!d) return '';
     const W = d.walls || [], H = d.hatsu || [];
@@ -404,7 +433,8 @@ function stepRooms(ctx) {
         ${w.itemId ? `<span class="pill bad">解体 ${esc((it(w.itemId) || {}).name || '')}</span>` : ''}${w.baseId ? `<span class="pill info">下地 ${esc((it(w.baseId) || {}).name || '')}</span>` : ''}${w.finId ? `<span class="pill acc">仕上げ ${esc((it(w.finId) || {}).name || '')}</span>` : ''}${w.name ? `<b>${esc(w.name)}</b>` : ''}
         <span class="spacer"></span><button class="iconbtn" data-act="wallDel" aria-label="この壁を消す">${icon('trash')}</button></div>
         <div class="row small" style="margin-top:6px"><span>長さ ${r3(w.len)}m × 高さ</span><div class="unitwrap" style="width:120px"><input class="in num" data-wk="h" type="number" inputmode="decimal" step="0.01" value="${w.h}" style="min-height:36px"><span>m</span></div>
-        <span>− 開口</span><div class="unitwrap" style="width:120px"><input class="in num" data-wk="open" type="number" inputmode="decimal" step="0.01" value="${w.open || 0}" style="min-height:36px"><span>㎡</span></div><b>＝ ${r3(Math.max(0, w.len * w.h - (Number(w.open) || 0)))}㎡</b></div></div>`).join('')}
+        <span>− 開口</span><div class="unitwrap" style="width:120px"><input class="in num" data-wk="open" type="number" inputmode="decimal" step="0.01" value="${w.open || 0}" style="min-height:36px"><span>㎡</span></div><b>＝ ${r3(Math.max(0, w.len * w.h - (Number(w.open) || 0)))}㎡</b></div>
+        <div class="row small" style="margin-top:6px"><span class="muted">部屋の壁から引く</span><div style="min-width:220px">${wallRoomSel('', w.room || '', wallRooms(p, w))}</div></div></div>`).join('')}
       ${H.map(h => { const c = hatsuCalc(h); return `<div class="card" style="padding:10px" data-hatsu="${h.id}"><div class="row small"><span class="pill acc">カッター</span><b>幅 ${r3(h.w)}m × 長さ ${r3(h.l)}m</b>
         <label class="row muted" style="gap:4px">厚み<div class="unitwrap" style="width:130px"><input class="in num" data-hk="t" type="number" inputmode="numeric" value="${h.t}" style="min-height:36px"><span>mm</span></div></label>
         <label class="row muted" style="gap:4px">掘る深さ<div class="unitwrap" style="width:130px"><input class="in num" data-hk="d" type="number" inputmode="numeric" value="${h.d}" style="min-height:36px"><span>mm</span></div></label>
@@ -433,13 +463,14 @@ function stepRooms(ctx) {
           ${has ? `<div class="grid g4" style="width:100%;align-items:end">
             <label class="f">高さ<div class="unitwrap"><input class="in num" id="wH" type="number" inputmode="decimal" step="0.01" value="${dh}"><span>m</span></div></label>
             <label class="f">引く開口<span class="hint">窓・ドアなど</span><div class="unitwrap"><input class="in num" id="wOpen" type="number" inputmode="decimal" step="0.01" value="0"><span>㎡</span></div></label>
-            <label class="f" style="grid-column:span 2">メモ（どの壁か）<input class="in" id="wName" placeholder="例：LDK 北の壁"></label></div>
+            <label class="f" style="grid-column:span 2">どの部屋の壁か<span class="hint">③工事のその部屋の壁から、同じ種類の分を引きます</span>${wallRoomSel('wRoom', wallRooms(p, wway === 'seg' ? { segs: [...wsel] } : { pts: wpts }).map(r => r.id)[0] || '', wallRooms(p, wway === 'seg' ? { segs: [...wsel] } : { pts: wpts }))}</label>
+            <label class="f" style="grid-column:span 4">メモ（どの壁か）<input class="in" id="wName" placeholder="例：LDK 北の壁"></label></div>
           <div class="grid g3" style="width:100%">
             <label class="f">解体${sel('wItem', M.filter(i => i.cat === 'demoW'), ls.demo, '解体しない')}</label>
             <label class="f">下地${sel('wBase', M.filter(i => i.cat === 'board'), ls.base, '下地なし')}</label>
             <label class="f">仕上げ${sel('wFin', M.filter(i => i.cat === 'wall' || i.cat === 'paint'), ls.fin, '仕上げなし')}</label></div>
           <button class="btn sm primary" data-act="wallAdd">${icon('plus')}この壁を明細に入れる</button><button class="btn sm ghost" data-act="wallClear">選び直す</button>
-          <div class="small muted" style="width:100%">面積＝長さ×高さ−開口。下地・仕上げはロス込みで入ります。③工事でその部屋の「壁」全体にも同じ仕上げを入れている時は、二重にならないように気をつけてください。</div>` : ''}`;
+          <div class="small muted" style="width:100%">面積＝長さ×高さ−開口。下地・仕上げはロス込みで入ります。③工事でその部屋の壁全体に入れている解体・下地・仕上げの行からは、ここで入れた分を自動で引きます。</div>` : ''}`;
         return;
       }
       if (mode === 'light') {
@@ -646,7 +677,7 @@ function stepRooms(ctx) {
     if (e.target.id === 'oItem') { lset.out = e.target.value; return; }
     if (e.target.id === 'lItem') { lset.item = e.target.value; lset.lm = DEF_LM[lset.item] || 800; const i = $('#lLm', body); if (i) i.value = lset.lm; return; }
     const wr = e.target.closest('[data-wall]'), hr = e.target.closest('[data-hatsu]');
-    if (wr && e.target.dataset.wk) { const w = (p.drawing.walls || []).find(x => x.id === wr.dataset.wall); if (w) { w[e.target.dataset.wk === 'open' ? 'open' : 'h'] = Math.max(0, Number(e.target.value) || 0); syncDemoLines(p); touch(p); paintSel(); } return; }
+    if (wr && e.target.dataset.wk) { const w = (p.drawing.walls || []).find(x => x.id === wr.dataset.wall); if (w) { const k = e.target.dataset.wk; if (k === 'room') w.room = e.target.value; else w[k === 'open' ? 'open' : 'h'] = Math.max(0, Number(e.target.value) || 0); syncDemoLines(p); touch(p); paintSel(); } return; }
     if (hr && e.target.dataset.hk) { const h = (p.drawing.hatsu || []).find(x => x.id === hr.dataset.hatsu); if (h) { const k = e.target.dataset.hk; h[k] = e.target.type === 'checkbox' ? e.target.checked : Math.max(0, Number(e.target.value) || 0); syncDemoLines(p); touch(p); paintSel(); } return; }
     const k = e.target.dataset.fx;
     if (k && fsel >= 0) { const x = fxList()[fsel]; if (!x) return; x[k] = e.target.value; x.edited = true; if (k === 'back' || k === 't') x.out = null; touch(p); paintSel(); }
@@ -723,13 +754,14 @@ function stepRooms(ctx) {
         const len = segs ? segs.reduce((s2, i) => s2 + segLen(p.drawing.plan.segs[i]), 0) : pts.reduce((s2, q, i) => i ? s2 + Math.hypot(q[0] - pts[i - 1][0], q[1] - pts[i - 1][1]) : 0, 0);
         if (!(len > 0)) return;
         const h = Number($('#wH', body).value) || opts().ceilH, open = Math.max(0, Number($('#wOpen', body).value) || 0);
-        const itemId = $('#wItem', body).value, baseId = $('#wBase', body).value, finId = $('#wFin', body).value, name = $('#wName', body).value.trim();
+        const itemId = $('#wItem', body).value, baseId = $('#wBase', body).value, finId = $('#wFin', body).value, name = $('#wName', body).value.trim(), room = $('#wRoom', body).value;
         if (!itemId && !baseId && !finId) { toast('解体・下地・仕上げのどれかを選んでください', { bad: true }); return; }
         state.wallSet = { demo: itemId, base: baseId, fin: finId };
         p.drawing.walls = p.drawing.walls || [];
-        p.drawing.walls.push({ id: uid('w'), ...(segs ? { segs } : { pts }), len: r3(len), h, open, itemId, baseId, finId, name });
+        p.drawing.walls.push({ id: uid('w'), ...(segs ? { segs } : { pts }), len: r3(len), h, open, itemId, baseId, finId, name, room });
         wsel.clear(); wpts.length = 0; syncDemoLines(p); touch(p); paintSel();
-        toast(`壁を明細に入れました（${r3(len)}m × ${h}m${open ? ` − ${open}㎡` : ''}）`);
+        const rn = room && p.rooms.find(x => x.id === room);
+        toast(`壁を明細に入れました（${r3(len)}m × ${h}m${open ? ` − ${open}㎡` : ''}）${rn ? `。「${rn.name}」の壁の行から同じ分を引きます` : ''}`, { ms: 4000 });
         return;
       }
       if (a === 'wallDel' || a === 'hatsuDel') {
