@@ -7,6 +7,7 @@ import { readWithFixtures, oldFaceLights, roomOpenRuns, FIX_NAMES, FIX_ITEMS, FI
 import { planView, roomColor } from './planview.js';
 import { USES, DEF_LM, needCount, pitchFor, luxOf, wirePlan, cableQty, pip } from './lighting.js';
 import { uid } from './store.js';
+import { open3D } from './view3d.js';
 import { icon, esc, yen, fmt, pct, toast, modal, ask, matchItem, showError, $, $$ } from './ui.js';
 import { STATUS } from './home.js';
 import { docsStep } from './docs.js';
@@ -195,6 +196,7 @@ function drawingCard(p) {
   return `<div class="card" style="margin-bottom:14px">
     <div class="row" style="margin-bottom:10px"><div style="flex:1;min-width:200px"><h2>${icon('layers').replace('<svg', '<svg style="width:18px;height:18px;vertical-align:-3px"')} ${esc(d.fileName || '図面')}</h2>
       <div class="sub" style="margin:0">区画 ${d.plan.faces.length} 個${planCH(d.plan) ? `・図面の天井高 ${planCH(d.plan)}m` : ''}。区画をタップして選び、下のボタンで部屋にしてください。</div></div>
+      ${d.fixtures ? `<button class="btn sm primary" data-act="open3d">${icon('cube')}3Dで見る</button>` : ''}
       <label class="btn sm" style="cursor:pointer">${icon('up')}読み直す<input type="file" id="dwgFile" accept=".jww,.jwc,.dxf,.pdf,application/pdf" hidden></label>
       <button class="btn sm ghost danger" data-act="dwgClear">${icon('trash')}図面を消す</button></div>
     <div class="seg" id="dwgMode" style="margin-bottom:8px"><button data-mode="room">部屋を作る</button><button data-mode="fix">器具を直す</button><button data-mode="wall">壁の解体</button><button data-mode="cut">カッター</button><button data-mode="light">照明・配線</button><button data-mode="meas">測る</button></div>
@@ -601,6 +603,7 @@ function stepRooms(ctx) {
       if (a === 'fixLines') return fixLinesDialog(p, () => {});
       if (a === 'measClear') { meas.pts = []; paintSel(); return; }
       if (a === 'wallClear') { wsel.clear(); paintSel(); return; }
+      if (a === 'open3d') { flush(); toast('3Dを用意しています…'); open3D(p).catch(e => showError(e)); return; }
       if (a === 'lPanel') { panelMode = !panelMode; paintSel(); return; }
       if (a === 'lClear') { const before = p.drawing.lights; p.drawing.lights = []; syncDemoLines(p); touch(p); paintSel(); toast('照明を全部消しました', { action: '元に戻す', onAction: () => { p.drawing.lights = before; syncDemoLines(p); touch(p); paintSel(); } }); return; }
       if (a === 'lAuto') {

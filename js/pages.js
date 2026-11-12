@@ -214,7 +214,7 @@ registerView('help', async el => {
     <div class="card"><h2>はじめにお読みください</h2><div class="sub">最初に起動した時に出した注意書きです。</div>${NOTICE_HTML}</div>
     <div class="card"><h2>よくある質問</h2>
       <p><b>PDFにするには？</b><br><span class="muted">見積書を出すと印刷の画面が出ます。iPhone は印刷の画面で共有ボタン →「ファイルに保存」。パソコンは送信先を「PDFに保存」にしてください。</span></p>
-      <p><b>図面を読み込むには？</b><br><span class="muted">案件の「②部屋」で「図面を選ぶ」を押して、JWW・DXF・PDFを選んでください。区画をタップして「1部屋にする」で部屋になります。照明の自動配置・器具・3Dは、今は「前のKAKU」（メニューの「照明・器具・3D」）で使えます。順番に移していきます。</span></p>
+      <p><b>図面を読み込むには？</b><br><span class="muted">案件の「②部屋」で「図面を選ぶ」を押して、JWW・DXF・PDFを選んでください。区画をタップして「1部屋にする」で部屋になります。図面の上の「器具を直す」「壁の解体」「カッター」「照明・配線」「測る」で拾い、「3Dで見る」で確かめられます。</span></p>
       <p><b>データはどこに保存されますか？</b><br><span class="muted">この端末の中です。別の端末とは共有されません。設定 → バックアップで書き出して、別の端末で「戻す」と移せます。</span></p>
       <p style="margin-bottom:0"><b>数量が思ったより多い</b><br><span class="muted">材料はロス率（最初は10%）を足して切り上げています。行の「くわしく」で行ごとに、設定で全体のロス率を変えられます。</span></p></div>
   </div>`;
@@ -252,7 +252,7 @@ export function showIntro() {
         <div class="st"><span class="n">4</span><div><b>確認する</b><span>計算をもう一度確かめて、間違いを知らせます</span></div></div>
         <div class="st"><span class="n">5</span><div><b>見積書を出す</b><span>印刷・PDF・Excel</span></div></div>
       </div>
-      <p class="small muted">前のKAKUの案件は引き継いであります。図面は「②部屋」で読み込めます。照明・器具・3Dは、今は「前のKAKU」で使えます。</p>`,
+      <p class="small muted">前のKAKUの案件は引き継いであります。図面は「②部屋」で読み込めます。照明・器具・3Dも、図面の画面で使えます。</p>`,
     foot: `<button class="btn" id="i_sample">${icon('spark')}見本の案件で試す</button><button class="btn primary" id="i_go">自分の案件を始める</button>`,
     onClose: () => { if (!state.settings.introSeen) { state.settings.introSeen = true; saveSettings(); } }
   });
