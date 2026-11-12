@@ -247,3 +247,14 @@ export function compare(before, after, opt = DEFAULTS) {
   rows.sort((x, y) => Math.abs(y.diff) - Math.abs(x.diff));
   return { before: A.t.grand, after: B.t.grand, diff: B.t.grand - A.t.grand, rows };
 }
+
+/* 土間のカッター・はつり（前のKAKU・概算くんと同じ計算）。w・l は m、t（コンクリートの厚み）・d（掘る深さ）は mm
+ *   カッター＝周りの長さ 2×(幅+長さ)、はつり＝幅×長さ、ガラ＝面積×厚み、掘削＝面積×深さ、残土＝掘削×1.25（ほぐし率）、埋め戻し＝掘削と同じ */
+export const ZANDO_F = 1.25;
+export const HATSU_T = [60, 80, 100, 120, 150, 180, 200, 250, 300];
+export const hatsuItem = t => 'w-dF-co' + (HATSU_T.find(x => x >= (+t || 0)) || 300);
+export const cutItem = t => (+t || 0) <= 100 ? 'w-cut100' : (+t || 0) <= 150 ? 'w-cut150' : (+t || 0) <= 200 ? 'w-cut200' : 'w-cut250';
+export function hatsuCalc(h) {
+  const w = Math.max(0, num(h.w)), l = Math.max(0, num(h.l)), a = w * l, t = Math.max(0, num(h.t)) / 1000, d = Math.max(0, num(h.d)) / 1000;
+  return { a: round3(a), cut: h.cut !== false && a > 0 ? round3(2 * (w + l)) : 0, gara: round3(a * t), dig: round3(a * d), zando: round3(a * d * ZANDO_F), back: h.back !== false ? round3(a * d) : 0 };
+}

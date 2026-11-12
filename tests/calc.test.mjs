@@ -189,3 +189,18 @@ test('図面で見つけたドア・開口を壁から引く（前のKAKUと同�
   // 「引かない」にした部屋は、手で入れたドアの数に戻る
   assert.equal(roomGeom({ ...r, openOff: true }).wall, 33.6 - 1.6);
 });
+
+test('土間のカッター・はつり（概算くんと同じ計算、手計算）', async () => {
+  const { hatsuCalc, hatsuItem, cutItem } = await import('../js/calc.js');
+  const c = hatsuCalc({ w: 0.6, l: 3, t: 120, d: 300 });
+  assert.equal(c.a, 1.8);          // 0.6×3
+  assert.equal(c.cut, 7.2);        // 2×(0.6+3)
+  assert.equal(c.gara, 0.216);     // 1.8×0.12
+  assert.equal(c.dig, 0.54);       // 1.8×0.3
+  assert.equal(c.zando, 0.675);    // 0.54×1.25
+  assert.equal(c.back, 0.54);
+  assert.equal(hatsuItem(120), 'w-dF-co120');
+  assert.equal(hatsuItem(110), 'w-dF-co120');  // 厚みは上の段に切り上げ
+  assert.equal(cutItem(120), 'w-cut150');
+  assert.equal(hatsuCalc({ w: 1, l: 1, t: 100, d: 0, cut: false, back: false }).cut, 0);
+});

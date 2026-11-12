@@ -1,6 +1,6 @@
 /* 案件の画面：① 現場 → ② 部屋 → ③ 工事 → ④ 確認 → ⑤ 書類 */
 import { state, registerView, setTop, go, touch, opts, findProject, masterItems, categories, removeProject, restoreProject, newProject, flush } from './app.js';
-import { roomGeom, lineQty, netQty, totals, check, MEASURES, KINDS, isRoomBased } from './calc.js';
+import { roomGeom, lineQty, netQty, totals, check, MEASURES, KINDS, isRoomBased, hatsuCalc, hatsuItem, cutItem, ZANDO_F } from './calc.js';
 import { SYS, MANY, sysOptions, rebuild, PIPE_LOSS } from './piping.js';
 import { importDrawing, groupGeom, planCH, orderFaces as orderFacesOf } from './drawing.js';
 import { readWithFixtures, roomOpenRuns, FIX_NAMES, FIX_ITEMS, FIX_WORDS } from './legacy.js';
@@ -196,9 +196,10 @@ function drawingCard(p) {
       <div class="sub" style="margin:0">区画 ${d.plan.faces.length} 個${planCH(d.plan) ? `・図面の天井高 ${planCH(d.plan)}m` : ''}。区画をタップして選び、下のボタンで部屋にしてください。</div></div>
       <label class="btn sm" style="cursor:pointer">${icon('up')}読み直す<input type="file" id="dwgFile" accept=".jww,.jwc,.dxf,.pdf,application/pdf" hidden></label>
       <button class="btn sm ghost danger" data-act="dwgClear">${icon('trash')}図面を消す</button></div>
-    <div class="seg" id="dwgMode" style="margin-bottom:8px"><button data-mode="room">部屋を作る</button><button data-mode="fix">器具を直す</button><button data-mode="meas">測る</button></div>
+    <div class="seg" id="dwgMode" style="margin-bottom:8px"><button data-mode="room">部屋を作る</button><button data-mode="fix">器具を直す</button><button data-mode="wall">壁の解体</button><button data-mode="cut">カッター</button><button data-mode="meas">測る</button></div>
     <div id="dwgView"></div>
     <div class="addbar" style="margin-top:10px" id="dwgBar"></div>
+    <div id="dwgDemo"></div>
     <div id="dwgFix">${fixSummary(d)}</div>
     <details class="more"><summary>区画の一覧から選ぶ（図面で押しにくい小さい区画など）</summary><div class="facelist" id="dwgFaces"></div></details>
     <div class="small muted" id="dwgStatus" style="margin-top:6px"></div></div>`;
@@ -250,6 +251,46 @@ function fixLinesDialog(p, after) {
   };
 }
 
+/* 一番近い線（壁の解体で線をタップした時） */
+function nearestSeg(plan, x, y, tol) {
+  let best = -1, bd = tol;
+  plan.segs.forEach((s, i) => {
+    const dx = s[2] - s[0], dy = s[3] - s[1], L2 = dx * dx + dy * dy; if (!L2) return;
+    const t = Math.max(0, Math.min(1, ((x - s[0]) * dx + (y - s[1]) * dy) / L2));
+    const d = Math.hypot(s[0] + t * dx - x, s[1] + t * dy - y);
+    if (d < bd) { bd = d; best = i; }
+  });
+  return best;
+}
+const segLen = s => Math.hypot(s[2] - s[0], s[3] - s[1]);
+const r3 = v => Math.round(v * 1000) / 1000;
+
+/* 図面の壁の解体・カッターから、明細の行を作り直す（単価を変えていた行は単価を引き継ぐ） */
+export function syncDemoLines(p) {
+  const items = masterItems(), it = id => items.find(i => i.id === id);
+  const old = new Map(p.lines.filter(l => l.fromDemo).map(l => [l.fromDemo, l]));
+  p.lines = p.lines.filter(l => !l.fromDemo);
+  const add = (key, id, qty, note) => {
+    const m = it(id); if (!m || !(qty > 0)) return;
+    const o = old.get(key);
+    p.lines.push({ id: o ? o.id : uid('l'), itemId: m.id, name: m.name, spec: [m.spec, note].filter(Boolean).join(' '), unit: m.unit, kind: m.kind, cat: m.cat, price: o ? o.price : (m.price || ''), cost: '', loss: '', sheet: 0, qty: r3(qty), basis: null, fromDemo: key });
+  };
+  const d = p.drawing || {};
+  (d.walls || []).forEach(w => add('w|' + w.id, w.itemId, w.len * w.h, `長さ${r3(w.len)}m×高さ${r3(w.h)}m`));
+  const H = (d.hatsu || []).map(h => ({ h, c: hatsuCalc(h) })).filter(x => x.c.a > 0);
+  if (H.length) {
+    const cuts = {}, hz = {}, sum = { gara: 0, dig: 0, zando: 0, back: 0 };
+    H.forEach(({ h, c }) => { if (c.cut > 0) cuts[cutItem(h.t)] = (cuts[cutItem(h.t)] || 0) + c.cut; hz[hatsuItem(h.t)] = (hz[hatsuItem(h.t)] || 0) + c.a; ['gara', 'dig', 'zando', 'back'].forEach(k => { sum[k] += c[k]; }); });
+    if (Object.keys(cuts).length) add('h|base', 'w-cutBase', 1, 'カッター屋さんの出張・最低料金');
+    Object.keys(cuts).sort().forEach(k => add('h|' + k, k, cuts[k], '切る所の周りの長さ'));
+    Object.keys(hz).sort().forEach(k => add('h|' + k, k, hz[k], 'カッターの内側をはつる面積'));
+    add('h|gara', 'w-gara', sum.gara, '幅×長さ×コンクリートの厚み');
+    add('h|dig', 'w-kussaku', sum.dig, '幅×長さ×掘る深さ');
+    add('h|zando', 'w-zando', sum.zando, `掘った量×${ZANDO_F}`);
+    add('h|back', 'w-ume', sum.back, '掘った所を埋め戻す量');
+  }
+}
+
 /* 測る時のくっつき：線の端（近い順）→ 線の上 → そのまま（1mm単位） */
 function snapPt(plan, x, y, tol) {
   let best = null, bd = tol;
@@ -271,12 +312,22 @@ function stepRooms(ctx) {
   const { p, body, refresh } = ctx;
   const sel = new Set();
   let view = null;
-  let mode = 'room', fsel = -1, addAt = null;
+  let mode = 'room', fsel = -1, addAt = null, cutA = null;
+  const wsel = new Set();
   const meas = { pts: [], cont: false };
   const FIX_SIZE = { toilet: [0.46, 0.8], urinal: [0.4, 0.36], counter: [1.2, 0.5], sink: [0.45, 0.36], slop: [0.8, 0.52], bath: [1.6, 1.6], kitchen: [2.55, 0.65] };
   const BACKS = [['N', '上'], ['E', '右'], ['S', '下'], ['W', '左']];
   const fxList = () => (p.drawing && p.drawing.fixtures) || [];
   const owner = () => { const m = new Map(); p.rooms.forEach(r => (r.faces || []).forEach(i => m.set(i, r.color))); return m; };
+  const demoOverlay = () => {
+    const lw = view.lw, plan = p.drawing.plan, d = p.drawing;
+    let h = '';
+    (d.walls || []).forEach(w => w.segs.forEach(i => { const s = plan.segs[i]; if (s) h += `<line x1="${s[0]}" y1="${-s[1]}" x2="${s[2]}" y2="${-s[3]}" stroke="#ff6b6b" stroke-width="${lw * 7}" stroke-linecap="round" opacity=".75"/>`; }));
+    wsel.forEach(i => { const s = plan.segs[i]; if (s) h += `<line x1="${s[0]}" y1="${-s[1]}" x2="${s[2]}" y2="${-s[3]}" stroke="var(--accent)" stroke-width="${lw * 7}" stroke-linecap="round"/>`; });
+    (d.hatsu || []).forEach(x => { if (!x.rect) return; const [a, b, c, e] = x.rect; h += `<rect x="${a}" y="${-e}" width="${c - a}" height="${e - b}" fill="#ff8a3d" fill-opacity=".18" stroke="#ff8a3d" stroke-width="${lw * 3}" stroke-dasharray="${lw * 6} ${lw * 4}"/>`; });
+    if (cutA) h += `<circle cx="${cutA[0]}" cy="${-cutA[1]}" r="${lw * 6}" fill="var(--accent)"/>`;
+    return h;
+  };
   const measOverlay = () => {
     if (!view) return '';
     const lw = view.lw, P = meas.pts;
@@ -287,13 +338,46 @@ function stepRooms(ctx) {
     if (addAt) h += `<circle cx="${addAt[0]}" cy="${-addAt[1]}" r="${lw * 6}" fill="none" stroke="var(--accent)" stroke-width="${lw * 3}"/>`;
     return h;
   };
+  const demoList = () => {
+    const d = p.drawing; if (!d) return '';
+    const W = d.walls || [], H = d.hatsu || [];
+    if (!W.length && !H.length) return '';
+    const it = id => masterItems().find(i => i.id === id);
+    return `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);display:grid;gap:8px">
+      ${W.map(w => `<div class="row small" data-wall="${w.id}"><span class="pill bad">壁の解体</span><span>${esc((it(w.itemId) || {}).name || '')}　長さ ${r3(w.len)}m × 高さ</span>
+        <div class="unitwrap" style="width:130px"><input class="in num" data-wk="h" type="number" inputmode="decimal" step="0.01" value="${w.h}" style="min-height:36px"><span>m</span></div><b>＝ ${r3(w.len * w.h)}㎡</b><span class="spacer"></span><button class="iconbtn" data-act="wallDel" aria-label="この壁の解体を消す">${icon('trash')}</button></div>`).join('')}
+      ${H.map(h => { const c = hatsuCalc(h); return `<div class="card" style="padding:10px" data-hatsu="${h.id}"><div class="row small"><span class="pill acc">カッター</span><b>幅 ${r3(h.w)}m × 長さ ${r3(h.l)}m</b>
+        <label class="row muted" style="gap:4px">厚み<div class="unitwrap" style="width:130px"><input class="in num" data-hk="t" type="number" inputmode="numeric" value="${h.t}" style="min-height:36px"><span>mm</span></div></label>
+        <label class="row muted" style="gap:4px">掘る深さ<div class="unitwrap" style="width:130px"><input class="in num" data-hk="d" type="number" inputmode="numeric" value="${h.d}" style="min-height:36px"><span>mm</span></div></label>
+        <label class="row muted" style="gap:4px"><input type="checkbox" data-hk="cut" ${h.cut !== false ? 'checked' : ''} style="width:18px;height:18px">カッター</label>
+        <label class="row muted" style="gap:4px"><input type="checkbox" data-hk="back" ${h.back !== false ? 'checked' : ''} style="width:18px;height:18px">埋め戻し</label>
+        <span class="spacer"></span><button class="iconbtn" data-act="hatsuDel" aria-label="このカッターを消す">${icon('trash')}</button></div>
+        <div class="chips">${`<span class="chip">はつり <b>${c.a}</b>㎡</span>` + (c.cut ? `<span class="chip">カッター <b>${c.cut}</b>m</span>` : '') + `<span class="chip">ガラ <b>${c.gara}</b>m³</span>` + (c.dig ? `<span class="chip">掘削 <b>${c.dig}</b>m³</span><span class="chip">残土 <b>${c.zando}</b>m³</span>` : '') + (c.back ? `<span class="chip">埋め戻し <b>${c.back}</b>m³</span>` : '')}</div></div>`; }).join('')}
+      <div class="small muted">ここで入れた分は、③工事の明細に自動で入ります（変えると明細も変わります）。</div></div>`;
+  };
   const paintSel = () => {
     if (!p.drawing || !p.drawing.plan) return;
     $$('#dwgMode button', body).forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
-    if (view) { view.paint(); view.overlay(mode === 'meas' || addAt ? measOverlay() : ''); }
+    if (view) { view.paint(); view.overlay(demoOverlay() + (mode === 'meas' || addAt ? measOverlay() : '')); }
+    const demoBox = body.querySelector('#dwgDemo'); if (demoBox) demoBox.innerHTML = demoList();
     const fxBox = body.querySelector('#dwgFix'); if (fxBox) fxBox.innerHTML = fixSummary(p.drawing);
     if (mode !== 'room') {
       const bar = body.querySelector('#dwgBar');
+      if (mode === 'wall') {
+        const len = [...wsel].reduce((a, i) => a + segLen(p.drawing.plan.segs[i]), 0);
+        const dh = planCH(p.drawing.plan) || opts().ceilH;
+        const demoW = masterItems().filter(i => i.cat === 'demoW');
+        bar.innerHTML = wsel.size ? `<b class="small">選んだ線 ${wsel.size} 本・長さ ${len.toFixed(2)} m</b>
+            <label class="row small muted" style="gap:6px">高さ<div class="unitwrap" style="width:130px"><input class="in num" id="wH" type="number" inputmode="decimal" step="0.01" value="${dh}" style="min-height:40px"><span>m</span></div></label>
+            <select class="in" id="wItem" style="width:auto;min-height:40px;max-width:100%">${demoW.map(i => `<option value="${esc(i.id)}" ${i.id === (state.lastWallItem || 'w-dW-cloth') ? 'selected' : ''}>${esc(i.name)} ${esc(i.spec || '')}（${yen(i.price)}/${esc(i.unit)}）</option>`).join('')}</select>
+            <button class="btn sm primary" data-act="wallAdd">${icon('plus')}壁の解体に入れる</button><button class="btn sm ghost" data-act="wallClear">選ぶのをやめる</button>`
+          : `<span class="small muted">解体する壁の線をタップして選んでください（何本でも）。長さ×高さが解体の面積になります。</span>`;
+        return;
+      }
+      if (mode === 'cut') {
+        bar.innerHTML = `<span class="small muted">${cutA ? 'もう1つの角をタップしてください。' : 'カッターで切る範囲の、四角の角を2か所タップしてください。'}</span>${cutA ? '<button class="btn sm ghost" data-act="cutCancel">やめる</button>' : ''}`;
+        return;
+      }
       if (mode === 'meas') {
         const P = meas.pts; let last = 0, total = 0;
         for (let k = 1; k < P.length; k++) { const d = Math.hypot(P[k][0] - P[k - 1][0], P[k][1] - P[k - 1][1]); total += d; last = d; }
@@ -377,6 +461,22 @@ function stepRooms(ctx) {
             if (k >= 0) { fsel = fsel === k ? -1 : k; addAt = null; } else { fsel = -1; addAt = [x, y]; }
             paintSel(); return;
           }
+          if (mode === 'wall') {
+            const i = nearestSeg(p.drawing.plan, x, y, sc * 18);
+            if (i >= 0) { if (wsel.has(i)) wsel.delete(i); else wsel.add(i); paintSel(); }
+            return;
+          }
+          if (mode === 'cut') {
+            const q = snapPt(p.drawing.plan, x, y, sc * 14);
+            if (!cutA) { cutA = q; paintSel(); return; }
+            const rect = [Math.min(cutA[0], q[0]), Math.min(cutA[1], q[1]), Math.max(cutA[0], q[0]), Math.max(cutA[1], q[1])].map(r3);
+            cutA = null;
+            if (rect[2] - rect[0] < 0.05 || rect[3] - rect[1] < 0.05) { toast('範囲が小さすぎます。もう一度、四角の角を2か所タップしてください', { bad: true }); paintSel(); return; }
+            p.drawing.hatsu = p.drawing.hatsu || [];
+            p.drawing.hatsu.push({ id: uid('h'), rect, w: r3(rect[2] - rect[0]), l: r3(rect[3] - rect[1]), t: 100, d: 300, cut: true, back: true });
+            syncDemoLines(p); touch(p); paintSel(); toast('カッターの範囲を明細に入れました（厚みと深さを確かめてください）', { ms: 4000 });
+            return;
+          }
           if (mode === 'meas') {
             const q = snapPt(p.drawing.plan, x, y, sc * 16);
             if (!meas.cont && meas.pts.length >= 2) meas.pts = [];
@@ -424,12 +524,15 @@ function stepRooms(ctx) {
   });
   body.addEventListener('change', e => {
     if (e.target.matches('[data-meas-cont]')) { meas.cont = e.target.checked; meas.pts = []; paintSel(); return; }
+    const wr = e.target.closest('[data-wall]'), hr = e.target.closest('[data-hatsu]');
+    if (wr && e.target.dataset.wk) { const w = (p.drawing.walls || []).find(x => x.id === wr.dataset.wall); if (w) { w.h = Math.max(0, Number(e.target.value) || 0); syncDemoLines(p); touch(p); paintSel(); } return; }
+    if (hr && e.target.dataset.hk) { const h = (p.drawing.hatsu || []).find(x => x.id === hr.dataset.hatsu); if (h) { const k = e.target.dataset.hk; h[k] = e.target.type === 'checkbox' ? e.target.checked : Math.max(0, Number(e.target.value) || 0); syncDemoLines(p); touch(p); paintSel(); } return; }
     const k = e.target.dataset.fx;
     if (k && fsel >= 0) { const x = fxList()[fsel]; if (!x) return; x[k] = e.target.value; x.edited = true; touch(p); paintSel(); }
   });
   body.addEventListener('click', async e => {
     const mb = e.target.closest('[data-mode]');
-    if (mb) { mode = mb.dataset.mode; fsel = -1; addAt = null; if (mode !== 'meas') meas.pts = []; paintSel(); return; }
+    if (mb) { mode = mb.dataset.mode; fsel = -1; addAt = null; cutA = null; wsel.clear(); if (mode !== 'meas') meas.pts = []; paintSel(); return; }
     const fb = e.target.closest('[data-face]');
     if (fb) { const i = +fb.dataset.face; if (sel.has(i)) sel.delete(i); else sel.add(i); paintSel(); return; }
     const da = e.target.closest('[data-act]');
@@ -437,6 +540,27 @@ function stepRooms(ctx) {
       const a = da.dataset.act;
       if (a === 'fixLines') return fixLinesDialog(p, () => {});
       if (a === 'measClear') { meas.pts = []; paintSel(); return; }
+      if (a === 'wallClear') { wsel.clear(); paintSel(); return; }
+      if (a === 'cutCancel') { cutA = null; paintSel(); return; }
+      if (a === 'wallAdd') {
+        const segs = [...wsel]; if (!segs.length) return;
+        const len = segs.reduce((s2, i) => s2 + segLen(p.drawing.plan.segs[i]), 0);
+        const h = Number($('#wH', body).value) || opts().ceilH, itemId = $('#wItem', body).value;
+        state.lastWallItem = itemId;
+        p.drawing.walls = p.drawing.walls || [];
+        p.drawing.walls.push({ id: uid('w'), segs, len: r3(len), h, itemId });
+        wsel.clear(); syncDemoLines(p); touch(p); paintSel();
+        toast(`壁の解体を明細に入れました（${r3(len)}m × ${h}m）`);
+        return;
+      }
+      if (a === 'wallDel' || a === 'hatsuDel') {
+        const key = a === 'wallDel' ? 'walls' : 'hatsu', el = da.closest(a === 'wallDel' ? '[data-wall]' : '[data-hatsu]');
+        const id = el && (el.dataset.wall || el.dataset.hatsu);
+        const before = [...(p.drawing[key] || [])];
+        p.drawing[key] = before.filter(x => x.id !== id); syncDemoLines(p); touch(p); paintSel();
+        toast('消しました', { action: '元に戻す', onAction: () => { p.drawing[key] = before; syncDemoLines(p); touch(p); paintSel(); } });
+        return;
+      }
       if (a === 'fxDone') { fsel = -1; addAt = null; paintSel(); return; }
       if (a === 'fxDel') {
         const fx = fxList(), x = fx[fsel]; if (!x) return;

@@ -368,3 +368,5 @@ details.more[open] > summary::before { content: "－ "; }
 .facelist button { border: 1px solid var(--line2); background: var(--panel2); color: var(--muted); border-radius: 9px; padding: 6px 10px; font-size: 13px; }
 .facelist button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
 .facelist button.used { opacity: .5; }
+#dwgMode { flex-wrap: wrap; }
+@media (max-width: 900px) { #dwgMode button { padding: 8px 10px; font-size: 13px; } }
