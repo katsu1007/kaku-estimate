@@ -2,7 +2,7 @@
 import { state, registerView, setTop, go, touch, opts, findProject, masterItems, categories, removeProject, restoreProject, newProject, flush } from './app.js';
 import { roomGeom, lineQty, netQty, totals, check, MEASURES, KINDS } from './calc.js';
 import { uid } from './store.js';
-import { icon, esc, yen, fmt, pct, toast, modal, ask, $, $$ } from './ui.js';
+import { icon, esc, yen, fmt, pct, toast, modal, ask, matchItem, $, $$ } from './ui.js';
 import { STATUS } from './home.js';
 import { docsStep } from './docs.js';
 
@@ -330,7 +330,7 @@ export function openPicker(p, after) {
   let cat = state.pickCat || 'all', q = '', added = 0;
   const m = modal({
     title: '工事の品目を選ぶ', wide: true,
-    body: `<div class="unitwrap"><input class="in" id="pq" type="search" placeholder="品目の名前で探す（例：クロス、石膏ボード、解体）" enterkeyhint="search"><span>${icon('search')}</span></div>
+    body: `<div class="unitwrap"><input class="in" id="pq" type="search" placeholder="品目で探す（例：クロス、石膏ボード 12.5、HIVP 20）" enterkeyhint="search"><span>${icon('search')}</span></div>
       <div class="catchips" id="pc"></div><div class="small muted" id="pn" style="margin:2px 0 6px"></div><div class="picklist" id="pl"></div>`,
     foot: `<span class="small muted" id="padded" style="margin-right:auto"></span><button class="btn primary" data-close>終わる</button>`,
     onClose: () => { after(); if (added) toast(`${added} 件の品目を足しました`); }
@@ -338,7 +338,7 @@ export function openPicker(p, after) {
   const draw = () => {
     $('#pc', m.el).innerHTML = [['all', 'すべて'], ...cats].map(([k, n]) => `<button data-c="${k}" class="${cat === k ? 'on' : ''}">${esc(n)}</button>`).join('');
     const qq = q.trim().toLowerCase();
-    const list = items.filter(i => (cat === 'all' || (i.custom ? 'custom' : i.cat) === cat) && (!qq || (i.name + ' ' + i.spec).toLowerCase().includes(qq))).slice(0, 300);
+    const list = items.filter(i => (cat === 'all' || (i.custom ? 'custom' : i.cat) === cat) && matchItem(i, qq)).slice(0, 300);
     const have = new Set(p.lines.map(l => l.itemId));
     $('#pn', m.el).textContent = `${list.length} 件${cat === 'all' && !qq ? '（種類を選ぶか、名前で探すと絞れます）' : ''}`;
     $('#pl', m.el).innerHTML = list.map(i => `<button class="pick ${have.has(i.id) ? 'added' : ''}" data-id="${esc(i.id)}">

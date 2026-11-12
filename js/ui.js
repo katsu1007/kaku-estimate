@@ -120,3 +120,15 @@ export async function share(blob, name) {
   }
   download(blob, name);
 }
+
+/* 品目の検索：空白で区切った言葉が全部入っている物（例「HIVP 20」）。全角・半角の違いは無視 */
+const norm = t => String(t || '').normalize('NFKC').toLowerCase();
+export function matchItem(it, q) {
+  const words = norm(q).split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const hay = norm(it.name + ' ' + (it.spec || ''));
+  /* 数字は数字として一致（「50」で「150」や「50.5」を出さない） */
+  return words.every(w => /^\d+(\.\d+)?$/.test(w)
+    ? new RegExp('(^|[^\\d.])' + w.replace('.', '\\.') + '(?![\\d.])').test(hay)
+    : hay.includes(w));
+}

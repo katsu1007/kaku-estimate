@@ -117,3 +117,22 @@ test('比較：増えた・減った・変わった行と差額', () => {
   assert.equal(r.diff, Math.floor(230 * 1.1) - Math.floor(150 * 1.1)); // 253 − 165
   assert.deepEqual(r.rows.map(x => x.kind).sort(), ['added', 'changed', 'removed']);
 });
+
+test('品目の検索：名前と太さを空白で区切って探せる', async () => {
+  const { matchItem } = await import('../js/ui.js');
+  const it = { name: 'HIVP管（耐衝撃性塩ビ管）', spec: '呼び径 20' };
+  assert.ok(matchItem(it, 'HIVP 20'));
+  assert.ok(matchItem(it, 'ｈｉｖｐ　２０'));   // 全角
+  assert.ok(!matchItem(it, 'HIVP 25'));
+  assert.ok(!matchItem({ name: 'VP管', spec: '呼び径 150' }, 'VP 50'));  // 50 で 150 を出さない
+  assert.ok(matchItem({ name: '石膏ボード', spec: '12.5mm 910×1820' }, '石膏 12.5'));
+  assert.ok(!matchItem({ name: '石膏ボード', spec: '12.5mm 910×1820' }, '石膏 2.5'));
+});
+
+test('給排水の品目：管は呼び径ごとにあり、単価は水道概算と同じ', async () => {
+  const { BUILTIN_ITEMS } = await import('../js/master-data.js');
+  const hivp = BUILTIN_ITEMS.filter(i => i.name.startsWith('HIVP管'));
+  assert.deepEqual(hivp.map(i => i.spec), ['呼び径 13', '呼び径 16', '呼び径 20', '呼び径 25', '呼び径 30', '呼び径 40', '呼び径 50']);
+  assert.equal(hivp.find(i => i.spec === '呼び径 13').price, 325);   // 水道概算 p-hivp13
+  assert.equal(new Set(BUILTIN_ITEMS.map(i => i.id)).size, BUILTIN_ITEMS.length); // id の重なりなし
+});

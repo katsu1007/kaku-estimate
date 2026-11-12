@@ -3,7 +3,7 @@ import { state, registerView, setTop, go, saveSettings, saveKV, masterItems, cat
 import { MEASURES, KINDS, DEFAULTS } from './calc.js';
 import * as store from './store.js';
 import { BUILTIN_ITEMS } from './master-data.js';
-import { icon, esc, yen, toast, modal, ask, share, $ } from './ui.js';
+import { icon, esc, yen, toast, modal, ask, share, matchItem, $ } from './ui.js';
 
 /* ---------- 単価マスター ---------- */
 registerView('master', async el => {
@@ -12,7 +12,7 @@ registerView('master', async el => {
   el.innerHTML = `
     <div class="lead">${icon('info')}<span>見積もりで「一覧から選ぶ」に出る品目と単価です。単価を変えると、<b>これから足す行</b>に使われます（今までの案件の金額は変わりません）。材料の単価は定価で入れて、仕入れは「設定」の掛け率で合わせます。</span></div>
     <div class="row" style="margin-bottom:12px">
-      <div class="unitwrap" style="flex:1;min-width:220px"><input class="in" id="mq" type="search" placeholder="品目の名前で探す" enterkeyhint="search"><span>${icon('search')}</span></div>
+      <div class="unitwrap" style="flex:1;min-width:220px"><input class="in" id="mq" type="search" placeholder="品目で探す（例：HIVP 20、エルボ 50）" enterkeyhint="search"><span>${icon('search')}</span></div>
       <label class="row small muted" style="gap:6px"><input type="checkbox" id="mc" style="width:20px;height:20px">変えた単価だけ</label>
       <button class="btn primary" id="madd">${icon('plus')}品目を足す</button>
       <button class="btn" id="mexp">${icon('down')}CSVで書き出す</button>
@@ -23,7 +23,7 @@ registerView('master', async el => {
   const draw = () => {
     $('#mcat').innerHTML = [['all', 'すべて'], ...categories()].map(([k, n]) => `<button data-c="${k}" class="${cat === k ? 'on' : ''}">${esc(n)}</button>`).join('');
     const qq = q.trim().toLowerCase();
-    const list = masterItems().filter(i => (cat === 'all' || (i.custom ? 'custom' : i.cat) === cat) && (!onlyChanged || i.changed || i.custom) && (!qq || (i.name + ' ' + i.spec).toLowerCase().includes(qq)));
+    const list = masterItems().filter(i => (cat === 'all' || (i.custom ? 'custom' : i.cat) === cat) && (!onlyChanged || i.changed || i.custom) && matchItem(i, qq));
     $('#mbody').innerHTML = list.slice(0, 400).map(i => `<tr data-id="${esc(i.id)}">
       <td><b>${esc(i.name)}</b><div class="small muted">${esc(i.spec || '')}</div></td>
       <td class="hide-m small muted">${KINDS[i.kind] || ''}・${MEASURES[i.measure] ? MEASURES[i.measure].label : ''}</td>
