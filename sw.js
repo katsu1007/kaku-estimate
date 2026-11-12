@@ -1,12 +1,25 @@
 /* KAKU Service Worker — オフライン対応とキャッシュ管理
  * アプリを更新したら VERSION の数字を上げてください（古いキャッシュが自動で消えます）。 */
-const VERSION = "2026-11-12.15";
+const VERSION = "2026-11-12.20-v2";
 const CACHE = "kaku-estimate-" + VERSION;
 
 /* 最初に必ず保存するもの（これが揃えばオフラインで起動できる） */
 const CORE = [
   "./",
   "./index.html",
+  "./css/app.css",
+  "./js/main.js",
+  "./js/app.js",
+  "./js/calc.js",
+  "./js/store.js",
+  "./js/ui.js",
+  "./js/home.js",
+  "./js/project.js",
+  "./js/docs.js",
+  "./js/pages.js",
+  "./js/export.js",
+  "./js/master-data.js",
+  "./old/index.html",
   "./manifest.json",
   "./icon-192.png",
   "./icon-512.png",
@@ -110,16 +123,21 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return; // 外部へのリクエストには触らない
   if (url.pathname.includes("/suido/")) return; // 水道概算（別のアプリ）には触らない
 
-  // 画面（index.html）はネット優先：つながる時は最新版、つながらない時は保存版
-  if (req.mode === "navigate" || url.pathname.endsWith("/") || url.pathname.endsWith("/index.html")) {
+  // 画面とプログラム（html・js・css）はネット優先：つながる時は最新版、つながらない時は保存版。
+  // 新しい画面（./）と前の画面（./old/）は別々に保存する
+  const isApp = req.mode === "navigate" || /\/$|\.(html|js|css|json)$/.test(url.pathname);
+  if (isApp && !url.pathname.includes("/vendor/")) {
     event.respondWith((async () => {
       const cache = await caches.open(CACHE);
       try {
         const res = await fetch(req, { cache: "no-store" });
-        if (res && res.ok) cache.put("./index.html", res.clone());
+        if (res && res.ok && res.type === "basic") cache.put(req, res.clone());
         return res;
       } catch (e) {
-        return (await cache.match("./index.html")) || (await cache.match("./")) || Response.error();
+        const hit = await cache.match(req, { ignoreSearch: true });
+        if (hit) return hit;
+        if (req.mode === "navigate") return (await cache.match(url.pathname.includes("/old/") ? "./old/index.html" : "./index.html")) || Response.error();
+        return Response.error();
       }
     })());
     return;
