@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-12.10";
+var KAKU_VERSION="2026-11-12.11";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -3676,13 +3676,19 @@ html[data-theme=dark] .kx-undo button{background:#243044;border-color:#3a475d;co
 #k3d .k3info td:last-child{font-weight:700;text-align:right}
 #k3d .k3note{font-size:12px;color:#5d6258;margin:6px 0 0}
 #k3d .k3row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+#k3d .k3q{display:flex;width:100%;justify-content:space-between;gap:10px;text-align:left;margin-top:6px;font-weight:400}
+#k3d .k3q b{white-space:nowrap}
+#k3d .k3chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;margin:4px 10px 0 0}
+#k3d .k3chip i{width:14px;height:14px;border-radius:4px;border:1px solid #999;display:inline-block}
+#k3d .k3form label{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:14px;margin-top:6px}
+#k3d .k3form input{width:110px;min-height:40px;font-size:16px;border:1px solid #c9ccc4;border-radius:8px;padding:0 8px;text-align:right;-webkit-user-select:text;user-select:text}
 html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
 </style>
 <script id="kaku-v22-3d-js">
 /* 図面の壁・床・ドア・器具・照明・配線を立ち上げて、指で回して見る。外のライブラリは使わず WebGL で描く */
 (function(){
   var $=function(id){return document.getElementById(id)};
-  var S={show:{wall:true,floor:true,fix:true,elec:true},hide:{},sel:-1,yaw:-Math.PI/2+.6,pitch:.75,dist:10,tx:0,ty:0,tz:0,ceil:false,low:false,wire:true,lab:true,ptr:{},dirty:true,gl:null,prog:null,buf:null,fit:null,labs:[]};
+  var S={show:{wall:true,floor:true,fix:true,elec:true},hide:{},sel:-1,colorBy:'room',hitP:null,panMode:'',yaw:-Math.PI/2+.6,pitch:.75,dist:10,tx:0,ty:0,tz:0,ceil:false,low:false,wire:true,lab:true,ptr:{},dirty:true,gl:null,prog:null,buf:null,fit:null,labs:[]};
   function plan(){try{return KAKU_plan}catch(e){return null}}
   function fixD(){try{return KAKU_fix}catch(e){return null}}
   function defH(){try{return KAKU_cat&&+KAKU_cat.defH||2.4}catch(e){return 2.4}}
@@ -3727,11 +3733,20 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
     var rname=function(i){var rm=roomOf[i];if(rm&&rm.name)return rm.name;var f=P.faces.find(function(x){return x.i===i});return f&&typeof KAKU_faceName==='function'?KAKU_faceName(f):'部屋にしていない区画'};
     var nm=function(id){try{return id?KAKU_itemName(id):''}catch(e){return''}},num=function(v,d){return(Math.round(v*Math.pow(10,d))/Math.pow(10,d)).toFixed(d)};
     var mat=function(i,k){var rm=roomOf[i];return rm&&rm[k]?nm(rm[k]):''};
+    /* 仕上げの色（「仕上げで色分け」の時）：名前から決める。同じ種類でも品目が違えば少しだけ色を変える */
+    var FIN={},finCol=function(id){var n=nm(id)||String(id),c=/タイル|石/.test(n)?[.72,.78,.84]:/フローリング|木|ウッド/.test(n)?[.80,.66,.47]:/クロス|壁紙/.test(n)?[.95,.93,.86]:/塗装|ペンキ|EP/.test(n)?[.88,.93,.84]:/長尺|塩ビ|CF|クッション|シート/.test(n)?[.76,.85,.74]:/カーペット|絨毯/.test(n)?[.72,.68,.82]:/ボード|PB|ケイカル|合板|ベニヤ/.test(n)?[.87,.80,.66]:/モルタル|コンクリ|土間/.test(n)?[.74,.74,.72]:/畳/.test(n)?[.74,.80,.55]:[.80,.82,.86];
+      var h=0;for(var i=0;i<n.length;i++)h=(h*31+n.charCodeAt(i))%997;c=[c[0]+((h%7)-3)*.012,c[1]+((h%5)-2)*.014,c[2]+((h%3)-1)*.02].map(function(v){return Math.max(0,Math.min(1,v))});FIN[n]=c;return c};
+    var DEMO=[.88,.62,.56],surf=function(i,ks,dk,base){var rm=roomOf[i];if(S.colorBy!=='fin'||!rm)return base;for(var k=0;k<ks.length;k++)if(rm[ks[k]])return finCol(rm[ks[k]]);if(rm[dk]){FIN['解体だけ（仕上げなし）']=DEMO;return DEMO}return base};
+    /* 数量の根拠：品目ごとに、もとになる部材と、図面の形から測った数量を集める */
+    var QG={},qadd=function(kind,label,id,pi,q,unit,name){if(!id)return;var k=kind+'|'+id,g=QG[k]||(QG[k]={kind:kind,label:label,id:id,name:name||nm(id)||String(id),parts:[],q:0,unit:unit});if(g.parts.indexOf(pi)<0)g.parts.push(pi);g.q+=q};
     /* 床 */
     P.faces.forEach(function(f){if(!f.poly||f.poly.length<3||f.area<.05||!fvis(f.i))return;var rm=roomOf[f.i],c=rm?hex(KAKU_COLORS[(rm.color||0)%KAKU_COLORS.length],.72):[.86,.86,.83];
       var per=+f.peri>0?+f.peri:0,same=rm&&(rm.faces||[]).length>1?'（この部屋は '+rm.faces.length+' 区画をまとめています。見積もりは部屋の合計 '+num(+rm.area||0,2)+' ㎡）':'';
-      if(S.show.floor){part({type:'floor',key:rk(f.i),title:'床：'+rname(f.i),rows:[['床の面積',num(f.area,2)+' ㎡'],['周りの長さ',per?num(per,2)+' m':'—'],['天井高',num(fH[f.i],2)+' m'],['床の仕上げ',mat(f.i,'floor')||'なし'],['床の解体',mat(f.i,'dFloor')||'なし'],['巾木',mat(f.i,'haba')||'なし']],note:(rm?'':'まだ部屋にしていない区画です。見積もりには入っていません。')+same});M.flat(f.poly,0,c.concat(1))}
-      if(S.ceil){part({type:'ceil',key:rk(f.i),title:'天井：'+rname(f.i),rows:[['天井の面積',num(f.area,2)+' ㎡'],['天井高',num(fH[f.i],2)+' m'],['天井の下地',mat(f.i,'ceilBoard')||'なし'],['天井の仕上げ',mat(f.i,'ceilFin')||'なし'],['天井の解体',mat(f.i,'dCeil')||'なし']],note:(rm?'':'まだ部屋にしていない区画です。見積もりには入っていません。')+same});M.flat(f.poly,fH[f.i],[1,1,1,.35],0,true)}});M.cur=-1;
+      var fc=surf(f.i,['floor'],'dFloor',c),at={area:+f.area,peri:per,height:fH[f.i],room:rname(f.i)};
+      if(S.show.floor){part({type:'floor',key:rk(f.i),fi:f.i,attr:Object.assign({floor:mat(f.i,'floor')},at),title:'床：'+rname(f.i),rows:[['床の面積',num(f.area,2)+' ㎡'],['周りの長さ',per?num(per,2)+' m':'—'],['天井高',num(fH[f.i],2)+' m'],['床の仕上げ',mat(f.i,'floor')||'なし'],['床の解体',mat(f.i,'dFloor')||'なし'],['巾木',mat(f.i,'haba')||'なし']],note:(rm?'':'まだ部屋にしていない区画です。見積もりには入っていません。')+same});M.flat(f.poly,0,fc.concat(1));
+        if(rm){var fp=PT.length-1;qadd('floor','床の仕上げ',rm.floor,fp,f.area,'㎡');qadd('dFloor','床の解体',rm.dFloor,fp,f.area,'㎡');qadd('haba','巾木',rm.haba,fp,per,'m')}}
+      if(S.ceil){var cc=S.colorBy==='fin'?surf(f.i,['ceilFin','ceilBoard'],'dCeil',[1,1,1]):[1,1,1];part({type:'ceil',key:rk(f.i),fi:f.i,attr:Object.assign({ceil:mat(f.i,'ceilFin'),board:mat(f.i,'ceilBoard')},at),title:'天井：'+rname(f.i),rows:[['天井の面積',num(f.area,2)+' ㎡'],['天井高',num(fH[f.i],2)+' m'],['天井の下地',mat(f.i,'ceilBoard')||'なし'],['天井の仕上げ',mat(f.i,'ceilFin')||'なし'],['天井の解体',mat(f.i,'dCeil')||'なし']],note:(rm?'':'まだ部屋にしていない区画です。見積もりには入っていません。')+same});M.flat(f.poly,fH[f.i],cc.concat(S.colorBy==='fin'?.6:.35),0,true)}
+      if(rm&&(S.ceil||S.show.floor)){var cp=PT.length-1;qadd('ceilFin','天井の仕上げ',rm.ceilFin,cp,f.area,'㎡');qadd('ceilBoard','天井の下地',rm.ceilBoard,cp,f.area,'㎡');qadd('dCeil','天井の解体',rm.dCeil,cp,f.area,'㎡')}});M.cur=-1;
     /* 壁：線ごとに厚さ3cmの板。高さはとなりの区画の天井高（大きい方）。「腰まで」の時は1m */
     var NF=[];var near=function(x,y){var h=0;NF=[];P.faces.forEach(function(f){if(!f.poly)return;var P2=f.poly;for(var i=0;i<P2.length;i++){var a=P2[i],b=P2[(i+1)%P2.length],dx=b[0]-a[0],dy=b[1]-a[1],L=dx*dx+dy*dy,t=L?Math.max(0,Math.min(1,((x-a[0])*dx+(y-a[1])*dy)/L)):0;if(Math.hypot(x-a[0]-dx*t,y-a[1]-dy*t)<.3){h=Math.max(h,fH[f.i]);NF.push(f.i);break}}});return h||H0};
     /* 扉の開く線（円弧）・扉の板の線は壁にしない。ドアが分からない円弧も、短い斜めの線のつながりは壁にしない */
@@ -3758,12 +3773,57 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
         var ta=ax*d.cl[0]+ay*d.cl[1],tb=(s[2]-d.c[0])*d.cl[0]+(s[3]-d.c[1])*d.cl[1];if(Math.abs(tb-ta)<1e-6)return;var t0=(0-ta)/(tb-ta)*L,t1=(d.r-ta)/(tb-ta)*L,lo=Math.max(0,Math.min(t0,t1)),hi=Math.min(L,Math.max(t0,t1));if(hi-lo<.3)return;
         var nx=[];iv.forEach(function(q){if(hi<=q[0]||lo>=q[1]){nx.push(q);return}if(lo>q[0])nx.push([q[0],lo]);if(hi<q[1])nx.push([hi,q[1]])});iv=nx});
       return iv.map(function(q){return[s[0]+ux*q[0],s[1]+uy*q[0],s[0]+ux*q[1],s[1]+uy*q[1]]})};
-    if(S.show.wall)P.segs.reduce(function(a,s){return a.concat(isDoorLine(s)||arcish(s)?[]:cutDoor(s))},[]).forEach(function(s){var dx=s[2]-s[0],dy=s[3]-s[1],L=Math.hypot(dx,dy);if(L<.04||isDoorLine(s)||arcish(s))return;var n=[-dy/L*.015,dx/L*.015],hr=near((s[0]+s[2])/2,(s[1]+s[3])/2),h=S.low?Math.min(1,hr):hr,fs=NF.slice();
-      if(fs.length&&!fs.some(fvis))return;
-      var rows=[['線の長さ',num(L,2)+' m'],['高さ',num(hr,2)+' m'],['片面の面積',num(L*hr,2)+' ㎡'],['面している所',fs.length?fs.map(rname).filter(function(v,i,a){return a.indexOf(v)===i}).join('・'):'—']];
-      fs.forEach(function(i){if(!roomOf[i])return;var w=[mat(i,'wallBoard'),mat(i,'wallFin')].filter(Boolean).join('＋');rows.push([rname(i)+' 側の壁',w||'なし']);var d=mat(i,'dWall');if(d)rows.push([rname(i)+' 側の解体',d])});
-      part({type:'wall',title:'壁の線',rows:rows,note:'図面の線1本ごとの寸法です（開口は引いていません）。見積もりの壁の面積は、部屋の周りの長さ×天井高から窓・ドアの分を引いて出しています。'});
-      M.prism([[s[0]+n[0],s[1]+n[1]],[s[2]+n[0],s[3]+n[1]],[s[2]-n[0],s[3]-n[1]],[s[0]-n[0],s[1]-n[1]]],0,h,WALL.concat(1),{top:WALLTOP.concat(1)})});
+    /* ==== 壁を部材にする ====
+       図面の壁の線（P.segs）から、平行で近い2本（2〜40cm）を1枚の「厚みのある壁」にまとめる。近い組から順に決めて、同じ線の同じ所は1回しか使わない。
+       相手のいない線は「1本線の壁」（厚さ3cmで描く）。壁の端をふさぐ短い線は壁にしない。部材ごとに 長さ・厚み・高さ・面している部屋・窓 を持つ */
+    var dot=function(p,u){return p[0]*u[0]+p[1]*u[1]},WB=[],WS=[];
+    var wpt=function(W,sv){return[W.u[0]*sv+W.n[0]*W.o,W.u[1]*sv+W.n[1]*W.o]};
+    var isect=function(F,lo,hi){var o=[];F.forEach(function(q){var a=Math.max(q[0],lo),b=Math.min(q[1],hi);if(b-a>.05)o.push([a,b])});return o};
+    var sub=function(F,lo,hi){var o=[];F.forEach(function(q){if(hi<=q[0]||lo>=q[1]){o.push(q);return}if(lo-q[0]>1e-6)o.push([q[0],lo]);if(q[1]-hi>1e-6)o.push([hi,q[1]])});return o};
+    var box=function(b,a,c,z0,z1,cA,cB,capA,capC){if(z1-z0<.005||c-a<.002)return;var Q=function(sv,o,z){return[b.u[0]*sv+b.n[0]*o,b.u[1]*sv+b.n[1]*o,z]},W1=WALL.concat(1),TP=WALLTOP.concat(1);
+      M.quad(Q(a,b.oA,z0),Q(c,b.oA,z0),Q(c,b.oA,z1),Q(a,b.oA,z1),cA.concat(1));M.quad(Q(c,b.oB,z0),Q(a,b.oB,z0),Q(a,b.oB,z1),Q(c,b.oB,z1),cB.concat(1));
+      M.quad(Q(a,b.oA,z1),Q(c,b.oA,z1),Q(c,b.oB,z1),Q(a,b.oB,z1),TP);if(z0>.001)M.quad(Q(a,b.oA,z0),Q(a,b.oB,z0),Q(c,b.oB,z0),Q(c,b.oA,z0),TP);
+      if(capA)M.quad(Q(a,b.oB,z0),Q(a,b.oA,z0),Q(a,b.oA,z1),Q(a,b.oB,z1),W1);if(capC)M.quad(Q(c,b.oA,z0),Q(c,b.oB,z0),Q(c,b.oB,z1),Q(c,b.oA,z1),W1)};
+    if(S.show.wall){
+      P.segs.forEach(function(s0){if(isDoorLine(s0)||arcish(s0))return;cutDoor(s0).forEach(function(s){var dx=s[2]-s[0],dy=s[3]-s[1],L=Math.hypot(dx,dy);if(L<.04||arcish(s))return;var u=[dx/L,dy/L];if(u[0]<-1e-9||(Math.abs(u[0])<1e-9&&u[1]<0))u=[-u[0],-u[1]];
+        var n=[-u[1],u[0]],sa=dot([s[0],s[1]],u),sb=dot([s[2],s[3]],u);WS.push({u:u,n:n,o:dot([s[0],s[1]],n),s0:Math.min(sa,sb),s1:Math.max(sa,sb),free:[[Math.min(sa,sb),Math.max(sa,sb)]]})})});
+      if(WS.length<=4000){var PR=[];for(var i=0;i<WS.length;i++)for(var j=i+1;j<WS.length;j++){var A=WS[i],B=WS[j];if(Math.abs(A.u[0]*B.u[1]-A.u[1]*B.u[0])>.02)continue;
+          var d=dot(wpt(B,(B.s0+B.s1)/2),A.n)-A.o,ad=Math.abs(d);if(ad<.02||ad>.4)continue;var b0=dot(wpt(B,B.s0),A.u),sh=b0-B.s0,lo=Math.max(A.s0,B.s0+sh),hi=Math.min(A.s1,B.s1+sh);if(hi-lo<.05)continue;
+          /* 2本の間が細い区画（パイプスペースなど）になっている時は、壁にまとめない */
+          var mm=wpt(A,(lo+hi)/2),mf=faceAt(mm[0]+A.n[0]*d/2,mm[1]+A.n[1]*d/2);if(mf&&mf.bb&&Math.min(mf.bb[2]-mf.bb[0],mf.bb[3]-mf.bb[1])<=.5)continue;
+          PR.push({i:i,j:j,d:d,lo:lo,hi:hi,sh:sh})}
+        PR.sort(function(a,b){return Math.abs(a.d)-Math.abs(b.d)});
+        PR.forEach(function(p){var A=WS[p.i],B=WS[p.j],out=[];isect(A.free,p.lo,p.hi).forEach(function(q){isect(B.free.map(function(x){return[x[0]+p.sh,x[1]+p.sh]}),q[0],q[1]).forEach(function(z){out.push(z)})});
+          out.forEach(function(z){A.free=sub(A.free,z[0],z[1]);B.free=sub(B.free,z[0]-p.sh,z[1]-p.sh);WB.push({u:A.u,n:A.n,oA:Math.min(A.o,A.o+p.d),oB:Math.max(A.o,A.o+p.d),s0:z[0],s1:z[1],A:A,B:B,sh:p.sh})})});
+        /* 角：片方の線だけが少し（46cmまで）先に伸びている時は、壁をそこまで伸ばす */
+        WB.forEach(function(b){[0,1].forEach(function(end){var e=end?b.s1:b.s0,ext=0;[[b.A,0],[b.B,b.sh]].forEach(function(w){w[0].free.forEach(function(q){var q0=q[0]+w[1],q1=q[1]+w[1],len=q1-q0;if(len>.46)return;if(end?Math.abs(q0-e)<.012:Math.abs(q1-e)<.012)ext=Math.max(ext,len)})});
+          if(ext>0){var lo=end?e:e-ext,hi=end?e+ext:e;b.A.free=sub(b.A.free,lo-1e-3,hi+1e-3);b.B.free=sub(b.B.free,lo-b.sh-1e-3,hi-b.sh+1e-3);if(end)b.s1=hi;else b.s0=lo}})})}
+      var nThick=WB.length,inBody=function(p){for(var k=0;k<nThick;k++){var b=WB[k],sv=dot(p,b.u),o=dot(p,b.n);if(sv>b.s0-.015&&sv<b.s1+.015&&o>b.oA-.015&&o<b.oB+.015)return true}return false};
+      WS.forEach(function(W){W.free.forEach(function(q){var len=q[1]-q[0];if(len<.06)return;if(len<=.46&&inBody(wpt(W,(q[0]+q[1])/2)))return;WB.push({u:W.u,n:W.n,oA:W.o-.015,oB:W.o+.015,s0:q[0],s1:q[1],thin:true})})});
+      /* 部材ごとに：面している部屋・高さ・窓を調べて、描く */
+      var WN=(current.win3d||[]),usedW={};
+      WB.forEach(function(b){var cuts=[b.s0,b.s1],t=b.thin?0:b.oB-b.oA;
+        /* ほかの壁が突き当たる所で区切る（面している部屋ごとに色と面積を分けるため。部材は1枚のまま） */
+        WS.forEach(function(W){if(Math.abs(W.u[0]*b.u[0]+W.u[1]*b.u[1])>.3)return;[W.s0,W.s1].forEach(function(sv){var p=wpt(W,sv),ss=dot(p,b.u),oo=dot(p,b.n);if(ss>b.s0+.05&&ss<b.s1-.05&&(Math.abs(oo-b.oA)<.035||Math.abs(oo-b.oB)<.035))cuts.push(ss)})});
+        b.wins=[];WN.forEach(function(w,wi){if(!w||!w.p||usedW[wi])return;var sv=dot(w.p,b.u),o=dot(w.p,b.n);if(sv<b.s0-.02||sv>b.s1+.02||o<b.oA-.06||o>b.oB+.06)return;var a=Math.max(b.s0+.02,sv-w.w/2),c=Math.min(b.s1-.02,sv+w.w/2);if(c-a<.1||b.wins.some(function(x){return a<x.b&&c>x.a}))return;usedW[wi]=1;b.wins.push({a:a,b:c,z0:+w.sill||0,z1:(+w.sill||0)+(+w.h||1),wi:wi});cuts.push(a,c)});
+        cuts.sort(function(x,y){return x-y});cuts=cuts.filter(function(v,k){return!k||v-cuts[k-1]>.03});if(cuts[cuts.length-1]<b.s1-.03)cuts.push(b.s1);else cuts[cuts.length-1]=b.s1;
+        var subs=[],hs=0,sideLen={},fl=[];for(var k=0;k+1<cuts.length;k++){var a=cuts[k],c=cuts[k+1],m=(a+c)/2,FA=faceAt(b.u[0]*m+b.n[0]*(b.oA-.08),b.u[1]*m+b.n[1]*(b.oA-.08)),FB=faceAt(b.u[0]*m+b.n[0]*(b.oB+.08),b.u[1]*m+b.n[1]*(b.oB+.08));
+          var wn=null;b.wins.forEach(function(x){if(m>x.a&&m<x.b)wn=x});subs.push({a:a,c:c,FA:FA?FA.i:null,FB:FB?FB.i:null,win:wn});[FA,FB].forEach(function(f){if(!f)return;hs=Math.max(hs,fH[f.i]);sideLen[f.i]=(sideLen[f.i]||0)+(c-a);if(fl.indexOf(f.i)<0)fl.push(f.i)})}
+        if(fl.length&&!fl.some(fvis))return;
+        var hr=hs||H0,H=S.low?Math.min(1,hr):hr,len=b.s1-b.s0,wa=0;b.wins.forEach(function(x){wa+=(x.b-x.a)*Math.max(0,Math.min(x.z1,hr)-x.z0)});
+        var rows=[['長さ',num(len,2)+' m'],['厚み',b.thin?'図面が1本線なので分かりません':Math.round(t*1000)+' mm'],['高さ',num(hr,2)+' m'],['片面の面積'+(wa?'（窓を引いた値）':''),num(len*hr-wa,2)+' ㎡'],['面している所',fl.length?fl.map(rname).filter(function(v,i,a){return a.indexOf(v)===i}).join('・'):'—']];
+        fl.forEach(function(i){if(!roomOf[i])return;var w=[mat(i,'wallBoard'),mat(i,'wallFin')].filter(Boolean).join('＋');rows.push([rname(i)+' 側（'+num(sideLen[i],2)+' m）',w||'なし']);var dm=mat(i,'dWall');if(dm)rows.push([rname(i)+' 側の解体',dm])});
+        if(b.wins.length)rows.push(['窓',b.wins.length+' か所']);
+        var mid=[b.u[0]*(b.s0+b.s1)/2+b.n[0]*(b.oA+b.oB)/2,b.u[1]*(b.s0+b.s1)/2+b.n[1]*(b.oA+b.oB)/2];
+        part({type:'wall',host:true,attr:{length:len,thickness:b.thin?null:t,height:hr,area:len*hr-wa,sides:fl.map(function(i){return{room:rname(i),length:sideLen[i],board:mat(i,'wallBoard'),finish:mat(i,'wallFin')}}),windows:b.wins.length,mid:mid},title:b.thin?'壁（図面が1本線）':'壁（厚み '+Math.round(t*1000)+' mm）',rows:rows,note:'見積もりの壁の面積は、今までどおり部屋の周りの長さ×天井高から窓・ドアの分を引いて出しています。'});
+        var wp=PT.length-1;subs.forEach(function(q){var wn=q.win&&q.win.z0<H?q.win:null;[q.FA,q.FB].forEach(function(i,sd){if(i==null||(sd&&q.FB===q.FA&&0))return;var rm=roomOf[i];if(!rm)return;var ar=(q.c-q.a)*hr-(q.win?(q.c-q.a)*Math.max(0,Math.min(q.win.z1,hr)-q.win.z0):0);qadd('wallFin','壁の仕上げ',rm.wallFin,wp,ar,'㎡');qadd('wallBoard','壁の下地',rm.wallBoard,wp,ar,'㎡');qadd('dWall','壁の解体',rm.dWall,wp,ar,'㎡')})});
+        subs.forEach(function(q,k){var cA=q.FA!=null?surf(q.FA,['wallFin','wallBoard'],'dWall',WALL):WALL,cB=q.FB!=null?surf(q.FB,['wallFin','wallBoard'],'dWall',WALL):WALL,wn=q.win&&q.win.z0<H?q.win:null,pv=subs[k-1],nx=subs[k+1];
+          if(wn){box(b,q.a,q.c,0,wn.z0,cA,cB,true,true);box(b,q.a,q.c,Math.min(wn.z1,H),H,cA,cB,true,true)}
+          else box(b,q.a,q.c,0,H,cA,cB,!pv||!!(pv.win&&pv.win.z0<H),!nx||!!(nx.win&&nx.win.z0<H))});
+        b.wins.forEach(function(x){if(x.z0>=H)return;var w=WN[x.wi],z1=Math.min(x.z1,H),om=(b.oA+b.oB)/2,Q=function(sv,z){return[b.u[0]*sv+b.n[0]*om,b.u[1]*sv+b.n[1]*om,z]};
+          part({type:'win',wi:x.wi,attr:{width:x.b-x.a,height:x.z1-x.z0,sill:x.z0},title:'窓（自分で足した物）',rows:[['幅',Math.round((x.b-x.a)*1000)+' mm'],['高さ',Math.round((x.z1-x.z0)*1000)+' mm'],['床からの高さ',Math.round(x.z0*1000)+' mm'],['窓の面積',num((x.b-x.a)*(x.z1-x.z0),2)+' ㎡']],note:'3Dで足した窓です。見積もりの窓の数は、部屋の「工事内容」で入れた数を使っています（ここで足しても変わりません）。'});
+          M.quad(Q(x.a,x.z0),Q(x.b,x.z0),Q(x.b,z1),Q(x.a,z1),[.60,.80,.95,.45]);[[Q(x.a,x.z0),Q(x.b,x.z0)],[Q(x.b,x.z0),Q(x.b,z1)],[Q(x.b,z1),Q(x.a,z1)],[Q(x.a,z1),Q(x.a,x.z0)]].forEach(function(e){M.line(e[0],e[1],[.3,.4,.5,1])})});
+        M.cur=-1})}
     /* ドア：扉の板（半分あけた向き）と、上の垂れ壁（2.0m〜天井） */
     M.cur=-1;if(S.show.wall)((fx&&fx.doors)||[]).forEach(function(d){if(!d.c||!d.m)return;var c=G(d.c),m=G(d.m),r=+d.r||.8,v=[m[0]-c[0],m[1]-c[1]],vl=Math.hypot(v[0],v[1])||1;v=[v[0]/vl,v[1]/vl];
       var rot=function(a){return[v[0]*Math.cos(a)-v[1]*Math.sin(a),v[0]*Math.sin(a)+v[1]*Math.cos(a)]};
@@ -3771,9 +3831,13 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
       var cl=clOf(c,v,r);
       var h=hAt(c[0]+v[0]*r*.5,c[1]+v[1]*r*.5),dh=Math.min(2.0,h-.05),t=.02,lf=[c[0]+v[0]*r,c[1]+v[1]*r],nn=[-v[1]*t,v[0]*t];
       var df=faceAt(c[0]+v[0]*r*.5,c[1]+v[1]*r*.5);if(df&&!fvis(df.i))return;
-      part({type:'door',key:df?rk(df.i):'',title:'ドア',rows:[['扉の幅（図面の開く線から）',Math.round(r*1000)+' mm'],['扉の高さ（仮）',Math.round(dh*1000)+' mm'],['ある所',df?rname(df.i):'—']],note:'高さは図面に無いので 2.0m で描いています。ドアの数は、部屋の「工事内容」で入れた数を見積もりに使っています。'});
+      var e2=[c[0]+cl[0]*r,c[1]+cl[1]*r],host=null;WB.forEach(function(b){if(Math.abs(b.u[0]*cl[0]+b.u[1]*cl[1])<.97)return;[c,e2].forEach(function(q){var sv=dot(q,b.u),o=dot(q,b.n);if(o>b.oA-.03&&o<b.oB+.03&&(Math.abs(sv-b.s0)<.12||Math.abs(sv-b.s1)<.12)){if(!host||(host.thin&&!b.thin))host=b}})});
+      var wt=host&&!host.thin?host.oB-host.oA:0;
+      part({type:'door',key:df?rk(df.i):'',attr:{width:r,height:dh,wallThickness:wt||null},title:'ドア',rows:[['扉の幅（図面の開く線から）',Math.round(r*1000)+' mm'],['扉の高さ（仮）',Math.round(dh*1000)+' mm'],['付いている壁の厚み',wt?Math.round(wt*1000)+' mm':'—'],['ある所',df?rname(df.i):'—']],note:'高さは図面に無いので 2.0m で描いています。ドアの数は、部屋の「工事内容」で入れた数を見積もりに使っています。'});
       M.prism([[c[0]+nn[0],c[1]+nn[1]],[lf[0]+nn[0],lf[1]+nn[1]],[lf[0]-nn[0],lf[1]-nn[1]],[c[0]-nn[0],c[1]-nn[1]]],0,dh,[.78,.62,.42,1]);
-      if(!S.low&&h-dh>.05){var e2=[c[0]+cl[0]*r,c[1]+cl[1]*r],n2=[-cl[1]*.05,cl[0]*.05];M.prism([[c[0]+n2[0],c[1]+n2[1]],[e2[0]+n2[0],e2[1]+n2[1]],[e2[0]-n2[0],e2[1]-n2[1]],[c[0]-n2[0],c[1]-n2[1]]],dh,h,WALL.concat(1),{top:WALLTOP.concat(1)})}});
+      if(!S.low&&h-dh>.05){var hu=cl[0]<-1e-9||(Math.abs(cl[0])<1e-9&&cl[1]<0)?[-cl[0],-cl[1]]:cl,hn=[-hu[1],hu[0]],hb=host||{u:hu,n:hn,oA:dot(c,hn)-.025,oB:dot(c,hn)+.025},sa=dot(c,hb.u),sb=dot(e2,hb.u);
+        part({type:'wall',attr:{length:r,thickness:wt||null,height:h-dh},title:'垂れ壁（ドアの上）',rows:[['幅',Math.round(r*1000)+' mm'],['高さ',Math.round((h-dh)*1000)+' mm'],['厚み',wt?Math.round(wt*1000)+' mm':'—']],note:'ドアの高さを 2.0m と仮に決めて、その上を壁にしています。'});
+        box(hb,Math.min(sa,sb),Math.max(sa,sb),dh,h,WALL,WALL,true,true)}});
     /* 器具 */
     M.cur=-1;if(S.show.fix)((fx&&fx.fx)||[]).forEach(function(x){if(!x.b||x.t==='other')return;var b=x.b,cx=(b[0]+b[2])/2,cy=(b[1]+b[3])/2,W=b[2]-b[0],D=b[3]-b[1];
       var gc=G([cx,cy]),xf=faceAt(gc[0],gc[1]);if(xf&&!fvis(xf.i))return;
@@ -3804,7 +3868,7 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
       var pn=p.item;try{pn=KP_name(p.item)}catch(e){}
       pts.forEach(function(g){var h=hAt(g[0],g[1]),id=p.item,gf=faceAt(g[0],g[1]);if(gf&&!fvis(gf.i))return;
         var isL=/^e-(dl|clight|ceil|light|base|bl)/.test(id),zz=isL?h:/^e-sw/.test(id)?1.2:/^e-con/.test(id)?.25:id==='e-panel'?1.65:/^e-foot/.test(id)?.27:h;
-        part({type:'elec',key:gf?rk(gf.i):'',c:[g[0],g[1],zz],title:pn,rows:[['ある所',gf?rname(gf.i):'—'],['取付の高さ（描いている高さ）',num(zz,2)+' m'],['このまとまりの数',pts.length+' 個'],['見積もりの数（この品目の合計）',(tot[id]||pts.length)+' 個']],note:isL?'':'高さは目安で描いています。'});
+        qadd('elec','電気',id,PT.length,1,'個',pn);part({type:'elec',key:gf?rk(gf.i):'',c:[g[0],g[1],zz],attr:{item:id,height:zz},title:pn,rows:[['ある所',gf?rname(gf.i):'—'],['取付の高さ（描いている高さ）',num(zz,2)+' m'],['このまとまりの数',pts.length+' 個'],['見積もりの数（この品目の合計）',(tot[id]||pts.length)+' 個']],note:isL?'':'高さは目安で描いています。'});
         if(/^e-(dl|clight|ceil|light|base|bl)/.test(id)){var r=/dl150/.test(id)?.08:/dl125/.test(id)?.07:/dl/.test(id)?.06:.18;var cc=ell(g[0],g[1],1,0,r+.015,r+.015,20);M.flat(cc,h-.006,/s$/.test(id)?[.72,.95,.78,1]:[1,.92,.55,1],1,true);for(var q=0;q<cc.length;q++){var a1=cc[q],b1=cc[(q+1)%cc.length];M.line([a1[0],a1[1],h-.007],[b1[0],b1[1],h-.007],[.55,.5,.4,1])}}
         else if(/^e-foot/.test(id)){M.prism(ell(g[0],g[1],1,0,.05,.05,10),.25,.3,[1,.93,.62,1],{e:1})}
         else if(/^e-sw/.test(id)){M.prism([[g[0]-.04,g[1]-.04],[g[0]+.04,g[1]-.04],[g[0]+.04,g[1]+.04],[g[0]-.04,g[1]+.04]],1.15,1.27,[.98,.98,.98,1],{edge:[.3,.3,.3,1]})}
@@ -3820,7 +3884,7 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
       if(L){x=L.x;y=L.y}else{var b2=f.bb||[0,0,0,0];x=(b2[0]+b2[2])/2;y=(b2[1]+b2[3])/2}
       var nm=rm&&rm.name?rm.name:(typeof KAKU_faceName==='function'?KAKU_faceName(f):'');labs.push({p:[x,y,.05],t:nm})});
     var rooms=[],seen={};P.faces.forEach(function(f){if(!f.poly||f.area<.05)return;var k=rk(f.i);if(seen[k])return;seen[k]=1;rooms.push({k:k,n:k==='_none'?'部屋にしていない区画':rname(f.i)})});
-    return{M:M,bb:bb,labs:labs,H:H0,parts:PT,rooms:rooms}}
+    return{M:M,bb:bb,labs:labs,H:H0,parts:PT,rooms:rooms,fin:FIN,qg:Object.keys(QG).map(function(k){return QG[k]})}}
   /* ---- WebGL ---- */
   var VS='attribute vec3 p;attribute vec3 n;attribute vec4 c;attribute float e;uniform mat4 M;varying vec4 vc;void main(){gl_Position=M*vec4(p,1.);vec3 L1=normalize(vec3(.35,-.55,.85)),L2=normalize(vec3(-.6,.45,.35));float d=.62+.30*max(dot(n,L1),0.)+.16*max(dot(n,L2),0.);vc=vec4(mix(c.rgb*min(d,1.08),c.rgb,e),c.a);}';
   var FS='precision mediump float;varying vec4 vc;void main(){gl_FragColor=vc;}';
@@ -3831,21 +3895,26 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
   /* ---- three.js で描く（同梱の vendor/three）。読み込めない端末は、上の自前の WebGL で描く ---- */
   function initT(cv){var T=S.T,R=new T.WebGLRenderer({canvas:cv,antialias:true,alpha:false});R.setPixelRatio(1);
     var vs='attribute vec4 col;attribute float e;varying vec4 vc;void main(){gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);vec3 L1=normalize(vec3(.35,-.55,.85)),L2=normalize(vec3(-.6,.45,.35));float d=.62+.30*max(dot(normal,L1),0.)+.16*max(dot(normal,L2),0.);vc=vec4(mix(col.rgb*min(d,1.08),col.rgb,e),col.a);}';
-    var fs='varying vec4 vc;void main(){gl_FragColor=vc;}';
-    var mk=function(o){var m=new T.ShaderMaterial({vertexShader:vs,fragmentShader:fs,side:T.DoubleSide});for(var k in o)m[k]=o[k];return m};
+    var fs='varying vec4 vc;void main(){gl_FragColor=vc;}',fh='varying vec4 vc;void main(){gl_FragColor=vec4(mix(vc.rgb,vec3(1.,.55,.12),.78),1.);}';
+    var mk=function(o,f){var m=new T.ShaderMaterial({vertexShader:vs,fragmentShader:f||fs,side:T.DoubleSide});for(var k in o)m[k]=o[k];return m};
     var sc=new T.Scene(),cam=new T.PerspectiveCamera(.8*180/Math.PI,1,.1,1000);cam.up.set(0,0,1);
-    var ob={o:new T.Mesh(new T.BufferGeometry(),mk({polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1})),
-      s:new T.Mesh(new T.BufferGeometry(),mk({polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1,depthFunc:T.LessEqualDepth})),
-      l:new T.LineSegments(new T.BufferGeometry(),mk({})),
-      t:new T.Mesh(new T.BufferGeometry(),mk({transparent:true,depthWrite:false}))};
-    ['o','s','l','t'].forEach(function(k,i){ob[k].frustumCulled=false;ob[k].renderOrder=i;ob[k].visible=false;sc.add(ob[k])});
-    S.R=R;S.T3={sc:sc,cam:cam,ob:ob};return R}
-  function setT(k,arr){var T=S.T,ob=S.T3.ob[k],g=new T.BufferGeometry();if(arr.length){var ib=new T.InterleavedBuffer(new Float32Array(arr),11);
-      g.setAttribute('position',new T.InterleavedBufferAttribute(ib,3,0));g.setAttribute('normal',new T.InterleavedBufferAttribute(ib,3,3));g.setAttribute('col',new T.InterleavedBufferAttribute(ib,4,6));g.setAttribute('e',new T.InterleavedBufferAttribute(ib,1,10))}
-    ob.geometry.dispose();ob.geometry=g;ob.visible=arr.length>0}
-  function drawT(w,h,dark){var R=S.R,c=S.T3.cam,e=eye();c.aspect=w/h;c.near=Math.max(.05,S.dist/200);c.far=S.dist*20+100;c.updateProjectionMatrix();c.position.set(e[0],e[1],e[2]);c.lookAt(S.tx,S.ty,S.tz);
+    /* 部材1つ＝オブジェクト1つ（go：不透明、gt：半透明）。hl：選んだ部材を光らせる。l：輪郭の線 */
+    var X={sc:sc,cam:cam,go:new T.Group(),gt:new T.Group(),hl:new T.Group(),byId:{},mo:mk({polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1}),mt:mk({transparent:true,depthWrite:false}),mh:mk({polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1,depthFunc:T.LessEqualDepth},fh),
+      l:new T.LineSegments(new T.BufferGeometry(),mk({}))};X.l.frustumCulled=false;X.l.renderOrder=2;sc.add(X.go);sc.add(X.hl);sc.add(X.l);sc.add(X.gt);
+    S.R=R;S.T3=X;return R}
+  function geoT(arr){var T=S.T,g=new T.BufferGeometry();if(arr.length){var ib=new T.InterleavedBuffer(new Float32Array(arr),11);
+      g.setAttribute('position',new T.InterleavedBufferAttribute(ib,3,0));g.setAttribute('normal',new T.InterleavedBufferAttribute(ib,3,3));g.setAttribute('col',new T.InterleavedBufferAttribute(ib,4,6));g.setAttribute('e',new T.InterleavedBufferAttribute(ib,1,10))}return g}
+  function uploadT(){var T=S.T,m=S.scene.M,X=S.T3;X.hl.clear();[X.go,X.gt].forEach(function(g){g.children.forEach(function(c){c.geometry.dispose()});g.clear()});X.byId={};
+    var grp=function(A,I,g,mat,ro){var by={};for(var t=0;t<I.length;t++){var a=by[I[t]]||(by[I[t]]=[]),o=t*33;for(var k=0;k<33;k++)a.push(A[o+k])}
+      Object.keys(by).forEach(function(id){var me=new T.Mesh(geoT(by[id]),mat);me.frustumCulled=false;me.renderOrder=ro;me.userData.i=+id;me.userData.part=+id>=0?S.scene.parts[+id]:null;g.add(me);(X.byId[id]=X.byId[id]||[]).push(me)})};
+    grp(m.o,m.io,X.go,X.mo,0);grp(m.t,m.it,X.gt,X.mt,3);X.l.geometry.dispose();X.l.geometry=geoT(m.l);X.l.visible=m.l.length>0}
+  function camT(as){var c=S.T3.cam,e=eye();c.aspect=as;c.near=Math.max(.05,S.dist/200);c.far=S.dist*20+100;c.updateProjectionMatrix();c.position.set(e[0],e[1],e[2]);c.lookAt(S.tx,S.ty,S.tz);c.updateMatrixWorld();return c}
+  function drawT(w,h,dark){var R=S.R,c=camT(w/h);
     if(S.white)R.setClearColor(0xffffff,1);else if(dark)R.setClearColor(new S.T.Color(.11,.12,.10),1);else R.setClearColor(new S.T.Color(.93,.94,.92),1);R.render(S.T3.sc,c)}
-  function upload(){var gl=S.gl,m=S.scene.M;if(S.R){setT('o',m.o);setT('t',m.t);setT('l',m.l);return}[['o','no',m.o],['t','nt',m.t],['l','nl',m.l]].forEach(function(a){gl.bindBuffer(gl.ARRAY_BUFFER,S.buf[a[0]]);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(a[2]),gl.STATIC_DRAW);S.buf[a[1]]=a[2].length/11})}
+  /* three.js のレイキャストで、タップした所の部材と、当たった点を探す */
+  function pickT(px,py){var X=S.T3,T=S.T,cv=S.cv,c=camT(cv.clientWidth/cv.clientHeight),rc=X.rc||(X.rc=new T.Raycaster());rc.setFromCamera(new T.Vector2(px/cv.clientWidth*2-1,-(py/cv.clientHeight)*2+1),c);
+    var hit=rc.intersectObjects(X.go.children.concat(X.gt.children),false);for(var i=0;i<hit.length;i++){var id=hit[i].object.userData.i;if(id>=0)return{i:id,p:[hit[i].point.x,hit[i].point.y,hit[i].point.z]}}return null}
+  function upload(){var gl=S.gl,m=S.scene.M;if(S.R){uploadT();return}[['o','no',m.o],['t','nt',m.t],['l','nl',m.l]].forEach(function(a){gl.bindBuffer(gl.ARRAY_BUFFER,S.buf[a[0]]);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(a[2]),gl.STATIC_DRAW);S.buf[a[1]]=a[2].length/11})}
   function mul(a,b){var o=new Array(16);for(var i=0;i<4;i++)for(var j=0;j<4;j++){var s=0;for(var k=0;k<4;k++)s+=a[k*4+j]*b[i*4+k];o[i*4+j]=s}return o}
   function persp(f,as,n,fr){var t=1/Math.tan(f/2);return[t/as,0,0,0,0,t,0,0,0,0,(fr+n)/(n-fr),-1,0,0,2*fr*n/(n-fr),0]}
   function look(e,t,u){var z=[e[0]-t[0],e[1]-t[1],e[2]-t[2]],zl=Math.hypot(z[0],z[1],z[2]);z=z.map(function(v){return v/zl});var x=[u[1]*z[2]-u[2]*z[1],u[2]*z[0]-u[0]*z[2],u[0]*z[1]-u[1]*z[0]],xl=Math.hypot(x[0],x[1],x[2])||1;x=x.map(function(v){return v/xl});
@@ -3873,8 +3942,9 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
   function home(top){var b=S.scene.bb,w=b[2]-b[0],h=b[3]-b[1];S.tx=(b[0]+b[2])/2;S.ty=(b[1]+b[3])/2;S.tz=0;var cv=S.cv,as=cv&&cv.clientHeight?cv.clientWidth/cv.clientHeight:1,hf=Math.atan(Math.tan(.4)*as);S.fit=Math.max(4,Math.max(w,h)*.62/Math.tan(Math.min(.4,hf)));S.dist=S.fit*(top?1:.95);
     if(top){S.pitch=1.52;S.yaw=-Math.PI/2}else{S.pitch=.95;S.yaw=-Math.PI/2+.5}req()}
   /* ---- タップした所の部材を探す：三角を画面に写して、いちばん手前の物 ---- */
-  function pick(px,py){if(!S.scene)return-1;var M=matrix(),cv=S.cv,W=cv.clientWidth,H=cv.clientHeight,best=-1,bz=Infinity,m=S.scene.M;
-    [[m.o,m.io],[m.t,m.it]].forEach(function(z){var A=z[0],I=z[1],n=I.length,X=[0,0,0],Y=[0,0,0],Z=[0,0,0];
+  function pick(px,py){if(!S.scene)return-1;var M=matrix(),cv=S.cv,W=cv.clientWidth,H=cv.clientHeight,best=-1,bz=Infinity,m=S.scene.M;S.hitP=null;
+    if(S.R){var hr=pickT(px,py);if(hr){best=hr.i;S.hitP=hr.p;var hw=M[3]*hr.p[0]+M[7]*hr.p[1]+M[11]*hr.p[2]+M[15];bz=(M[2]*hr.p[0]+M[6]*hr.p[1]+M[10]*hr.p[2]+M[14])/hw}}
+    else [[m.o,m.io],[m.t,m.it]].forEach(function(z){var A=z[0],I=z[1],n=I.length,X=[0,0,0],Y=[0,0,0],Z=[0,0,0];
       for(var t=0;t<n;t++){if(I[t]<0)continue;var ok=true;for(var k=0;k<3;k++){var o=(t*3+k)*11,x=A[o],y=A[o+1],zz=A[o+2],w=M[3]*x+M[7]*y+M[11]*zz+M[15];if(w<=1e-6){ok=false;break}
           X[k]=((M[0]*x+M[4]*y+M[8]*zz+M[12])/w*.5+.5)*W;Y[k]=(-(M[1]*x+M[5]*y+M[9]*zz+M[13])/w*.5+.5)*H;Z[k]=(M[2]*x+M[6]*y+M[10]*zz+M[14])/w}
         if(!ok)continue;var d=(Y[1]-Y[2])*(X[0]-X[2])+(X[2]-X[1])*(Y[0]-Y[2]);if(Math.abs(d)<1e-9)continue;
@@ -3885,23 +3955,46 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
         var sx=((M[0]*x+M[4]*y+M[8]*z+M[12])/w*.5+.5)*W,sy=(-(M[1]*x+M[5]*y+M[9]*z+M[13])/w*.5+.5)*H,sz=(M[2]*x+M[6]*y+M[10]*z+M[14])/w,d=Math.hypot(sx-px,sy-py);
         if(d<bd&&(best<0||sz<=bz+.002||PS[best].type==='floor'||PS[best].type==='ceil')){bd=d;bi=i}});if(bi>=0)best=bi}
     return best}
-  function select(i){S.sel=i;var gl=S.gl,out=[];if(i>=0&&S.scene){var m=S.scene.M;[[m.o,m.io],[m.t,m.it]].forEach(function(z){var A=z[0],I=z[1];for(var t=0;t<I.length;t++){if(I[t]!==i)continue;for(var k=0;k<3;k++){var o=(t*3+k)*11;out.push(A[o],A[o+1],A[o+2],A[o+3],A[o+4],A[o+5],1,.55,.12,1,.55)}}})}
-    if(S.R)setT('s',out);else if(gl){gl.bindBuffer(gl.ARRAY_BUFFER,S.buf.s);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(out),gl.DYNAMIC_DRAW);S.buf.ns=out.length/11}
-    var box=S.root&&S.root.querySelector('.k3info');if(!box)return;var p=i>=0&&S.scene?S.scene.parts[i]:null;
-    if(!p){box.classList.remove('on');req();return}
-    S.root.querySelector('.k3pan').classList.remove('on');
+  /* 部材を光らせる（何個でも） */
+  function hl(ids){var gl=S.gl;if(S.R){var X=S.T3;X.hl.clear();ids.forEach(function(id){(X.byId[id]||[]).forEach(function(me){var h=new S.T.Mesh(me.geometry,X.mh);h.frustumCulled=false;h.renderOrder=1;X.hl.add(h)})});return}
+    var out=[],set={};ids.forEach(function(i){set[i]=1});if(ids.length&&S.scene){var m=S.scene.M;[[m.o,m.io],[m.t,m.it]].forEach(function(z){var A=z[0],I=z[1];for(var t=0;t<I.length;t++){if(!set[I[t]])continue;for(var k=0;k<3;k++){var o=(t*3+k)*11;out.push(A[o],A[o+1],A[o+2],A[o+3],A[o+4],A[o+5],1,.55,.12,1,.55)}}})}
+    if(gl){gl.bindBuffer(gl.ARRAY_BUFFER,S.buf.s);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(out),gl.DYNAMIC_DRAW);S.buf.ns=out.length/11}}
+  function info(p){var box=S.root&&S.root.querySelector('.k3info');if(!box)return;if(!p){box.classList.remove('on');req();return}
+    S.root.querySelector('.k3pan').classList.remove('on');S.panMode='';var hp=S.hitP;
     box.innerHTML='<h4>'+esc(p.title)+'</h4>'+(p.rows&&p.rows.length?'<table>'+p.rows.map(function(r){return'<tr><td>'+esc(r[0])+'</td><td>'+esc(r[1])+'</td></tr>'}).join('')+'</table>':'')+(p.note?'<p class="k3note">'+esc(p.note)+'</p>':'')+
-      '<div class="k3row">'+(p.key?'<button type="button" data-a="only">この部屋だけ表示</button>':'')+(Object.keys(S.hide).length?'<button type="button" data-a="all">全部の部屋を表示</button>':'')+'<button type="button" data-a="x">閉じる</button></div>';
+      '<div class="k3row">'+(p.host&&hp&&S.R?'<button type="button" data-a="win">ここに窓を足す</button>':'')+(p.type==='win'?'<button type="button" data-a="delwin">この窓を消す</button>':'')+(p.key?'<button type="button" data-a="only">この部屋だけ表示</button>':'')+(Object.keys(S.hide).length?'<button type="button" data-a="all">全部の部屋を表示</button>':'')+'<button type="button" data-a="x">閉じる</button></div>';
     lift(box);box.classList.add('on');[].forEach.call(box.querySelectorAll('button'),function(b){b.onclick=function(){var a=b.dataset.a;
       if(a==='only'){S.hide={};S.scene.rooms.forEach(function(r){if(r.k!==p.key)S.hide[r.k]=true});rebuild(true);bar()}
-      else if(a==='all'){S.hide={};rebuild(true);bar()}else select(-1)}});req()}
+      else if(a==='all'){S.hide={};rebuild(true);bar()}
+      else if(a==='win')winForm(hp)
+      else if(a==='delwin'){if(current.win3d&&p.wi!=null){current.win3d.splice(p.wi,1);save();rebuild(true);toast('窓を消しました')}}
+      else select(-1)}});req()}
+  /* 窓を足す：タップした所を真ん中にして、幅・高さ・床からの高さを入れる。案件に覚える（見積もりの数量は変えない） */
+  function winForm(hp){var box=S.root.querySelector('.k3info'),L=S.winLast||{w:1200,h:1000,s:900},f=function(k,t,v){return'<label>'+t+'<input type="number" inputmode="numeric" data-k="'+k+'" value="'+v+'"></label>'};
+    box.innerHTML='<h4>窓を足す</h4><div class="k3form">'+f('w','幅 mm',L.w)+f('h','高さ mm',L.h)+f('s','床からの高さ mm',L.s)+'</div><p class="k3note">タップした所が窓の真ん中になります。見積もりの窓の数は変わりません。</p><div class="k3row"><button type="button" data-a="ok" class="on">足す</button><button type="button" data-a="x">やめる</button></div>';
+    lift(box);[].forEach.call(box.querySelectorAll('button'),function(b){b.onclick=function(){if(b.dataset.a!=='ok'){select(-1);return}var g=function(k){return+box.querySelector('input[data-k="'+k+'"]').value||0},w=Math.max(300,Math.min(6000,g('w'))),h=Math.max(200,Math.min(3000,g('h'))),sl=Math.max(0,Math.min(2500,g('s')));
+      S.winLast={w:w,h:h,s:sl};current.win3d=current.win3d||[];current.win3d.push({p:[Math.round(hp[0]*1000)/1000,Math.round(hp[1]*1000)/1000],w:w/1000,h:h/1000,sill:sl/1000});save();rebuild(true);toast('窓を足しました')}})}
+  function select(i){S.sel=i;hl(i>=0?[i]:[]);info(i>=0&&S.scene?S.scene.parts[i]:null)}
+  function selectMany(ids,p){S.sel=-1;S.hitP=null;hl(ids);info(p)}
+  /* 数量の根拠：品目を選ぶと、もとになっている部材が全部光る */
+  function qpan(){var box=S.root.querySelector('.k3pan'),G=S.scene.qg||[],ord=['floor','dFloor','haba','wallFin','wallBoard','dWall','ceilFin','ceilBoard','dCeil','elec'];G=G.slice().sort(function(a,b){return ord.indexOf(a.kind)-ord.indexOf(b.kind)});
+    var fmt=function(g){return(g.unit==='個'?Math.round(g.q):(Math.round(g.q*100)/100).toFixed(2))+' '+g.unit};
+    box.innerHTML='<h4>数量の根拠</h4><p class="k3note" style="margin-top:0">行を押すと、その数量のもとになっている部材が光ります。数字は図面の形から測った値です。</p>'+(G.length?G.map(function(g,i){return'<button type="button" class="k3q" data-q="'+i+'"><span>'+esc(g.label)+'：'+esc(g.name)+'</span><b>'+fmt(g)+'</b></button>'}).join(''):'<p class="k3note">部屋の「工事内容」を選ぶか、照明などを並べると、ここに出ます。</p>')+'<div class="k3row"><button type="button" data-q="X">閉じる</button></div>';
+    lift(box);[].forEach.call(box.querySelectorAll('button'),function(btn){btn.onclick=function(){var q=btn.dataset.q;box.classList.remove('on');S.panMode='';bar();if(q==='X')return;var g=G[+q],est=null;
+      /* 見積もりの明細（計算エンジンの行）から、同じ品目の行を探す。読むだけ */
+      var ER=[];try{ER=engine.snapshot().rows||[]}catch(e){ER=current.items||[]}
+      var hitR=ER.filter(function(r){return r&&(r.id===g.id||String(r.id||'').indexOf(g.id)>=0)});if(!hitR.length)hitR=ER.filter(function(r){return r&&r.desc&&g.name&&String(r.desc).indexOf(g.name.split(' ')[0])>=0}).slice(0,1);
+      if(hitR.length)est={qty:Math.round(hitR.reduce(function(a,r){return a+(+r.qty||0)},0)*100)/100,unit:hitR[0].unit};
+      selectMany(g.parts,{title:g.label+'：'+g.name,rows:[['3Dの部材から測った数量',fmt(g)],['もとになっている部材',g.parts.length+' 個'],['見積もりの明細の数量',est?(est.qty+' '+(est.unit||'')):'同じ名前の行が見つかりません']],note:'3Dの数量は図面の形そのままです（ロスや割増なし。'+(/[wW]all/.test(g.kind)?'壁はドアの開口と3Dで足した窓を除いた面積です。見積もりは部屋の周りの長さ×天井高から、工事内容で入れた窓・ドアの数だけ引くので、差が出ます。':'')+(/^(ceil|dCeil)/.test(g.kind)&&!S.ceil?'天井は「表示」で出すと天井が光ります。今は床を光らせています。':'')+'）。見積もりの数量は今までどおりの計算で、ここでは変えていません。'})}})}
   function lift(box){var br=S.root.querySelector('.k3bar');box.style.bottom=((br?br.offsetHeight:56)+4)+'px'}
   function tap(x,y){var r=S.cv.getBoundingClientRect();select(pick(x-r.left,y-r.top))}
   /* 表示の切り替え（壁・床・天井・器具・電気・配線、部屋ごと） */
   function pan(){var box=S.root.querySelector('.k3pan'),b=function(k,on,t){return'<button type="button" data-k="'+esc(k)+'"'+(on?' class="on"':'')+'>'+esc(t)+'</button>'};
+    var chips=S.colorBy==='fin'?Object.keys(S.scene.fin||{}).map(function(n){var c=S.scene.fin[n];return'<span class="k3chip"><i style="background:rgb('+c.map(function(v){return Math.round(v*255)}).join(',')+')"></i>'+esc(n)+'</span>'}).join(''):'';
     box.innerHTML='<h4>表示する物</h4><div class="k3row" style="margin-top:0">'+b('L:wall',S.show.wall,'壁')+b('L:floor',S.show.floor,'床')+b('L:ceil',S.ceil,'天井')+b('L:fix',S.show.fix,'器具')+b('L:elec',S.show.elec,'照明・電気')+((current.wire&&current.wire.on)?b('L:wire',S.wire,'配線'):'')+'</div>'+
-      '<h4 style="margin-top:10px">表示する部屋</h4><div class="k3row" style="margin-top:0">'+b('R:*',!Object.keys(S.hide).length,'全部')+S.scene.rooms.map(function(r){return b('R:'+r.k,!S.hide[r.k],r.n)}).join('')+'</div><div class="k3row"><button type="button" data-k="X">閉じる</button></div>';
-    lift(box);[].forEach.call(box.querySelectorAll('button'),function(btn){btn.onclick=function(){var k=btn.dataset.k;if(k==='X'){box.classList.remove('on');bar();return}
+      '<h4 style="margin-top:10px">色</h4><div class="k3row" style="margin-top:0">'+b('C:room',S.colorBy==='room','部屋ごと')+b('C:fin',S.colorBy==='fin','仕上げで色分け')+'</div>'+(S.colorBy==='fin'?'<div>'+(chips||'<span class="k3note">まだ仕上げを選んだ部屋がありません（部屋の「工事内容」で選びます）。</span>')+'</div>':'')+'<h4 style="margin-top:10px">表示する部屋</h4><div class="k3row" style="margin-top:0">'+b('R:*',!Object.keys(S.hide).length,'全部')+S.scene.rooms.map(function(r){return b('R:'+r.k,!S.hide[r.k],r.n)}).join('')+'</div><div class="k3row"><button type="button" data-k="X">閉じる</button></div>';
+    lift(box);[].forEach.call(box.querySelectorAll('button'),function(btn){btn.onclick=function(){var k=btn.dataset.k;if(k==='X'){box.classList.remove('on');S.panMode='';bar();return}
+      if(k.slice(0,2)==='C:'){S.colorBy=k.slice(2);rebuild(true);pan();return}
       if(k.slice(0,2)==='L:'){var n=k.slice(2);if(n==='ceil')S.ceil=!S.ceil;else if(n==='wire')S.wire=!S.wire;else S.show[n]=!S.show[n]}
       else if(k==='R:*')S.hide={};else{var rk2=k.slice(2);if(S.hide[rk2])delete S.hide[rk2];else S.hide[rk2]=true}
       rebuild(true);pan()}})}
@@ -3922,10 +4015,10 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
   function hideHint(){var h=S.root&&S.root.querySelector('.k3hint');if(h)h.style.opacity=0}
   /* ---- 画面 ---- */
   function bar(){var b=function(k,on,t){return'<button type="button" data-k="'+k+'"'+(on?' class="on"':'')+'>'+t+'</button>'};
-    var po=S.root.querySelector('.k3pan').classList.contains('on'),part=!S.show.wall||!S.show.floor||!S.show.fix||!S.show.elec||Object.keys(S.hide).length>0;
-    S.root.querySelector('.k3bar').innerHTML=b('home',0,'斜めから')+b('top',0,'真上から')+b('low',S.low,'壁を腰まで')+b('lab',S.lab,'部屋名')+b('pan',po,part?'表示（一部）':'表示');
+    var po=S.root.querySelector('.k3pan').classList.contains('on')&&S.panMode==='show',pq=S.root.querySelector('.k3pan').classList.contains('on')&&S.panMode==='qty',part=!S.show.wall||!S.show.floor||!S.show.fix||!S.show.elec||Object.keys(S.hide).length>0;
+    S.root.querySelector('.k3bar').innerHTML=b('home',0,'斜めから')+b('top',0,'真上から')+b('low',S.low,'壁を腰まで')+b('lab',S.lab,'部屋名')+b('pan',po,part?'表示（一部）':'表示')+b('qty',pq,'数量の根拠');
     [].forEach.call(S.root.querySelectorAll('.k3bar button'),function(btn){btn.onclick=function(){var k=btn.dataset.k;
-      if(k==='home')home();else if(k==='top')home(true);else if(k==='pan'){var px=S.root.querySelector('.k3pan');if(px.classList.contains('on'))px.classList.remove('on');else{select(-1);pan();px.classList.add('on')}bar()}else{S[k]=!S[k];if(k==='lab')req();else rebuild(true);bar()}}})}
+      if(k==='home')home();else if(k==='top')home(true);else if(k==='pan'||k==='qty'){var px=S.root.querySelector('.k3pan'),md=k==='pan'?'show':'qty';if(px.classList.contains('on')&&S.panMode===md){px.classList.remove('on');S.panMode=''}else{select(-1);S.panMode=md;if(k==='pan')pan();else qpan();px.classList.add('on')}bar()}else{S[k]=!S[k];if(k==='lab')req();else rebuild(true);bar()}}})}
   function open(){if(!plan()){toast('先に図面を読み込んでください');return}
     if(S.root||S.tried)return open2();S.tried=true;
     var done=false,go=function(){if(done)return;done=true;open2()};setTimeout(go,6000);
@@ -3962,7 +4055,9 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
   /* 視点を数字で決める（確かめる時に使う） */
   window.KAKU_3Dcam=function(o){for(var k in o)S[k]=o[k];req()};
   /* 確かめる時に使う：部材の一覧、画面の点の部材、選ぶ */
-  window.KAKU_3Dparts=function(){return S.scene?S.scene.parts:[]};window.KAKU_3Dpick=function(x,y){return pick(x,y)};window.KAKU_3Dselect=function(i){select(i)};window.KAKU_3Dstate=function(){return S};window.KAKU_3Dengine=function(){return S.R?'three.js r'+S.T.REVISION:S.gl?'webgl':''};
+  window.KAKU_3Dparts=function(){return S.scene?S.scene.parts:[]};
+  /* 建物モデル：部材の種類と属性（寸法・厚み・高さ・仕上げ）の一覧 */
+  window.KAKU_3Dmodel=function(){var sc=S.scene||build();return sc?sc.parts.map(function(p,i){return{id:i,type:p.type,title:p.title,attr:p.attr||null}}):[]};window.KAKU_3Dqty=function(){return S.scene?S.scene.qg:[]};window.KAKU_3Dobjects=function(){return S.T3?S.T3.go.children.length+S.T3.gt.children.length:0};window.KAKU_3Dpick=function(x,y){return pick(x,y)};window.KAKU_3Dselect=function(i){select(i)};window.KAKU_3Dstate=function(){return S};window.KAKU_3Dengine=function(){return S.R?'three.js r'+S.T.REVISION:S.gl?'webgl':''};
   /* 図の上に「3Dで見る」ボタン */
   function addBtn(){var box=$('kakuPlan');if(!box)return;var b=$('k3btn');
     if(!plan()){if(b)b.parentNode.style.display='none';return}
