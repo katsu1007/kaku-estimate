@@ -45,18 +45,20 @@ export async function importDrawing(files) {
     titles: (P.titles || []).slice(0, 40),
     unit: P.unit || '', scale: P.scale || ''
   };
-  orderFaces(plan);
+  orderFaces(plan); plan.order = 2;
   return { plan, message: (res && res.message) || '読み込みました' };
 }
 
-/* 区画の番号：上の段から左→右の順（図面は上が y の大きい方） */
-export function orderFaces(plan) {
-  const c = f => { let x = 0, y = 0; f.poly.forEach(p => { x += p[0]; y += p[1]; }); return [x / f.poly.length, y / f.poly.length]; };
-  const L = plan.faces.map(f => ({ f, c: c(f) }));
-  const hs = plan.faces.map(f => { const ys = f.poly.map(p => p[1]); return Math.max(...ys) - Math.min(...ys); }).sort((a, b) => a - b);
-  const band = Math.max(0.5, (hs[Math.floor(hs.length / 2)] || 1) / 2);
-  L.sort((a, b) => Math.abs(a.c[1] - b.c[1]) > band ? b.c[1] - a.c[1] : a.c[0] - b.c[0]);
-  L.forEach((x, k) => { x.f.no = k + 1; x.f.cx = q3(x.c[0]); x.f.cy = q3(x.c[1]); });
+/* 区画の番号（前のKAKUの KAKU_orderFaces と同じ）：横に離れた建物ごとにまとめ、その中で上の段から左→右の順 */
+export function orderFaces(P) {
+  const F = P.faces;
+  F.forEach(f => { let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity; f.poly.forEach(([x, y]) => { if (x < a) a = x; if (x > c) c = x; if (y < b) b = y; if (y > d) d = y; }); f.bb = [a, b, c, d]; });
+  const groups = []; let cur = null, end = -Infinity;
+  [...F].sort((p, q) => p.bb[0] - q.bb[0]).forEach(f => { if (!cur || f.bb[0] > end + 0.05) { cur = []; groups.push(cur); end = f.bb[2]; } else end = Math.max(end, f.bb[2]); cur.push(f); });
+  const order = [];
+  groups.forEach(g => { g.sort((p, q) => q.bb[3] - p.bb[3]); const rows = []; g.forEach(f => { const r = rows.find(r => Math.abs(r.top - f.bb[3]) < 0.3); if (r) r.f.push(f); else rows.push({ top: f.bb[3], f: [f] }); }); rows.forEach(r => { r.f.sort((p, q) => p.bb[0] - q.bb[0]); order.push(...r.f); }); });
+  order.forEach((f, k) => { f.no = k + 1; let x = 0, y = 0; f.poly.forEach(p => { x += p[0]; y += p[1]; }); f.cx = q3(x / f.poly.length); f.cy = q3(y / f.poly.length); delete f.bb; });
+  P.faces = order;
 }
 
 /* 図面に書いてある天井高（面積の一番広い天井高） */

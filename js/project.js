@@ -259,7 +259,7 @@ function stepRooms(ctx) {
     if (view) view.paint();
     const own = owner();
     const fl = body.querySelector('#dwgFaces');
-    if (fl) fl.innerHTML = [...p.drawing.plan.faces].sort((a, b) => a.no - b.no).map(f => `<button data-face="${f.i}" class="${sel.has(f.i) ? 'on' : ''} ${own.has(f.i) && !sel.has(f.i) ? 'used' : ''}">${f.no}${f.name ? ' ' + esc(f.name) : ''} ${Math.round(f.area * 100) / 100}㎡</button>`).join('');
+    if (fl) fl.innerHTML = [...p.drawing.plan.faces].sort((a, b) => a.no - b.no).map(f => `<button data-face="${f.i}" class="${sel.has(f.i) ? 'on' : ''} ${own.has(f.i) && !sel.has(f.i) ? 'used' : ''}">区画${f.no}${f.name ? ' ' + esc(f.name) : ''} ${Math.round(f.area * 100) / 100}㎡</button>`).join('');
     const bar = body.querySelector('#dwgBar');
     if (bar) bar.innerHTML = sel.size
       ? `<button class="btn primary" data-act="mkOne">${icon('plus')}選んだ ${sel.size} 区画を1部屋にする</button>${sel.size > 1 ? `<button class="btn" data-act="mkEach">1区画ずつ部屋にする</button>` : ''}<button class="btn ghost" data-act="selClear">選ぶのをやめる</button>`
@@ -305,6 +305,8 @@ function stepRooms(ctx) {
       <div class="addbar" style="margin-top:12px"><button class="btn primary" id="addRoom">${icon('plus')}部屋を足す</button>
       </div>`;
     view = null;
+    /* 前の版で読み込んだ図面は、区画の番号を前のKAKUと同じ付け方に直す（部屋とのつながりは区画の i なので変わらない） */
+    if (p.drawing && p.drawing.plan && p.drawing.plan.order !== 2) { orderFacesOf(p.drawing.plan); p.drawing.plan.order = 2; touch(p); }
     if (p.drawing && p.drawing.plan) {
       view = planView(body.querySelector('#dwgView'), p.drawing.plan, {
         selected: () => sel, owner, fixtures: p.drawing.fixtures || [],
@@ -322,7 +324,7 @@ function stepRooms(ctx) {
         let res;
         if (cad) {
           res = await readWithFixtures(cad);
-          orderFacesOf(res.plan);
+          orderFacesOf(res.plan); res.plan.order = 2;
         } else res = await importDrawing(files);
         if (!res.plan || !res.plan.faces.length) { const msg = res.message || '部屋の区画が見つかりませんでした'; if (st) st.textContent = msg; toast(msg, { bad: true }); return; }
         p.rooms.forEach(r => { if (r.src === 'plan') { r.src = 'plan-old'; delete r.faces; } });

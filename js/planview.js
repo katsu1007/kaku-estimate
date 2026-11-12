@@ -2,6 +2,34 @@
 const COLORS = ['#ff8a3d', '#3ccf8e', '#5ab7ff', '#f3c04f', '#c084fc', '#ff6b9a', '#8bd450', '#9aa7b8'];
 export const roomColor = n => COLORS[(n || 0) % COLORS.length];
 
+/* 器具の絵：種類ごとの色と形。背面（壁側）の向き back：N・S・E・W */
+const FIX_COLOR = { toilet: '#ff8a3d', urinal: '#5ab7ff', counter: '#3ccf8e', sink: '#3ccf8e', slop: '#c084fc', bath: '#5ab7ff', kitchen: '#f3c04f', unknown: '#f3c04f' };
+const FIX_LABEL = { toilet: '便器', urinal: '小便器', counter: '洗面', sink: '手洗', slop: 'SK', bath: '浴槽', kitchen: 'キッチン', unknown: '？' };
+function fixSymbol(x, lw) {
+  const [x0, y0, x1, y1] = x.b, c = FIX_COLOR[x.t] || '#9aa7b8';
+  const X0 = x0, X1 = x1, Y0 = -y1, Y1 = -y0, W = X1 - X0, H = Y1 - Y0, cx = (X0 + X1) / 2, cy = (Y0 + Y1) / 2;
+  const sw = lw * 1.6, back = x.back || '';
+  let g = '';
+  if (x.t === 'toilet') {
+    /* タンク（背面側）と便座（だ円） */
+    const vert = back === 'N' || back === 'S';
+    const tk = vert ? H * 0.28 : W * 0.28;
+    const tank = back === 'N' ? [X0, Y0, W, tk] : back === 'S' ? [X0, Y1 - tk, W, tk] : back === 'W' ? [X0, Y0, tk, H] : back === 'E' ? [X1 - tk, Y0, tk, H] : null;
+    if (tank) g += `<rect x="${tank[0]}" y="${tank[1]}" width="${tank[2]}" height="${tank[3]}" rx="${sw}" fill="${c}" fill-opacity=".35" stroke="${c}" stroke-width="${sw}"/>`;
+    const ex = back === 'W' ? cx + tk / 2 : back === 'E' ? cx - tk / 2 : cx, ey = back === 'N' ? cy + tk / 2 : back === 'S' ? cy - tk / 2 : cy;
+    g += `<ellipse cx="${ex}" cy="${ey}" rx="${(vert ? W : W - tk) * 0.42}" ry="${(vert ? H - tk : H) * 0.42}" fill="${c}" fill-opacity=".2" stroke="${c}" stroke-width="${sw}"/>`;
+  } else if (x.t === 'counter' || x.t === 'sink' || x.t === 'slop' || x.t === 'kitchen') {
+    g += `<rect x="${X0}" y="${Y0}" width="${W}" height="${H}" rx="${sw * 2}" fill="${c}" fill-opacity=".15" stroke="${c}" stroke-width="${sw}"/>`;
+    const r = Math.min(W, H) * 0.3;
+    if (x.t !== 'kitchen') g += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${c}" stroke-width="${sw}"/>`;
+  } else {
+    g += `<rect x="${X0}" y="${Y0}" width="${W}" height="${H}" rx="${Math.min(W, H) * 0.35}" fill="${c}" fill-opacity=".2" stroke="${c}" stroke-width="${sw}"/>`;
+  }
+  const fs = Math.max(0.12, Math.min(0.22, Math.min(W, H) * 0.45));
+  g += `<text x="${cx}" y="${cy}" font-size="${fs}" text-anchor="middle" dominant-baseline="central" fill="${c}" font-weight="700" stroke="var(--bg)" stroke-width="${fs * 0.18}" paint-order="stroke">${FIX_LABEL[x.t] || ''}</text>`;
+  return `<g>${g}</g>`;
+}
+
 export function planView(box, plan, opt = {}) {
   const xs = [], ys = [];
   plan.segs.forEach(s => { xs.push(s[0], s[2]); ys.push(s[1], s[3]); });
@@ -17,7 +45,7 @@ export function planView(box, plan, opt = {}) {
       <g class="faces"></g>
       <path d="${pathOf(plan.dsegs || [])}" fill="none" stroke="var(--faint)" stroke-width="${lw}" stroke-dasharray="${lw * 4} ${lw * 3}"/>
       <path d="${pathOf(plan.segs)}" fill="none" stroke="var(--text)" stroke-width="${lw}" stroke-linecap="round" opacity=".85"/>
-      <g class="fixes">${(opt.fixtures || []).filter(x => x.t !== 'other').map(x => `<rect x="${x.b[0]}" y="${-x.b[3]}" width="${x.b[2] - x.b[0]}" height="${x.b[3] - x.b[1]}" fill="none" stroke="${x.t === 'unknown' ? 'var(--warn)' : 'var(--info)'}" stroke-width="${lw * 1.6}" pointer-events="none"/>`).join('')}</g>
+      <g class="fixes" pointer-events="none">${(opt.fixtures || []).filter(x => x.t !== 'other').map(x => fixSymbol(x, lw)).join('')}</g>
       <g class="labels" font-size="${fs}" text-anchor="middle"></g></svg>
     <div class="pv-tools"><button class="iconbtn" data-z="in" aria-label="拡大">＋</button><button class="iconbtn" data-z="out" aria-label="縮小">－</button><button class="iconbtn" data-z="fit" aria-label="全体を表示">⤢</button></div></div>`;
   const svg = box.querySelector('svg');
@@ -39,7 +67,7 @@ export function planView(box, plan, opt = {}) {
     }).join('');
     svg.querySelector('.labels').innerHTML = plan.faces.map(f => {
       const o = owner.get(f.i), s = sel.has(f.i);
-      return `<text x="${f.cx}" y="${-f.cy}" fill="${s ? 'var(--accent)' : o != null ? roomColor(o) : 'var(--muted)'}" font-weight="700" pointer-events="none">${f.no}<tspan x="${f.cx}" dy="1.15em" font-weight="400" font-size="${fs * 0.8}">${(Math.round(f.area * 100) / 100)}㎡</tspan></text>`;
+      return `<text x="${f.cx}" y="${-f.cy}" fill="${s ? 'var(--accent)' : o != null ? roomColor(o) : 'var(--muted)'}" font-weight="700" pointer-events="none">区画${f.no}<tspan x="${f.cx}" dy="1.15em" font-weight="400" font-size="${fs * 0.8}">${(Math.round(f.area * 100) / 100)}㎡</tspan></text>`;
     }).join('');
   }
   paint();
