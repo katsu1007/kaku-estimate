@@ -17,6 +17,7 @@ export function planView(box, plan, opt = {}) {
       <g class="faces"></g>
       <path d="${pathOf(plan.dsegs || [])}" fill="none" stroke="var(--faint)" stroke-width="${lw}" stroke-dasharray="${lw * 4} ${lw * 3}"/>
       <path d="${pathOf(plan.segs)}" fill="none" stroke="var(--text)" stroke-width="${lw}" stroke-linecap="round" opacity=".85"/>
+      <g class="fixes">${(opt.fixtures || []).filter(x => x.t !== 'other').map(x => `<rect x="${x.b[0]}" y="${-x.b[3]}" width="${x.b[2] - x.b[0]}" height="${x.b[3] - x.b[1]}" fill="none" stroke="${x.t === 'unknown' ? 'var(--warn)' : 'var(--info)'}" stroke-width="${lw * 1.6}" pointer-events="none"/>`).join('')}</g>
       <g class="labels" font-size="${fs}" text-anchor="middle"></g></svg>
     <div class="pv-tools"><button class="iconbtn" data-z="in" aria-label="拡大">＋</button><button class="iconbtn" data-z="out" aria-label="縮小">－</button><button class="iconbtn" data-z="fit" aria-label="全体を表示">⤢</button></div></div>`;
   const svg = box.querySelector('svg');

@@ -2,7 +2,8 @@
 import { state, registerView, setTop, go, touch, opts, findProject, masterItems, categories, removeProject, restoreProject, newProject, flush } from './app.js';
 import { roomGeom, lineQty, netQty, totals, check, MEASURES, KINDS, isRoomBased } from './calc.js';
 import { SYS, MANY, sysOptions, rebuild, PIPE_LOSS } from './piping.js';
-import { importDrawing, groupGeom, planCH } from './drawing.js';
+import { importDrawing, groupGeom, planCH, orderFaces as orderFacesOf } from './drawing.js';
+import { readWithFixtures, roomOpenRuns, FIX_NAMES, FIX_ITEMS, FIX_WORDS } from './legacy.js';
 import { planView, roomColor } from './planview.js';
 import { uid } from './store.js';
 import { icon, esc, yen, fmt, pct, toast, modal, ask, matchItem, $, $$ } from './ui.js';
@@ -87,7 +88,7 @@ function refresh(p, step) {
   /* 部屋のチップ */
   p.rooms.forEach(r => {
     const g = roomGeom(r, o);
-    set('room:' + r.id, `<span class="chip">床 <b>${fmt(g.floor)}</b>㎡</span><span class="chip">壁 <b>${fmt(g.wall)}</b>㎡</span><span class="chip">天井 <b>${fmt(g.ceil)}</b>㎡</span><span class="chip">周り <b>${fmt(g.perim)}</b>m</span><span class="chip">巾木 <b>${fmt(g.base)}</b>m</span><span class="chip">天井高 <b>${fmt(g.h)}</b>m</span>`);
+    set('room:' + r.id, (g.openAuto ? `<span class="chip" style="border-color:var(--info)">図面のドア ${g.openAuto.doors}・開口 ${g.openAuto.gaps} <b>−${fmt(g.openAuto.area)}</b>㎡</span>` : '') + `<span class="chip">床 <b>${fmt(g.floor)}</b>㎡</span><span class="chip">壁 <b>${fmt(g.wall)}</b>㎡</span><span class="chip">天井 <b>${fmt(g.ceil)}</b>㎡</span><span class="chip">周り <b>${fmt(g.perim)}</b>m</span><span class="chip">巾木 <b>${fmt(g.base)}</b>m</span><span class="chip">天井高 <b>${fmt(g.h)}</b>m</span>`);
   });
   /* 明細の金額 */
   p.lines.forEach((l, i) => {
@@ -179,6 +180,7 @@ function roomCard(r, i) {
         <button class="iconbtn" data-act="delWin" data-wi="${wi}" aria-label="この窓を消す">${icon('x')}</button></div>`).join('')}
         <div><button class="btn sm" data-act="addWin">${icon('plus')}窓を足す</button></div></div>
     </details>
+    ${(r.openRuns || []).length ? `<label class="row small muted" style="gap:8px;margin-top:10px"><input type="checkbox" data-open-toggle ${r.openOff ? '' : 'checked'} style="width:20px;height:20px">図面で見つけたドア・開口を壁の面積から引く（引く時は、上の「ドア」の数は使いません）</label>` : ''}
     <div class="chips" data-out="room:${r.id}"></div>
   </div>`;
 }
@@ -196,8 +198,55 @@ function drawingCard(p) {
       <button class="btn sm ghost danger" data-act="dwgClear">${icon('trash')}図面を消す</button></div>
     <div id="dwgView"></div>
     <div class="addbar" style="margin-top:10px" id="dwgBar"></div>
+    ${fixSummary(d)}
     <details class="more"><summary>区画の一覧から選ぶ（図面で押しにくい小さい区画など）</summary><div class="facelist" id="dwgFaces"></div></details>
     <div class="small muted" id="dwgStatus" style="margin-top:6px"></div></div>`;
+}
+
+function fixSummary(d) {
+  const fx = d.fixtures || [];
+  if (!fx.length) return d.fixtures ? '<div class="small muted" style="margin-top:8px">器具は見つかりませんでした。</div>' : '';
+  const c = {}; fx.forEach(x => { c[x.t] = (c[x.t] || 0) + 1; });
+  return `<div class="row" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)"><b class="small">図面の器具</b>
+    ${Object.entries(c).map(([t, n]) => `<span class="pill ${t === 'unknown' ? 'warn' : t === 'other' ? '' : 'info'}">${esc(FIX_NAMES[t] || t)} ${n}</span>`).join('')}
+    <span class="spacer"></span><button class="btn sm primary" data-act="fixLines">${icon('list')}器具を明細に入れる</button></div>`;
+}
+
+function fixLinesDialog(p, after) {
+  const fx = (p.drawing && p.drawing.fixtures) || [];
+  const c = {}; fx.forEach(x => { c[x.t] = (c[x.t] || 0) + 1; });
+  const items = masterItems();
+  const types = Object.keys(c).filter(t => FIX_ITEMS[t]);
+  const opts2 = (t, kind, def) => {
+    const words = FIX_WORDS[t] || [];
+    const list = items.filter(i => words.some(w => i.name.includes(w)) && (kind === 'labor' ? i.kind === 'labor' : i.kind !== 'labor'));
+    return `<option value="">入れない</option>` + list.map(i => `<option value="${esc(i.id)}" ${i.id === def ? 'selected' : ''}>${esc(i.name)}${i.spec ? ' ' + esc(i.spec) : ''}（${yen(i.price)}）</option>`).join('');
+  };
+  const skip = (c.unknown || 0) + (c.other || 0);
+  const m = modal({
+    title: '図面の器具を明細に入れる', wide: true,
+    body: `<p class="small muted" style="margin-top:0">種類ごとに、入れる品目と数を確かめてください。前に入れた器具の行は入れ直します。${skip ? `「判定保留」「器具ではない」の ${skip} 個は入れません。` : ''}</p>
+      <div class="grid" style="gap:10px">${types.map(t => `<div class="card" style="padding:12px" data-ft="${t}"><div class="row" style="margin-bottom:8px"><b>${esc(FIX_NAMES[t])}</b><span class="pill info">図面で ${c[t]} 個</span></div>
+        <div class="grid g3"><label class="f">本体<select class="in" data-k="body">${opts2(t, 'mat', FIX_ITEMS[t][0])}</select></label>
+        <label class="f">取付の手間<select class="in" data-k="labor">${opts2(t, 'labor', FIX_ITEMS[t][1])}</select></label>
+        <label class="f">数<input class="in num" type="number" inputmode="numeric" data-k="n" value="${c[t]}"></label></div></div>`).join('') || '<p class="muted">明細に入れられる器具がありません。</p>'}</div>`,
+    foot: `<button class="btn" data-close>やめる</button><button class="btn primary" id="fxGo">明細に入れる</button>`
+  });
+  $('#fxGo', m.el).onclick = () => {
+    let added = 0;
+    $$('[data-ft]', m.el).forEach(row => {
+      const t = row.dataset.ft, n = Number($('[data-k=n]', row).value) || 0;
+      p.lines = p.lines.filter(l => l.fromFix !== t);
+      if (!(n > 0)) return;
+      ['body', 'labor'].forEach(k => {
+        const id = $(`[data-k=${k}]`, row).value; const it = id && items.find(i => i.id === id); if (!it) return;
+        p.lines.push({ id: uid('l'), itemId: it.id, name: it.name, spec: it.spec || '', unit: it.unit, kind: it.kind, price: it.price || '', cost: '', loss: '', sheet: 0, cat: it.cat, qty: n, basis: null, fromFix: t });
+        added++;
+      });
+    });
+    touch(p); m.close(); after && after();
+    toast(added ? `器具の行を ${added} 行入れました（③工事で確かめてください）` : '入れる行がありませんでした');
+  };
 }
 
 function stepRooms(ctx) {
@@ -239,12 +288,17 @@ function stepRooms(ctx) {
       const geo = groupGeom(F);
       const names = [...new Set(F.map(f => f.name).filter(Boolean))];
       const chs = F.map(f => +f.ch || 0).filter(v => v > 0);
+      const runs = p.drawing.open ? roomOpenRuns(g, plan, p.drawing.open) : [];
       p.rooms.push({ id: uid('r'), name: names.join('・') || `区画 ${F.map(f => f.no).join('・')}`, shape: 'free', area: geo.area, perim: geo.perim,
-        h: chs.length ? Math.max(...chs) : (defCH || ''), qty: 1, doors: 0, winCount: 0, windows: [], faces: g, src: 'plan', color: nextColor() });
+        h: chs.length ? Math.max(...chs) : (defCH || ''), qty: 1, doors: 0, winCount: 0, windows: [], faces: g, src: 'plan', color: nextColor(), openRuns: runs });
     });
+    /* 区画を外した部屋の開口も決め直す */
+    if (p.drawing.open) p.rooms.forEach(r => { if (r.src === 'plan' && r.faces) r.openRuns = roomOpenRuns(r.faces, plan, p.drawing.open); });
     const n = groups.length;
+    const made = p.rooms.slice(-n);
+    const od = made.reduce((s, r) => s + (r.openRuns || []).filter(x => x.ty === 'd').length, 0), og = made.reduce((s, r) => s + (r.openRuns || []).filter(x => x.ty !== 'd').length, 0);
     sel.clear(); touch(p); draw();
-    toast(`${n} 部屋を作りました`);
+    toast(od + og ? `${n} 部屋を作りました。図面のドア ${od} か所・開口 ${og} か所を壁の面積から引きました` : `${n} 部屋を作りました`, { ms: 5000 });
   };
   const draw = () => {
     body.innerHTML = drawingCard(p) + `<div class="rooms">${p.rooms.map(roomCard).join('') || `<div class="card empty"><b>まだ部屋がありません</b>下のボタンで部屋を足してください。</div>`}</div>
@@ -253,7 +307,7 @@ function stepRooms(ctx) {
     view = null;
     if (p.drawing && p.drawing.plan) {
       view = planView(body.querySelector('#dwgView'), p.drawing.plan, {
-        selected: () => sel, owner,
+        selected: () => sel, owner, fixtures: p.drawing.fixtures || [],
         onTap: i => { if (sel.has(i)) sel.delete(i); else sel.add(i); paintSel(); }
       });
       paintSel();
@@ -264,12 +318,17 @@ function stepRooms(ctx) {
       if (p.drawing && p.rooms.some(r => r.src === 'plan') && !(await ask('図面を読み直しますか？', '今の図面から作った部屋は残りますが、図面とのつながりは外れます。', { ok: '読み直す' }))) { e.target.value = ''; return; }
       const st = body.querySelector('#dwgStatus'); if (st) st.textContent = '図面を読み込んでいます…（大きい図面は少し時間がかかります）';
       try {
-        const res = await importDrawing(files);
-        if (!res.plan) { if (st) st.textContent = res.message; toast(res.message, { bad: true }); return; }
+        const cad = files.find(f => /\.(jww|jwc|dxf)$/i.test(f.name));
+        let res;
+        if (cad) {
+          res = await readWithFixtures(cad);
+          orderFacesOf(res.plan);
+        } else res = await importDrawing(files);
+        if (!res.plan || !res.plan.faces.length) { const msg = res.message || '部屋の区画が見つかりませんでした'; if (st) st.textContent = msg; toast(msg, { bad: true }); return; }
         p.rooms.forEach(r => { if (r.src === 'plan') { r.src = 'plan-old'; delete r.faces; } });
-        p.drawing = { fileName: files.map(f => f.name).join('、'), at: Date.now(), plan: res.plan };
+        p.drawing = { fileName: (cad ? [cad] : files).map(f => f.name).join('、'), at: Date.now(), plan: res.plan, fixtures: cad ? res.fixtures : null, open: cad ? res.open : null };
         sel.clear(); touch(p); draw();
-        toast(`区画を ${res.plan.faces.length} 個見つけました`);
+        toast(`区画を ${res.plan.faces.length} 個${cad ? `、器具を ${res.fixtures.filter(x => x.t !== 'other').length} 個` : ''}見つけました`);
       } catch (err) {
         if (st) st.textContent = '読み込めませんでした：' + err.message;
         toast('図面を読み込めませんでした：' + err.message, { bad: true });
@@ -295,6 +354,7 @@ function stepRooms(ctx) {
     const da = e.target.closest('[data-act]');
     if (da && !da.closest('[data-room]')) {
       const a = da.dataset.act;
+      if (a === 'fixLines') return fixLinesDialog(p, () => {});
       if (a === 'mkOne') return makeRooms(false);
       if (a === 'mkEach') return makeRooms(true);
       if (a === 'selClear') { sel.clear(); paintSel(); return; }
@@ -308,6 +368,7 @@ function stepRooms(ctx) {
     }
     const card = e.target.closest('[data-room]'); if (!card) return;
     const r = p.rooms.find(x => x.id === card.dataset.room); if (!r) return;
+    if (e.target.matches('[data-open-toggle]')) { r.openOff = !e.target.checked; touch(p); refresh(); return; }
     const sh = e.target.closest('[data-shape]');
     if (sh) {
       r.shape = sh.dataset.shape;

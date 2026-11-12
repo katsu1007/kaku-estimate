@@ -177,3 +177,15 @@ test('配管のセット：元の配管の行を消すと検算でエラー', ()
   const kid = { id: 'k', name: 'エルボ', qty: '', price: 100, kind: 'mat', basis: { measure: 'link', line: 'gone', rate: 0.4, ceil: true } };
   assert.ok(check({ rooms: [], lines: [kid] }).some(c => /元の配管/.test(c.msg)));
 });
+
+test('図面で見つけたドア・開口を壁から引く（前のKAKUと同じ決め方、手計算）', () => {
+  // 4×3、天井2.4、ドア幅0.8（高さ2.0）と扉の無い開口1.2（×天井高2.4）。手で入れたドア1か所は使わない
+  const r = { w: 4, d: 3, h: 2.4, doors: 1, openRuns: [{ ty: 'd', len: 0.8 }, { ty: 'g', len: 1.2 }] };
+  const g = roomGeom(r);
+  assert.equal(g.wall, 33.6 - 1.6 - 2.88);  // 14×2.4 − 0.8×2.0 − 1.2×2.4 = 29.12
+  assert.equal(g.base, 14 - 2);             // 開口の幅 0.8+1.2 ぶん短く
+  // 天井が低い（1.9m）時は、ドアの高さは天井高−5cm
+  assert.equal(roomGeom({ w: 2, d: 2, h: 1.9, openRuns: [{ ty: 'd', len: 1 }] }).wall, Math.round((8 * 1.9 - 1.85) * 1000) / 1000);
+  // 「引かない」にした部屋は、手で入れたドアの数に戻る
+  assert.equal(roomGeom({ ...r, openOff: true }).wall, 33.6 - 1.6);
+});

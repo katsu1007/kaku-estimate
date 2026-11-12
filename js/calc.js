@@ -59,9 +59,15 @@ export function roomGeom(room, opt = DEFAULTS) {
   const wins = Array.isArray(room.windows) ? room.windows : [];
   const winSized = wins.reduce((s, x) => s + Math.max(0, num(x.w)) / 1000 * Math.max(0, num(x.h)) / 1000 * Math.max(0, Math.round(num(x.n, 1))), 0);
   const winCount = Math.max(0, Math.round(num(room.winCount)));
-  const openings = doors * o.doorArea + winSized + winCount * o.winArea;
+  /* 図面で見つけたドア・開口（openRuns）がある部屋は、それを引いて、手で入れたドアの数は使わない（二重に引かないため）
+   * ドア：幅×高さ（2.0m、天井が低い時は天井高−5cm）／扉の無い開口：幅×天井高。巾木は開口の幅ぶん短く */
+  const runs = !room.openOff && Array.isArray(room.openRuns) && room.openRuns.length ? room.openRuns : null;
+  const dh = Math.min(2, h - 0.05);
+  const runA = runs ? runs.reduce((s, r) => s + Math.max(0, num(r.len)) * (r.ty === 'd' ? dh : h), 0) : 0;
+  const runW = runs ? runs.reduce((s, r) => s + Math.max(0, num(r.len)), 0) : 0;
+  const openings = (runs ? runA : doors * o.doorArea) + winSized + winCount * o.winArea;
   const wall1 = Math.max(0, perim * h - openings);
-  const base1 = Math.max(0, perim - doors * o.doorW);
+  const base1 = Math.max(0, perim - (runs ? runW : doors * o.doorW));
   return {
     qty, h,
     floor: round3(area * qty),
@@ -70,7 +76,8 @@ export function roomGeom(room, opt = DEFAULTS) {
     wall: round3(wall1 * qty),
     base: round3(base1 * qty),
     count: qty,
-    openings: round3(openings * qty)
+    openings: round3(openings * qty),
+    openAuto: runs ? { area: round3(runA * qty), width: round3(runW * qty), doors: runs.filter(r => r.ty === 'd').length * qty, gaps: runs.filter(r => r.ty !== 'd').length * qty } : null
   };
 }
 
