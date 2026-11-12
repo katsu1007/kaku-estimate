@@ -49,7 +49,7 @@ export async function readWithFixtures(file) {
       const plan={segs:P.segs.map(s=>s.map(q)),dsegs:(P.dsegs||[]).map(s=>s.map(q)),
         faces:P.faces.map(f=>({i:f.i,name:f.name||'',area:f.area,peri:f.peri,ch:f.ch||0,poly:f.poly.map(p=>[q(p[0]),q(p[1])])})),titles:(P.titles||[]).slice(0,40)};
       let fixtures=[],open={};
-      if(F&&F.fx){fixtures=F.fx.map(x=>({t:x.t,b:KF_gbox(x.b).map(q),back:KF_gback(x.back)||''}));
+      if(F&&F.fx){fixtures=F.fx.map(x=>{let o=null;try{o=KF_OUT[x.t]?KF_outPt(x):null}catch(e){}return{t:x.t,b:KF_gbox(x.b).map(q),back:KF_gback(x.back)||'',out:o?o.map(q):null}});
         const O=(typeof KX_openScan==='function'&&KX_openScan())||{};
         Object.keys(O).forEach(k=>{open[k]=O[k].map(r=>({ty:r.ty,len:Math.round(r.len*100)/100,a:r.a.map(q),b:r.b.map(q),n:r.n.map(q)}))})}
       return JSON.stringify({plan,fixtures,open,doors:F&&F.doors?F.doors.length:0,doorList:(F&&F.doors||[]).filter(d=>d&&d.c).map(d=>({c:d.c.map(q),m:(d.m||d.c).map(q),r:+d.r||0.8})),fixG:F&&F.g||'',fixGd:F&&F.gd||''})})()`);

@@ -88,9 +88,28 @@ export function leg(a, b, poly) { const dx = b[0] - a[0], dy = b[1] - a[1]; if (
   return [i1 && !i2 ? e1 : i2 && !i1 ? e2 : (Math.abs(dx) >= Math.abs(dy) ? e1 : e2), b]; }
 function chain(start, items) { const left = items.slice(), out = []; let cur = start; while (left.length) { let bi = 0, bd = 1e9; left.forEach((x, i) => { const d = man(cur, x.l); if (d < bd) { bd = d; bi = i; } }); const x = left.splice(bi, 1)[0]; out.push(x); cur = x.l; } return out; }
 
-/* plan: {faces, segs}, lights: [{key, l:[x,y]}], switches: [{key, l}] 置いたスイッチ, panels: [[x,y]], chOf(faceI) */
-export function wirePlan({ plan, doors = [], lights = [], switches = [], panels = [], chOf = () => 2.4 }) {
-  const res = { paths: [], home: [], sws: [], lenL: 0, lenH: 0, circ: 0, autoSw: 0, far: 0, nL: lights.length };
+/* トイレのブース：便器が入っている2.5㎡以下の区画。照明とコンセントは、ドアの外の部屋（なければ接している一番大きい区画）の
+ * スイッチ・回路に入れる（ブースごとにスイッチは付けない） */
+export function boothHosts(faces, fixtures = [], doors = []) {
+  const H = {};
+  faces.forEach(f => {
+    if (f.area > 2.5) return;
+    if (!fixtures.some(x => x.t === 'toilet' && x.b && pip((x.b[0] + x.b[2]) / 2, (x.b[1] + x.b[3]) / 2, f.poly))) return;
+    let cx = 0, cy = 0; f.poly.forEach(q => { cx += q[0] / f.poly.length; cy += q[1] / f.poly.length; });
+    let host = null;
+    const d = doors.filter(d => d.c && polyD(d.c, f.poly) < .3).sort((a, b) => polyD(a.c, f.poly) - polyD(b.c, f.poly))[0];
+    if (d) { const L = Math.hypot(d.c[0] - cx, d.c[1] - cy) || 1, q = [d.c[0] + (d.c[0] - cx) / L * .35, d.c[1] + (d.c[1] - cy) / L * .35];
+      faces.forEach(g => { if (g.i !== f.i && pip(q[0], q[1], g.poly) && (!host || g.area < host.area)) host = g; }); }
+    if (!host) faces.forEach(g => { if (g.i === f.i || g.area <= 2.5) return; if (f.poly.some(q => polyD(q, g.poly) < .3) && (!host || g.area > host.area)) host = g; });
+    if (host && host.area > f.area) H[f.i] = host;
+  });
+  return H;
+}
+
+/* plan: {faces, segs}, lights/outlets: [{key, l:[x,y]}], switches: [{key, l}] 置いたスイッチ, panels: [[x,y]], link: {照明key: スイッチkey}, chOf(faceI)
+ * 前のKAKUの KW_calc と同じ計算。コンセント：入口のスイッチ（なければ1個目）から近い順に縦横の長さ＋1個ごとに（天井高−0.25m） */
+export function wirePlan({ plan, doors = [], fixtures = [], lights = [], outlets = [], switches = [], panels = [], link = {}, chOf = () => 2.4, booth = true }) {
+  const res = { paths: [], home: [], sws: [], lenL: 0, lenO: 0, lenH: 0, circ: 0, autoSw: 0, far: 0, nL: lights.length, nO: 0, assign: {}, booths: 0 };
   const faces = (plan.faces || []).filter(f => f.poly && (f.area || areaOf(f.poly)) >= .6).map(f => ({ ...f, area: f.area || areaOf(f.poly) }));
   const bx = f => { let a = 1e9, b = -1e9; f.poly.forEach(q => { a = Math.min(a, q[0]); b = Math.max(b, q[0]); }); return [a, b]; };
   const fgrp = {}; let gi = 0, mx = -1e9;
@@ -98,18 +117,34 @@ export function wirePlan({ plan, doors = [], lights = [], switches = [], panels 
   const pg = l => { let f = null, bd = 1e9; faces.forEach(x => { const dd = polyD(l, x.poly); if (dd < bd) { bd = dd; f = x; } }); return f ? fgrp[f.i] : -1; };
   const pns = panels.map(l => ({ l, grp: pg(l) }));
   const owner = (l, tol) => { let b = null; faces.forEach(f => { const dd = polyD(l, f.poly); if (dd <= tol && (!b || dd < b.dd - 1e-6 || (Math.abs(dd - b.dd) < 1e-6 && f.area < b.f.area))) b = { f, dd }; }); return b && b.f; };
+  const host = booth ? boothHosts(faces, fixtures, doors) : {};
+  res.booths = Object.keys(host).length;
   const byFace = {}, order = [];
-  lights.forEach(d => { const f = owner(d.l, .05); if (!f) return; if (!byFace[f.i]) { byFace[f.i] = { f, L: [] }; order.push(f.i); } byFace[f.i].L.push(d); });
-  const used = {};
-  order.forEach(fi => { const { f, L } = byFace[fi], ch = chOf(f.i); let head = null;
+  const put = (f, k, d) => { if (host[f.i]) f = host[f.i]; if (!byFace[f.i]) { byFace[f.i] = { f, L: [], O: [] }; order.push(f.i); } byFace[f.i][k].push(d); };
+  lights.forEach(d => { const f = owner(d.l, .05); if (f) put(f, 'L', d); });
+  outlets.forEach(d => { const f = owner(d.l, .35); if (f) put(f, 'O', d); });
+  const allSw = {}; switches.forEach(s => { allSw[s.key] = s; });
+  const used = {}, faceS = {};
+  /* 先に全部の区画のスイッチを決める（つなぎ替えで、後の区画のスイッチにもつなげるように） */
+  order.forEach(fi => { const { f, L } = byFace[fi]; if (!L.length) return;
     let S = switches.filter(s => polyD(s.l, f.poly) <= .35);
-    if (!S.length) S = [{ key: 'a:' + f.i, l: autoSwitch(f, faces, plan.segs || [], doors), auto: true }];
-    const grp = {}, gk = [];
-    L.forEach(d => { let s = null, bd = 1e9; S.forEach(x => { const dd = man(x.l, d.l); if (dd < bd) { bd = dd; s = x; } }); if (!grp[s.key]) { grp[s.key] = { s, L: [] }; gk.push(s.key); } grp[s.key].L.push(d); });
-    gk.forEach(k => { const g = grp[k], s = g.s; if (!used[s.key]) { used[s.key] = 1; res.sws.push(s); if (s.auto) res.autoSw++; }
-      const ord = chain(s.l, g.L), pts = [s.l]; let cur = s.l, len = 0;
-      ord.forEach(d => { leg(cur, d.l, f.poly).forEach(q => pts.push(q)); len += man(cur, d.l); cur = d.l; });
-      res.paths.push({ pts }); res.circ++; res.lenL += len + Math.max(0, ch - 1.2) + ord.length * .2; if (!head) head = s.l; });
+    if (!S.length) { const as = { key: 'a:' + f.i, l: autoSwitch(f, faces, plan.segs || [], doors), auto: true }; S = [as]; allSw[as.key] = as; }
+    faceS[fi] = S; });
+  order.forEach(fi => { const { f, L, O } = byFace[fi], ch = chOf(f.i); let head = null;
+    if (L.length) {
+      const S = faceS[fi];
+      const grp = {}, gk = [];
+      L.forEach(d => { let s = link[d.key] && allSw[link[d.key]] ? allSw[link[d.key]] : null;
+        if (!s) { let bd = 1e9; S.forEach(x => { const dd = man(x.l, d.l); if (dd < bd) { bd = dd; s = x; } }); }
+        res.assign[d.key] = s.key; if (!grp[s.key]) { grp[s.key] = { s, L: [] }; gk.push(s.key); } grp[s.key].L.push(d); });
+      gk.forEach(k => { const g = grp[k], s = g.s; if (!used[s.key]) { used[s.key] = 1; res.sws.push(s); if (s.auto) res.autoSw++; }
+        const ord = chain(s.l, g.L), pts = [s.l]; let cur = s.l, len = 0;
+        ord.forEach(d => { leg(cur, d.l, f.poly).forEach(q => pts.push(q)); len += man(cur, d.l); cur = d.l; });
+        res.paths.push({ pts }); res.circ++; res.lenL += len + Math.max(0, ch - 1.2) + ord.length * .2; if (!head) head = s.l; });
+    }
+    if (O.length) { const st = head || O[0].l, ordO = chain(st, O); let c2 = st, l2 = 0;
+      ordO.forEach((d, i) => { if (i || head) l2 += man(c2, d.l); c2 = d.l; });
+      res.lenO += l2 + ordO.length * Math.max(0, ch - .25); res.nO += ordO.length; if (!head) head = O[0].l; }
     if (pns.length && head) { let pn = null, pd = 1e9; pns.forEach(d => { if (d.grp !== fgrp[f.i]) return; const dd = man(d.l, head); if (dd < pd) { pd = dd; pn = d; } });
       if (pn) { res.lenH += pd + Math.max(0, ch - 1.5); res.home.push({ pts: [pn.l].concat(leg(pn.l, head, f.poly)) }); } else res.far++; }
   });

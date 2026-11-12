@@ -89,6 +89,8 @@ export function floorBreakdown(p, o) {
       tp.drawing.walls = (d.walls || []).filter(w => wallAt(w) === f).map(clone);
       tp.drawing.hatsu = (d.hatsu || []).filter(h => hatsuAt(h) === f).map(clone);
       tp.drawing.lights = (d.lights || []).filter(x => floorAt(x.x, x.y) === f).map(clone);
+      tp.drawing.outlets = (d.outlets || []).filter(x => floorAt(x.x, x.y) === f).map(clone);
+      tp.drawing.switches = (d.switches || []).filter(x => floorAt(x.x, x.y) === f).map(clone);
       if (d.panel && floorAt(d.panel[0], d.panel[1]) !== f) tp.drawing.panel = null;
       syncDemoLines(tp);
     }
