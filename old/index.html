@@ -1479,7 +1479,9 @@ function KF_build(ents,P,fac,roles){roles=roles||{};const m=1/1000;
     let GS=Object.values(G).map(g=>({g,b:bbx(g)}));GS.sort((p,q)=>(q.b[2]-q.b[0])*(q.b[3]-q.b[1])-(p.b[2]-p.b[0])*(p.b[3]-p.b[1]));
     for(let i=GS.length-1;i>=0;i--){const a=GS[i].b;const k=GS.findIndex((o,j)=>j<i&&o.g[0].ly===GS[i].g[0].ly&&Math.max(o.b[2]-o.b[0],o.b[3]-o.b[1])<=3.6&&o.b[0]<=a[0]&&o.b[1]<=a[1]&&o.b[2]>=a[2]&&o.b[3]>=a[3]);if(k>=0){GS[k].g.push(...GS[i].g);GS.splice(i,1)}}
     const mk=g=>{let b=[Infinity,Infinity,-Infinity,-Infinity],cv=0,circ=0,burn=0;g.forEach(o=>{if(o.circ&&o.r>=.05&&o.r<=.14)burn++;b=[Math.min(b[0],o.b[0]),Math.min(b[1],o.b[1]),Math.max(b[2],o.b[2]),Math.max(b[3],o.b[3])];cv+=o.cv;circ+=o.circ});
-      const bowl=KF_bowls(g),tub=g.reduce((m,o)=>o.cv?Math.max(m,o.b[2]-o.b[0],o.b[3]-o.b[1]):m,0),w=b[2]-b[0],h=b[3]-b[1],t=KF_guess(w,h,cv,circ,g.length,burn,bowl,tub);
+      /* 曲線の無い器具（四角と多角形だけで描いた衛生器具）：衛生・設備の層にあって、中に別の形（槽・ボウル）を抱えている物だけ候補にする */
+      const rect=!cv&&KF_SAN.test(g[0].ly||'')&&g.length>=2,rb=rect?KF_rbowls(g):0;if(rect){burn=g.filter(o=>o.cl&&Math.abs((o.b[2]-o.b[0])-(o.b[3]-o.b[1]))<.03&&(o.b[2]-o.b[0])>=.12&&(o.b[2]-o.b[0])<=.3).length}
+      const bowl=rect?rb:KF_bowls(g),tub=g.reduce((m,o)=>o.cv?Math.max(m,o.b[2]-o.b[0],o.b[3]-o.b[1]):m,0),w=b[2]-b[0],h=b[3]-b[1],t=rect&&!(rb||g.some(o=>o.cl&&o.pts.length>=7))?null:KF_guess(w,h,rect?1:cv,circ,g.length,burn,bowl,tub);
       if(window.KF_DBG)KF_DBG.push({b:b.map(v=>Math.round(v*1000)),cv,circ,burn,bowl,n:g.length,ly:g[0].ly,t,depth});return{b,cv,circ,w,h,t,n:g.length,ly:g[0].ly,bowl}};
     const put=r=>fx.push({id:'f'+(++n),b:r.b.map(v=>Math.round(v*1000)/1000),t:r.t,ot:r.t,cv:r.cv,circ:r.circ,n:r.n,ly:r.ly,bw:r.bowl});
     GS.map(o=>o.g).forEach(g=>{const r=mk(g),w=r.w,h=r.h;
@@ -1512,7 +1514,7 @@ function KF_build(ents,P,fac,roles){roles=roles||{};const m=1/1000;
   /* 壁との向きで見分け直す：便器は壁から奥へ長い（幅の1.15倍以上）。タンクのない壁掛け便器も同じ。
      手洗器は壁に沿って広い。どっちとも言えない時は無理に決めず「？（判定保留）」にする */
   fx.forEach(x=>{if(!x.back||!(x.t==='sink'||x.t==='toilet'))return;const hor=x.back==='N'||x.back==='S',w=hor?x.b[2]-x.b[0]:x.b[3]-x.b[1],d=hor?x.b[3]-x.b[1]:x.b[2]-x.b[0];x.w=w;x.d=d;
-    if(x.t==='sink'&&x.bd<=.1&&d>=.45&&d<=.9&&w>=.3&&w<=.5&&x.cv>=1){if(d>=1.15*w)x.t=x.ot='toilet';else if(d>=1.05*w)x.t=x.ot='unknown'}
+    if(x.t==='sink'&&x.bd<=.1&&d>=.4&&d<=.9&&w>=.28&&w<=.5&&x.cv>=1){if(d>=1.15*w)x.t=x.ot='toilet';else if(d>=1.05*w)x.t=x.ot='unknown'}
     /* 小便器の形：幅30〜45cm、壁からの奥行が幅とほぼ同じ */
     if(x.t==='sink'&&w>=.3&&w<=.45&&d>=.28&&d<=.47&&d>=.8*w&&d<=1.3*w)x.uc=1});
   /* 手洗器・小便器は壁に付いている物だけ（椅子・丸テーブルなどを外す） */
@@ -1557,13 +1559,27 @@ function KF_bowls(g){const C=g.filter(o=>Math.max(o.b[2]-o.b[0],o.b[3]-o.b[1])<=
   /* 外形に接していて曲線の少ない物は、カウンターの枠の切れ端（鉢ではない） */
   let G=[Infinity,Infinity,-Infinity,-Infinity];g.forEach(o=>{G=[Math.min(G[0],o.b[0]),Math.min(G[1],o.b[1]),Math.max(G[2],o.b[2]),Math.max(G[3],o.b[3])]});const mx=Math.max(...K.map(o=>o.cv));
   return K.filter(o=>o.cv>=mx*.25||!(o.b[0]<=G[0]+.01||o.b[1]<=G[1]+.01||o.b[2]>=G[2]-.01||o.b[3]>=G[3]-.01)).length}
+/* 四角い槽・ボウルの数（曲線の無い器具用）：外形の内側に離れて入っている閉じた形（15〜180cm）。
+ * 閉じたポリラインのほか、Jw_cad のように4本の線で描いた四角（端がつながった線のまとまりで、長さの合計が外周とほぼ同じ・全部が外周の上）も数える */
+function KF_rshapes(g){const S=g.filter(o=>o.cl).map(o=>({b:o.b}));const Ls=g.filter(o=>o.k==='line'),par=Ls.map((_,i)=>i),f=i=>{while(par[i]!==i){par[i]=par[par[i]];i=par[i]}return i};
+  const near=(p,q)=>Math.abs(p[0]-q[0])<.01&&Math.abs(p[1]-q[1])<.01;
+  for(let i=0;i<Ls.length;i++)for(let j=i+1;j<Ls.length;j++){const A=Ls[i].pts,B=Ls[j].pts;if(near(A[0],B[0])||near(A[0],B[1])||near(A[1],B[0])||near(A[1],B[1]))par[f(i)]=f(j)}
+  const C={};Ls.forEach((o,i)=>{(C[f(i)]=C[f(i)]||[]).push(o)});
+  Object.values(C).forEach(c=>{if(c.length<4)return;let b=[Infinity,Infinity,-Infinity,-Infinity],t=0;c.forEach(o=>{b=[Math.min(b[0],o.b[0]),Math.min(b[1],o.b[1]),Math.max(b[2],o.b[2]),Math.max(b[3],o.b[3])];t+=Math.hypot(o.pts[1][0]-o.pts[0][0],o.pts[1][1]-o.pts[0][1])});
+    const per=2*((b[2]-b[0])+(b[3]-b[1]));if(Math.abs(t-per)>per*.1)return;
+    if(!c.every(o=>o.pts.every(p=>Math.abs(p[0]-b[0])<.01||Math.abs(p[0]-b[2])<.01||Math.abs(p[1]-b[1])<.01||Math.abs(p[1]-b[3])<.01)))return;S.push({b})});
+  return S}
+function KF_rbowls(g){let G=[Infinity,Infinity,-Infinity,-Infinity];g.forEach(o=>{G=[Math.min(G[0],o.b[0]),Math.min(G[1],o.b[1]),Math.max(G[2],o.b[2]),Math.max(G[3],o.b[3])]});
+  const ins=KF_rshapes(g).filter(o=>o.b[0]>G[0]+.02&&o.b[1]>G[1]+.02&&o.b[2]<G[2]-.02&&o.b[3]<G[3]-.02&&Math.min(o.b[2]-o.b[0],o.b[3]-o.b[1])>=.15&&Math.max(o.b[2]-o.b[0],o.b[3]-o.b[1])<=1.8);
+  return ins.filter(o=>!ins.some(q=>q!==o&&q.b[0]<=o.b[0]&&q.b[1]<=o.b[1]&&q.b[2]>=o.b[2]&&q.b[3]>=o.b[3])).length}
 /* 形と大きさで見分ける（m） */
 function KF_guess(w,h,cv,circ,n,burn,bowl,tub){const s=Math.min(w,h),l=Math.max(w,h);if(cv<1)return null;
   /* 便器：楕円の便座で円弧が多く、丸（穴）は少ない。丸が多い同じ大きさの物は掃除流しなど */
   if(s>=.33&&s<=.49&&l<=.9&&(l>=.6||l>=.5&&l/s>=1.35))return circ<=2?'toilet':'sink';
   if(s>=.4&&s<=.6&&l>=.6&&l<=.9&&circ>2)return'sink';
-  if(s>=.55&&s<=.8&&l>=1.6&&l<=3.6&&burn>=2)return'kitchen';
-  if(s>=.4&&s<=.72&&l>=.7&&l<=3.6){if(l>=1.6&&burn>=2)return'kitchen';if(bowl>=1||s<=.66)return'counter'}
+  /* キッチン：コンロ（丸2つ以上）があって長さ1.2m以上（ミニキッチンは1.2mからある） */
+  if(s>=.55&&s<=.8&&l>=1.2&&l<=3.6&&burn>=2)return'kitchen';
+  if(s>=.4&&s<=.72&&l>=.7&&l<=3.6){if(l>=1.2&&burn>=2)return'kitchen';if(bowl>=1||s<=.66)return'counter'}
   if(s>=.65&&s<=.9&&l>=1.1&&l<=1.8)return'bath';
   if(s>=.25&&s<=.55&&l>=.28&&l<=.6&&(n>=2||circ===0))return'sink';
   /* 小さい手洗い（奥行15〜25cm・幅25〜45cm）：排水口などの丸があって線が3本以上 */
