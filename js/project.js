@@ -8,6 +8,7 @@ import { planView, roomColor } from './planview.js';
 import { USES, DEF_LM, needCount, pitchFor, luxOf, wirePlan, cableQty, pip } from './lighting.js';
 import { uid } from './store.js';
 import { open3D, applyWin3d } from './view3d.js';
+import { openRoomFin, currentFin, SLOTS } from './roomfin.js';
 import { openSketch } from './sketchui.js';
 import { toPlan as sketchPlan, geomOf } from './sketch.js';
 import { jww as jwwBytes, dxf as dxfBytes } from './cad.js';
@@ -165,13 +166,21 @@ function stepInfo({ p, body, refresh }) {
 }
 
 /* ---------- ② 部屋 ---------- */
-function roomCard(r, i) {
+/* 部屋のカードに、決めてある仕上げを出す（③工事の行から） */
+function finChips(p, r) {
+  const f = currentFin(p, r.id), M = masterItems(), nm = id => (M.find(i => i.id === id) || {}).name || '';
+  const list = SLOTS.filter(s => f[s.k]).map(s => `<span class="chip">${s.part}${s.role ? s.role === '仕上げ' ? '' : s.role : ''} <b>${esc(nm(f[s.k]))}</b></span>`);
+  return `<div class="chips" style="margin-bottom:8px">${list.length ? list.join('') : `<span class="small muted">仕上げはまだです。「仕上げ」で床・壁・天井・巾木を選べます。</span>`}</div>`;
+}
+function roomCard(r, i, p) {
   const free = r.shape === 'free';
   const num = (k, label, unit, hint = '', step = '0.01') => `<label class="f">${label}${hint ? `<span class="hint">${hint}</span>` : ''}<div class="unitwrap"><input class="in num" inputmode="decimal" type="number" step="${step}" min="0" data-rk="${k}" value="${esc(r[k] ?? '')}"><span>${unit}</span></div></label>`;
   return `<div class="roomc" data-room="${r.id}">
     <div class="head"><span class="pill" ${r.src === 'plan' ? `style="background:${roomColor(r.color)};color:#111"` : ''}>${i + 1}</span>${r.src === 'plan' ? `<span class="pill info" title="図面の区画 ${(r.faces || []).length} つから作った部屋">図面</span>` : ''}<input class="in" data-rk="name" value="${esc(r.name)}" aria-label="部屋の名前" style="flex:1">
+      <button class="btn sm" data-act="roomFin">仕上げ</button>
       <button class="iconbtn" data-act="dupRoom" title="同じ部屋をもう1つ">${icon('copy')}</button>
       <button class="iconbtn" data-act="delRoom" title="この部屋を消す">${icon('trash')}</button></div>
+    ${finChips(p, r)}
     <div class="row" style="margin-bottom:10px"><span class="small muted">形</span><div class="seg"><button data-shape="rect" class="${free ? '' : 'on'}">四角（幅×奥行）</button><button data-shape="free" class="${free ? 'on' : ''}">面積で入れる（L字など）</button></div></div>
     <div class="rfields">
       ${free ? num('area', '床の面積', '㎡') + num('perim', '周りの長さ', 'm') : num('w', '幅', 'm', '例 3.64') + num('d', '奥行', 'm')}
@@ -525,8 +534,8 @@ function stepRooms(ctx) {
     if (fl) fl.innerHTML = [...p.drawing.plan.faces].sort((a, b) => a.no - b.no).map(f => `<button data-face="${f.i}" class="${sel.has(f.i) ? 'on' : ''} ${own.has(f.i) && !sel.has(f.i) ? 'used' : ''}">区画${f.no}${f.name ? ' ' + esc(f.name) : ''} ${Math.round(f.area * 100) / 100}㎡</button>`).join('');
     const bar = body.querySelector('#dwgBar');
     if (bar) bar.innerHTML = sel.size
-      ? `<button class="btn primary" data-act="mkOne">${icon('plus')}選んだ ${sel.size} 区画を1部屋にする</button>${sel.size > 1 ? `<button class="btn" data-act="mkEach">1区画ずつ部屋にする</button>` : ''}<button class="btn ghost" data-act="selClear">選ぶのをやめる</button>`
-      : `<span class="small muted">区画をタップすると選べます。</span><span class="spacer"></span><button class="btn sm" data-act="selRest">まだ部屋にしていない区画を全部選ぶ</button>`;
+      ? `<span class="small"><b>${sel.size} 区画</b>を選んでいます。続けてタップで足す・もう一度で外す。</span><span class="spacer"></span><button class="btn primary" data-act="mkOne">${icon('check')}終了：1部屋にする</button>${sel.size > 1 ? `<button class="btn" data-act="mkEach">1区画ずつ部屋にする</button>` : ''}<button class="btn ghost" data-act="selClear">選ぶのをやめる</button>`
+      : `<span class="small muted">部屋にする区画を順番にタップして、選び終わったら「終了」。そのまま床・壁・天井の仕上げを決められます。</span><span class="spacer"></span><button class="btn sm" data-act="selRest">まだ部屋にしていない区画を全部選ぶ</button>`;
   };
   const makeRooms = each => {
     const plan = p.drawing.plan;
@@ -562,9 +571,10 @@ function stepRooms(ctx) {
     const od = made.reduce((s, r) => s + (r.openRuns || []).filter(x => x.ty === 'd').length, 0), og = made.reduce((s, r) => s + (r.openRuns || []).filter(x => x.ty !== 'd').length, 0);
     sel.clear(); touch(p); draw();
     toast(od + og ? `${n} 部屋を作りました。図面のドア ${od} か所・開口 ${og} か所を壁の面積から引きました` : `${n} 部屋を作りました`, { ms: 5000 });
+    openRoomFin(p, made.map(r => r.id), { title: n > 1 ? `${n} 部屋の仕上げ（同じにする）` : `「${made[0].name}」の仕上げ`, onDone: () => { touch(p); draw(); } });
   };
   const draw = () => {
-    body.innerHTML = drawingCard(p) + `<div class="rooms">${p.rooms.map(roomCard).join('') || `<div class="card empty"><b>まだ部屋がありません</b>下のボタンで部屋を足してください。</div>`}</div>
+    body.innerHTML = drawingCard(p) + `<div class="rooms">${p.rooms.map((r, i) => roomCard(r, i, p)).join('') || `<div class="card empty"><b>まだ部屋がありません</b>下のボタンで部屋を足してください。</div>`}</div>
       <div class="addbar" style="margin-top:12px"><button class="btn primary" id="addRoom">${icon('plus')}部屋を足す</button>
       </div>`;
     view = null;
@@ -811,6 +821,7 @@ function stepRooms(ctx) {
     const a = e.target.closest('[data-act]'); if (!a) return;
     if (a.dataset.act === 'addWin') { r.windows = r.windows || []; r.windows.push({ w: 1690, h: 1800, n: 1 }); }
     if (a.dataset.act === 'delWin') r.windows.splice(+a.dataset.wi, 1);
+    if (a.dataset.act === 'roomFin') { openRoomFin(p, [r.id], { title: `「${r.name}」の仕上げ`, onDone: () => { touch(p); draw(); } }); return; }
     if (a.dataset.act === 'dupRoom') { const c = JSON.parse(JSON.stringify(r)); c.id = uid('r'); c.name = r.name + '（コピー）'; p.rooms.splice(p.rooms.indexOf(r) + 1, 0, c); }
     if (a.dataset.act === 'delRoom') {
       const used = p.lines.filter(l => l.basis && Array.isArray(l.basis.rooms) && l.basis.rooms.includes(r.id));
