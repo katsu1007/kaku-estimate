@@ -313,3 +313,7 @@ details.more[open] > summary::before { content: "－ "; }
 .linec .f { justify-content: flex-end; }
 .qtybox { display: flex; gap: 6px; flex-wrap: nowrap; }
 .qtybox > :first-child { flex: 1; min-width: 0; }
+.linec.child { margin-left: 22px; border-style: dashed; background: var(--panel2); }
+.linec.pipe { border-left: 4px solid var(--info); }
+.pipeset { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 2px; }
+@media (max-width: 900px) { .linec.child { margin-left: 10px; } }

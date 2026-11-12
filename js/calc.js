@@ -24,7 +24,8 @@ export const MEASURES = Object.freeze({
   perim: { label: '周りの長さ', unit: 'm' },
   base: { label: '巾木の長さ', unit: 'm' },
   count: { label: '部屋の数', unit: '室' },
-  manual: { label: '数量を手で入れる', unit: '' }
+  manual: { label: '数量を手で入れる', unit: '' },
+  link: { label: '配管の長さから', unit: '' }
 });
 
 const num = (v, d = 0) => {
@@ -73,19 +74,34 @@ export function roomGeom(room, opt = DEFAULTS) {
   };
 }
 
-/* 明細1行の正味の数量（ロス前）。basis が無い・manual の時は手で入れた数量 */
-export function netQty(line, rooms, opt) {
+/* 部屋から数える行か（手入力・配管から数える行は違う） */
+export const isRoomBased = l => !!(l.basis && l.basis.measure && l.basis.measure !== 'manual' && l.basis.measure !== 'link');
+
+/* 配管から数える行（継手・支持金具・保温・手間）：元の配管の長さ（正味）× 1mあたりの数。
+ * ceil の時は個数なので切り上げ。元の行が無い時は 0（検算でエラーにする） */
+function linkQty(line, rooms, opt, lines) {
   const b = line.basis;
+  const parent = (lines || []).find(x => x.id === b.line);
+  if (!parent || parent === line || (parent.basis && parent.basis.measure)) return 0; // 元は手で長さを入れた配管の行だけ
+  const v = round3(netQty(parent, rooms, opt, lines) * Math.max(0, num(b.rate)));
+  return b.ceil ? Math.ceil(v - 1e-9) : v;
+}
+
+/* 明細1行の正味の数量（ロス前）。basis が無い・manual の時は手で入れた数量 */
+export function netQty(line, rooms, opt, lines) {
+  const b = line.basis;
+  if (b && b.measure === 'link') return linkQty(line, rooms, opt, lines);
   if (!b || !b.measure || b.measure === 'manual') return Math.max(0, num(line.qty));
   const ids = b.rooms === 'all' || !Array.isArray(b.rooms) ? null : new Set(b.rooms);
   return round3((rooms || []).filter(r => !ids || ids.has(r.id)).reduce((s, r) => s + (roomGeom(r, opt)[b.measure] || 0), 0));
 }
 
-/* ロス込みの数量。手間（kind が labor）と手入力の行は正味のまま */
-export function lineQty(line, rooms, opt = DEFAULTS) {
+/* ロス込みの数量。手間（kind が labor）と手入力の行は正味のまま。
+ * ただし applyLoss の付いた手入力の行（配管の長さ）はロスを足す。配管から数える行（継手など）は足さない */
+export function lineQty(line, rooms, opt = DEFAULTS, lines) {
   const o = { ...DEFAULTS, ...opt };
-  const q = netQty(line, rooms, o);
-  const auto = line.basis && line.basis.measure && line.basis.measure !== 'manual';
+  const q = netQty(line, rooms, o, lines);
+  const auto = isRoomBased(line) || (line.applyLoss && !(line.basis && line.basis.measure === 'link'));
   if (!auto || line.kind === 'labor' || !(q > 0)) return q;
   const loss = line.loss === '' || line.loss == null ? o.loss : Math.max(0, num(line.loss));
   const sheet = num(line.sheet);
@@ -93,12 +109,12 @@ export function lineQty(line, rooms, opt = DEFAULTS) {
   return round3(ceilTo(q * (1 + loss / 100), 0.1));
 }
 
-export const lineAmount = (line, rooms, opt) => Math.round(lineQty(line, rooms, opt) * Math.max(0, num(line.price)));
+export const lineAmount = (line, rooms, opt, lines) => Math.round(lineQty(line, rooms, opt, lines) * Math.max(0, num(line.price)));
 
 /* 原価：材料＝定価×掛け率、手間＝単価×原価率、外注・その他＝入れた原価（無ければ見積単価のまま） */
-export function lineCost(line, rooms, opt = DEFAULTS) {
+export function lineCost(line, rooms, opt = DEFAULTS, lines) {
   const o = { ...DEFAULTS, ...opt };
-  const q = lineQty(line, rooms, o);
+  const q = lineQty(line, rooms, o, lines);
   const price = Math.max(0, num(line.price));
   if (line.cost !== '' && line.cost != null && line.kind !== 'mat' && line.kind !== 'labor') return Math.round(q * num(line.cost));
   if (line.kind === 'mat') return Math.round(q * price * num(o.matRate) / 100);
@@ -112,10 +128,11 @@ export const KINDS = Object.freeze({ mat: '材料', labor: '手間', sub: '外�
 export function totals(project, opt = DEFAULTS) {
   const o = { ...DEFAULTS, ...opt };
   const rooms = project.rooms || [];
-  const lines = (project.lines || []).map(l => {
-    const qty = lineQty(l, rooms, o);
-    const amount = lineAmount(l, rooms, o);
-    const cost = lineCost(l, rooms, o);
+  const all = project.lines || [];
+  const lines = all.map(l => {
+    const qty = lineQty(l, rooms, o, all);
+    const amount = lineAmount(l, rooms, o, all);
+    const cost = lineCost(l, rooms, o, all);
     return { id: l.id, qty, amount, cost, kind: l.kind || 'other' };
   });
   const subtotal = lines.reduce((s, x) => s + x.amount, 0);
@@ -148,15 +165,18 @@ export function check(project, opt = DEFAULTS) {
     if (num(r.h) > 0 && (num(r.h) < 1.8 || num(r.h) > 6)) add('warn', `「${r.name}」の天井高 ${num(r.h)}m を確かめてください。`, { roomId: r.id });
     if (g.qty > 0 && g.wall === 0 && g.perim > 0) add('warn', `「${r.name}」は窓・ドアを引くと壁が0になります。`, { roomId: r.id });
   });
-  (project.lines || []).forEach(l => {
+  const all = project.lines || [];
+  all.forEach(l => {
     const name = l.name || '名前のない行';
-    const q = lineQty(l, rooms, o);
+    const q = lineQty(l, rooms, o, all);
     const price = num(l.price);
     if (!(price > 0)) add('error', `「${name}」の単価が入っていません。`, { lineId: l.id });
-    if (!(q > 0)) add('error', `「${name}」の数量が0です。`, { lineId: l.id });
+    const linkedToExisting = l.basis && l.basis.measure === 'link' && all.some(x => x.id === l.basis.line);
+    if (!(q > 0) && !linkedToExisting) add('error', `「${name}」の${l.pipe ? '長さ' : '数量'}が0です。`, { lineId: l.id });
     if (num(l.price) < 0 || num(l.qty) < 0) add('error', `「${name}」にマイナスの数字があります。`, { lineId: l.id });
     const b = l.basis;
-    if (b && b.measure && b.measure !== 'manual') {
+    if (b && b.measure === 'link' && !all.some(x => x.id === b.line)) add('error', `「${name}」の元の配管の行が消えています。この行も消すか、数量を手で入れてください。`, { lineId: l.id });
+    if (isRoomBased(l)) {
       if (Array.isArray(b.rooms) && b.rooms.some(id => !roomIds.has(id))) add('error', `「${name}」が消した部屋を使っています。部屋を選び直してください。`, { lineId: l.id });
       if (b.rooms !== 'all' && Array.isArray(b.rooms) && !b.rooms.length) add('error', `「${name}」に使う部屋が選ばれていません。`, { lineId: l.id });
       const mu = MEASURES[b.measure] && MEASURES[b.measure].unit;
@@ -168,9 +188,18 @@ export function check(project, opt = DEFAULTS) {
   /* 別の道筋の計算：部屋ごと・行ごとに積み上げ直して、合計と比べる */
   const t = totals(project, o);
   let again = 0;
-  (project.lines || []).forEach(l => {
-    const auto = l.basis && l.basis.measure && l.basis.measure !== 'manual';
+  const lossOf = l => l.loss === '' || l.loss == null ? o.loss : num(l.loss);
+  all.forEach(l => {
+    const auto = isRoomBased(l);
     let q = auto ? 0 : Math.max(0, num(l.qty));
+    if (l.basis && l.basis.measure === 'link') {
+      const par = all.find(x => x.id === l.basis.line);
+      const len = par && !(par.basis && par.basis.measure) ? Math.max(0, num(par.qty)) : 0;
+      q = len * num(l.basis.rate);
+      q = l.basis.ceil ? Math.ceil(round3(q) - 1e-9) : q;
+    } else if (!auto && l.applyLoss && l.kind !== 'labor' && q > 0) {
+      q = ceilTo(round3(q) * (1 + lossOf(l) / 100), 0.1);
+    }
     if (auto) {
       const sel = l.basis.rooms === 'all' || !Array.isArray(l.basis.rooms) ? rooms : rooms.filter(r => l.basis.rooms.includes(r.id));
       sel.forEach(r => { q += roomGeom(r, o)[l.basis.measure] || 0; });
@@ -194,6 +223,7 @@ export function compare(before, after, opt = DEFAULTS) {
   const key = l => `${l.name || ''}｜${l.spec || ''}`;
   const rowsOf = p => {
     const t = totals(p, opt), m = new Map();
+    void lineQty;
     (p.lines || []).forEach((l, i) => {
       const k = key(l), r = m.get(k) || { name: l.name, spec: l.spec, unit: l.unit, qty: 0, amount: 0 };
       r.qty = round3(r.qty + t.lines[i].qty); r.amount += t.lines[i].amount; m.set(k, r);

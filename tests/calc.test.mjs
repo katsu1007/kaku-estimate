@@ -136,3 +136,44 @@ test('給排水の品目：管は呼び径ごとにあり、単価は水道概�
   assert.equal(hivp.find(i => i.spec === '呼び径 13').price, 325);   // 水道概算 p-hivp13
   assert.equal(new Set(BUILTIN_ITEMS.map(i => i.id)).size, BUILTIN_ITEMS.length); // id の重なりなし
 });
+
+test('配管のセット：継手・支持金具・保温・手間（水道概算と同じ決まり、手計算）', async () => {
+  const { buildChildren } = await import('../js/piping.js');
+  const { BUILTIN_ITEMS } = await import('../js/master-data.js');
+  const pipe = { id: 'p1', itemId: 's-p-hivp20', name: 'HIVP管', unit: 'm', kind: 'mat', qty: 12, price: 540, applyLoss: true, loss: 5, basis: null,
+    pipe: { k: 'hivp', fam: 'ts', use: 'w', d: 20 }, pipeSet: { sys: 'w', many: 1, hoon: true } };
+  const kids = buildChildren(pipe, BUILTIN_ITEMS);
+  const lines = [pipe, ...kids];
+  const q = id => lineQty(lines.find(l => l.itemId === id), [], undefined, lines);
+  assert.equal(lineQty(pipe, [], undefined, lines), 12.6); // 12m ＋ ロス5%
+  assert.equal(q('s-j-hivp20-el'), 5);    // 12×0.4=4.8 → 5
+  assert.equal(q('s-j-hivp20-te'), 2);    // 12×0.15=1.8 → 2
+  assert.equal(q('s-j-hivp20-so'), 3);    // 12×0.25=3
+  assert.equal(q('s-s-w'), 10);           // 12×0.8=9.6 → 10
+  assert.equal(q('s-h-20'), 12);          // 保温 20
+  assert.equal(q('s-l-pw'), 12);          // 給水配管の手間
+  // 長さを変えると子の行もついてくる
+  pipe.qty = 20;
+  assert.equal(q('s-j-hivp20-el'), 8);    // 20×0.4
+  // 検算の別の道筋とも合う
+  assert.deepEqual(check({ rooms: [], lines }).filter(c => /計算が合いません/.test(c.msg)), []);
+});
+
+test('配管のセット：排水・継手多めは数が増え、保温は付かない', async () => {
+  const { buildChildren } = await import('../js/piping.js');
+  const { BUILTIN_ITEMS } = await import('../js/master-data.js');
+  const pipe = { id: 'p2', qty: 10, kind: 'mat', basis: null, pipe: { k: 'vp', fam: 'dv', use: 'dvr', d: 50 }, pipeSet: { sys: 'd', many: 1.5, hoon: true } };
+  const kids = buildChildren(pipe, BUILTIN_ITEMS);
+  const lines = [pipe, ...kids];
+  const q = id => { const l = lines.find(x => x.itemId === id); return l ? lineQty(l, [], undefined, lines) : null; };
+  assert.equal(q('s-j-vp50-el'), 3);      // 10×0.2×1.5=3
+  assert.equal(q('s-j-vp50-y'), 2);       // 10×0.12×1.5=1.8 → 2
+  assert.equal(q('s-s-d'), 6);            // 10×0.6
+  assert.equal(q('s-h-50'), null);        // 排水は保温なし
+  assert.equal(q('s-l-pd'), 10);
+});
+
+test('配管のセット：元の配管の行を消すと検算でエラー', () => {
+  const kid = { id: 'k', name: 'エルボ', qty: '', price: 100, kind: 'mat', basis: { measure: 'link', line: 'gone', rate: 0.4, ceil: true } };
+  assert.ok(check({ rooms: [], lines: [kid] }).some(c => /元の配管/.test(c.msg)));
+});

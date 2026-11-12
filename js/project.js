@@ -1,6 +1,7 @@
 /* 案件の画面：① 現場 → ② 部屋 → ③ 工事 → ④ 確認 → ⑤ 書類 */
 import { state, registerView, setTop, go, touch, opts, findProject, masterItems, categories, removeProject, restoreProject, newProject, flush } from './app.js';
-import { roomGeom, lineQty, netQty, totals, check, MEASURES, KINDS } from './calc.js';
+import { roomGeom, lineQty, netQty, totals, check, MEASURES, KINDS, isRoomBased } from './calc.js';
+import { SYS, MANY, sysOptions, rebuild, PIPE_LOSS } from './piping.js';
 import { uid } from './store.js';
 import { icon, esc, yen, fmt, pct, toast, modal, ask, matchItem, $, $$ } from './ui.js';
 import { STATUS } from './home.js';
@@ -90,9 +91,19 @@ function refresh(p, step) {
   p.lines.forEach((l, i) => {
     const q = t.lines[i].qty;
     set('amt:' + l.id, `<b>${yen(t.lines[i].amount)}</b><small>${fmt(q, 3)} ${esc(l.unit || '')} × ${yen(l.price)}</small>`);
-    const auto = l.basis && l.basis.measure && l.basis.measure !== 'manual';
+    if (l.basis && l.basis.measure === 'link') {
+      const par = p.lines.find(x => x.id === l.basis.line);
+      set('qinfo:' + l.id, par ? `${esc(l.why || '')}：${esc(par.name)} ${esc(par.spec || '')} の長さ ${fmt(netQty(par, p.rooms, o, p.lines), 3)}m → ${fmt(q, 3)}${esc(l.unit || '')}` : '元の配管の行がありません');
+      set('qty:' + l.id, fmt(q, 3));
+      return;
+    }
+    if (l.applyLoss && !isRoomBased(l)) {
+      const loss = l.loss === '' || l.loss == null ? o.loss : Number(l.loss);
+      set('qinfo:' + l.id, Number(l.qty) > 0 ? `長さ ${fmt(l.qty, 3)}m ＋ ロス${fmt(loss, 1)}% → ${fmt(q, 3)}m` : '長さ（m）を入れてください');
+    }
+    const auto = isRoomBased(l);
     if (auto) {
-      const net = netQty(l, p.rooms, o);
+      const net = netQty(l, p.rooms, o, p.lines);
       const loss = l.loss === '' || l.loss == null ? o.loss : Number(l.loss);
       const info = !p.rooms.length ? '部屋がまだありません。②部屋で寸法を入れると数量が入ります。'
         : l.kind === 'labor' ? `${MEASURES[l.basis.measure].label}：${fmt(net, 3)}${MEASURES[l.basis.measure].unit}（手間なので正味のまま）`
@@ -225,22 +236,37 @@ function roomSel(l, rooms) {
     ${rooms.map(r => `<option value="${esc(r.id)}" ${v === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}
     <option value="multi" ${v === 'multi' ? 'selected' : ''}>${v === 'multi' ? `${b.rooms.length}部屋を選択中…` : '部屋をいくつか選ぶ…'}</option></select>`;
 }
-function lineCard(l, rooms) {
-  const auto = l.basis && l.basis.measure && l.basis.measure !== 'manual';
+function pipePanel(l, lines) {
+  const set = l.pipeSet || {};
+  const opts2 = sysOptions(l.pipe);
+  const sys = set.sys || opts2[0];
+  const kids = lines.filter(x => x.parent === l.id).length;
+  return `<div class="pipeset" style="grid-column:1/-1">
+    <div class="row"><span class="small muted">系統</span><div class="seg">${opts2.map(k => `<button data-sys="${k}" class="${sys === k ? 'on' : ''}">${SYS[k]}</button>`).join('')}</div>
+    <label class="row small muted" style="gap:6px">継手の多さ<select class="in" data-pk="many" style="width:auto;min-height:38px">${MANY.map(([v, n]) => `<option value="${v}" ${String(set.many || 1) === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+    ${sys === 'w' || sys === 'h' ? `<label class="row small muted" style="gap:6px"><input type="checkbox" data-pk="hoon" ${set.hoon ? 'checked' : ''} style="width:20px;height:20px">保温する</label>` : ''}
+    <span class="spacer"></span>
+    <button class="btn sm ${kids ? '' : 'primary'}" data-act="pipeKids">${icon('plus')}${kids ? `継手などを付け直す（今 ${kids} 行）` : '継手・支持金具・手間を付ける'}</button></div>
+  </div>`;
+}
+function lineCard(l, rooms, lines = []) {
+  const link = l.basis && l.basis.measure === 'link';
+  const auto = isRoomBased(l) || link;
   const catName = (categories().find(c => c[0] === l.cat) || [])[1] || '';
-  return `<div class="linec" data-line="${l.id}">
-    <div class="name"><span class="cat">${esc(catName)}${catName ? '・' : ''}${KINDS[l.kind] || 'その他'}</span>
+  return `<div class="linec ${l.parent ? 'child' : ''} ${l.pipe ? 'pipe' : ''}" data-line="${l.id}">
+    <div class="name"><span class="cat">${l.sys || (l.pipeSet && l.pipeSet.sys) ? `<span class="pill info" style="padding:1px 7px">${SYS[l.sys || l.pipeSet.sys]}</span> ` : ''}${l.parent ? '↳ 配管に付く行・' : ''}${esc(catName)}${catName ? '・' : ''}${KINDS[l.kind] || 'その他'}</span>
       <input class="in" data-lk="name" value="${esc(l.name)}" placeholder="工事項目" aria-label="工事項目">
       <input class="in" data-lk="spec" value="${esc(l.spec || '')}" placeholder="規格・仕様（なくても可）" aria-label="規格・仕様" style="min-height:40px;font-size:14px"></div>
-    <label class="f">数え方<select class="in" data-lk="measure">${Object.entries(MEASURES).map(([k, m]) => `<option value="${k}" ${(auto ? l.basis.measure : 'manual') === k ? 'selected' : ''}>${m.label}</option>`).join('')}</select>
-      ${auto ? roomSel(l, rooms) : ''}</label>
-    <label class="f">数量・単位<div class="qtybox">
+    <label class="f">数え方<select class="in" data-lk="measure">${Object.entries(MEASURES).filter(([k]) => k !== 'link' || link).map(([k, m]) => `<option value="${k}" ${(auto ? l.basis.measure : 'manual') === k ? 'selected' : ''}>${k === 'manual' && l.pipe ? '長さを手で入れる' : m.label}</option>`).join('')}</select>
+      ${auto && !link ? roomSel(l, rooms) : ''}</label>
+    <label class="f">${l.pipe ? '長さ（m）・単位' : '数量・単位'}<div class="qtybox">
       ${auto ? `<div class="in num" style="display:flex;align-items:center;justify-content:flex-end;background:var(--panel2)" data-out="qty:${l.id}"></div>` : `<input class="in num" type="number" inputmode="decimal" step="any" min="0" data-lk="qty" value="${esc(l.qty)}">`}
       <input class="in" data-lk="unit" value="${esc(l.unit || '')}" style="width:62px;padding:10px 6px;text-align:center" aria-label="単位"></div></label>
     <label class="f">単価（円）<input class="in num" type="number" inputmode="numeric" step="any" min="0" data-lk="price" value="${esc(l.price)}"></label>
     <div class="amt" data-out="amt:${l.id}"></div>
     <button class="iconbtn del" data-act="delLine" title="この行を消す" aria-label="この行を消す">${icon('trash')}</button>
-    ${auto ? `<div class="qtyinfo" data-out="qinfo:${l.id}"></div>` : ''}
+    ${auto || l.applyLoss ? `<div class="qtyinfo" data-out="qinfo:${l.id}"></div>` : ''}
+    ${l.pipe ? pipePanel(l, lines) : ''}
     <details class="more" style="grid-column:1/-1"><summary>くわしく（区分・ロス率・原価・コピー）</summary>
       <div class="opts" style="margin-top:10px">
         <label class="f">区分<select class="in" data-lk="kind">${Object.entries(KINDS).map(([k, n]) => `<option value="${k}" ${(l.kind || 'other') === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
@@ -257,7 +283,7 @@ function stepLines(ctx) {
     body.innerHTML = `
       <div class="addbar" style="margin-bottom:12px"><button class="btn primary" data-act="pick">${icon('list')}一覧から選ぶ</button><button class="btn" data-act="free">${icon('plus')}自由に入れる</button>
         <span class="spacer"></span><span class="pill">行 <b data-out="linecount"></b></span><span class="pill acc">小計 <b data-out="subtotal"></b></span></div>
-      <div class="lines">${p.lines.map(l => lineCard(l, p.rooms)).join('') || `<div class="card empty"><b>まだ工事の品目がありません</b>「一覧から選ぶ」で、床・壁・天井の仕上げや解体などを選んでください。</div>`}</div>
+      <div class="lines">${p.lines.map(l => lineCard(l, p.rooms, p.lines)).join('') || `<div class="card empty"><b>まだ工事の品目がありません</b>「一覧から選ぶ」で、床・壁・天井の仕上げや解体などを選んでください。</div>`}</div>
       ${p.lines.length > 3 ? `<div class="addbar" style="margin-top:12px"><button class="btn primary" data-act="pick">${icon('list')}一覧から選ぶ</button><button class="btn" data-act="free">${icon('plus')}自由に入れる</button></div>` : ''}`;
     refresh();
   };
@@ -274,7 +300,7 @@ function stepLines(ctx) {
     const l = p.lines.find(x => x.id === card.dataset.line); const k = e.target.dataset.lk; if (!l) return;
     if (k === 'measure') {
       const m = e.target.value;
-      if (m === 'manual') { l.qty = lineQty(l, p.rooms, opts()) || l.qty || 1; l.basis = null; }
+      if (m === 'manual') { l.qty = lineQty(l, p.rooms, opts(), p.lines) || l.qty || 1; l.basis = null; delete l.parent; }
       else l.basis = { measure: m, rooms: l.basis && l.basis.rooms ? l.basis.rooms : 'all' };
       touch(p); draw(); return;
     }
@@ -284,9 +310,25 @@ function stepLines(ctx) {
       l.basis.rooms = v === 'all' ? 'all' : [v];
       touch(p); refresh(); return;
     }
-    if (k === 'kind') { l.kind = e.target.value; touch(p); draw(); }
+    if (k === 'kind') { l.kind = e.target.value; touch(p); draw(); return; }
+    const pk = e.target.dataset.pk;
+    if (pk && l.pipe) {
+      l.pipeSet = { ...(l.pipeSet || {}), [pk]: pk === 'hoon' ? e.target.checked : Number(e.target.value) };
+      if (p.lines.some(x => x.parent === l.id)) rebuild(p, l, masterItems());
+      touch(p); draw();
+    }
   });
   body.addEventListener('click', e => {
+    const sb = e.target.closest('[data-sys]');
+    if (sb) {
+      const l = p.lines.find(x => x.id === sb.closest('[data-line]').dataset.line);
+      if (l && l.pipe) {
+        l.pipeSet = { ...(l.pipeSet || {}), sys: sb.dataset.sys };
+        if (p.lines.some(x => x.parent === l.id)) rebuild(p, l, masterItems());
+        touch(p); draw();
+      }
+      return;
+    }
     const a = e.target.closest('[data-act]'); if (!a) return;
     if (a.dataset.act === 'pick') return openPicker(p, draw);
     if (a.dataset.act === 'free') {
@@ -299,8 +341,15 @@ function stepLines(ctx) {
     const l = p.lines.find(x => x.id === card.dataset.line); if (!l) return;
     const idx = p.lines.indexOf(l);
     if (a.dataset.act === 'delLine') {
-      p.lines.splice(idx, 1); touch(p); draw();
-      toast(`「${l.name || '行'}」を消しました`, { action: '元に戻す', onAction: () => { p.lines.splice(idx, 0, l); touch(p); draw(); } });
+      const before = [...p.lines];
+      const kids = p.lines.filter(x => x.parent === l.id);
+      p.lines = p.lines.filter(x => x !== l && x.parent !== l.id);
+      touch(p); draw();
+      toast(kids.length ? `「${l.name}」と付いていた ${kids.length} 行を消しました` : `「${l.name || '行'}」を消しました`, { action: '元に戻す', onAction: () => { p.lines = before; touch(p); draw(); } });
+    }
+    if (a.dataset.act === 'pipeKids') {
+      const n = rebuild(p, l, masterItems());
+      touch(p); draw(); toast(`継手・支持金具・手間など ${n} 行を付けました`);
     }
     if (a.dataset.act === 'dupLine') { const c = JSON.parse(JSON.stringify(l)); c.id = uid('l'); p.lines.splice(idx + 1, 0, c); touch(p); draw(); toast('行をコピーしました'); }
   });
@@ -350,7 +399,12 @@ export function openPicker(p, after) {
     const b = e.target.closest('.pick'); if (!b) return;
     const it = items.find(i => i.id === b.dataset.id); if (!it) return;
     const auto = it.measure && it.measure !== 'manual';
-    p.lines.push({ id: uid('l'), itemId: it.id, name: it.name, spec: it.spec || '', unit: it.unit, kind: it.kind || 'mat', price: it.price || '', cost: '', loss: '', sheet: it.sheet || 0, cat: it.custom ? 'custom' : it.cat, qty: auto ? '' : 1, basis: auto ? { measure: it.measure, rooms: 'all' } : null });
+    const line = { id: uid('l'), itemId: it.id, name: it.name, spec: it.spec || '', unit: it.unit, kind: it.kind || 'mat', price: it.price || '', cost: '', loss: '', sheet: it.sheet || 0, cat: it.custom ? 'custom' : it.cat, qty: auto ? '' : 1, basis: auto ? { measure: it.measure, rooms: 'all' } : null };
+    if (it.pipe) {
+      const sys = sysOptions(it.pipe)[0];
+      Object.assign(line, { pipe: { ...it.pipe }, applyLoss: true, loss: PIPE_LOSS, qty: '', pipeSet: { sys, many: 1, hoon: sys === 'h' } });
+    }
+    p.lines.push(line);
     added++; touch(p);
     $('#padded', m.el).textContent = `${added} 件 足しました`;
     draw();
