@@ -52,7 +52,7 @@ export async function readWithFixtures(file) {
       if(F&&F.fx){fixtures=F.fx.map(x=>({t:x.t,b:KF_gbox(x.b).map(q),back:KF_gback(x.back)||''}));
         const O=(typeof KX_openScan==='function'&&KX_openScan())||{};
         Object.keys(O).forEach(k=>{open[k]=O[k].map(r=>({ty:r.ty,len:Math.round(r.len*100)/100,a:r.a.map(q),b:r.b.map(q),n:r.n.map(q)}))})}
-      return JSON.stringify({plan,fixtures,open,doors:F&&F.doors?F.doors.length:0,fixG:F&&F.g||'',fixGd:F&&F.gd||''})})()`);
+      return JSON.stringify({plan,fixtures,open,doors:F&&F.doors?F.doors.length:0,doorList:(F&&F.doors||[]).filter(d=>d&&d.c).map(d=>({c:d.c.map(q),m:(d.m||d.c).map(q),r:+d.r||0.8})),fixG:F&&F.g||'',fixGd:F&&F.gd||''})})()`);
     return JSON.parse(R);
   } finally {
     /* 作業用の案件と、その図面の保存を消す（前のKAKUの案件一覧に残さない） */
@@ -85,4 +85,25 @@ export function roomOpenRuns(faceIds, plan, open) {
     if (!inner) out.push({ ty: run.ty, len: run.len });
   }));
   return out;
+}
+
+/* 照明の自動配置：前のKAKUの並べ方（壁から60cm＋均等割り、細い所は器具の先との真ん中に一列、列そろえ、欠き込み・斜めの壁の手直し）を
+ * そのまま使う。前のKAKUで何度も確かめてきた並び方を、作り直してずらさないため。
+ * faces: [{i, poly}]、fixtures: 図面の器具（細い通路の真ん中を決めるのに使う）
+ * pitchOf(face, pitch): 照度が足りない時に間隔を詰めるかどうかを決める（need を返す）。戻り値は面ごとの点 */
+export async function oldFaceLights(faces, fixtures, { base = 2, need = () => 0 } = {}) {
+  const W = await getReader();
+  W.__kxFx = (fixtures || []).filter(x => x && x.b).map(x => ({ t: x.t, b: x.b.slice() }));
+  const keep = W.eval('KAKU_fix');
+  W.eval('KAKU_fix={fx:window.__kxFx}');
+  try {
+    return faces.map(f => {
+      const area = Math.abs(f.poly.reduce((s, a, k) => { const b = f.poly[(k + 1) % f.poly.length]; return s + a[0] * b[1] - b[0] * a[1]; }, 0)) / 2;
+      const F = { i: f.i, poly: f.poly, area };
+      const n0 = need(f);
+      let pp = base, pts = W.KF_faceLights(F, pp) || [];
+      while (pts.length < n0 && pp > 0.9 + 1e-6) { pp = Math.max(0.9, pp * 0.92); pts = W.KF_faceLights(F, pp) || []; }
+      return { i: f.i, pitch: pp, need: n0, pts: pts.map(q => [Math.round(q[0] * 1000) / 1000, Math.round(q[1] * 1000) / 1000]) };
+    });
+  } finally { W.__kxTmpFix = keep; W.eval('KAKU_fix=window.__kxTmpFix'); }
 }

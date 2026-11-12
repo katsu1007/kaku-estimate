@@ -3,10 +3,11 @@ import { state, registerView, setTop, go, touch, opts, findProject, masterItems,
 import { roomGeom, lineQty, netQty, totals, check, MEASURES, KINDS, isRoomBased, hatsuCalc, hatsuItem, cutItem, ZANDO_F } from './calc.js';
 import { SYS, MANY, sysOptions, rebuild, PIPE_LOSS } from './piping.js';
 import { importDrawing, groupGeom, planCH, orderFaces as orderFacesOf } from './drawing.js';
-import { readWithFixtures, roomOpenRuns, FIX_NAMES, FIX_ITEMS, FIX_WORDS } from './legacy.js';
+import { readWithFixtures, oldFaceLights, roomOpenRuns, FIX_NAMES, FIX_ITEMS, FIX_WORDS } from './legacy.js';
 import { planView, roomColor } from './planview.js';
+import { USES, DEF_LM, needCount, pitchFor, luxOf, wirePlan, cableQty, pip } from './lighting.js';
 import { uid } from './store.js';
-import { icon, esc, yen, fmt, pct, toast, modal, ask, matchItem, $, $$ } from './ui.js';
+import { icon, esc, yen, fmt, pct, toast, modal, ask, matchItem, showError, $, $$ } from './ui.js';
 import { STATUS } from './home.js';
 import { docsStep } from './docs.js';
 
@@ -196,7 +197,7 @@ function drawingCard(p) {
       <div class="sub" style="margin:0">区画 ${d.plan.faces.length} 個${planCH(d.plan) ? `・図面の天井高 ${planCH(d.plan)}m` : ''}。区画をタップして選び、下のボタンで部屋にしてください。</div></div>
       <label class="btn sm" style="cursor:pointer">${icon('up')}読み直す<input type="file" id="dwgFile" accept=".jww,.jwc,.dxf,.pdf,application/pdf" hidden></label>
       <button class="btn sm ghost danger" data-act="dwgClear">${icon('trash')}図面を消す</button></div>
-    <div class="seg" id="dwgMode" style="margin-bottom:8px"><button data-mode="room">部屋を作る</button><button data-mode="fix">器具を直す</button><button data-mode="wall">壁の解体</button><button data-mode="cut">カッター</button><button data-mode="meas">測る</button></div>
+    <div class="seg" id="dwgMode" style="margin-bottom:8px"><button data-mode="room">部屋を作る</button><button data-mode="fix">器具を直す</button><button data-mode="wall">壁の解体</button><button data-mode="cut">カッター</button><button data-mode="light">照明・配線</button><button data-mode="meas">測る</button></div>
     <div id="dwgView"></div>
     <div class="addbar" style="margin-top:10px" id="dwgBar"></div>
     <div id="dwgDemo"></div>
@@ -289,6 +290,26 @@ export function syncDemoLines(p) {
     add('h|zando', 'w-zando', sum.zando, `掘った量×${ZANDO_F}`);
     add('h|back', 'w-ume', sum.back, '掘った所を埋め戻す量');
   }
+  /* 照明・スイッチ・配線・分電盤 */
+  const L = d.lights || [];
+  if (L.length) {
+    const byItem = {}; L.forEach(x => { byItem[x.item] = (byItem[x.item] || 0) + 1; });
+    Object.keys(byItem).sort().forEach(k => { add('l|' + k, k, byItem[k], '図面の照明'); add('l|on|' + k, /^e-dl/.test(k) ? 'w-eDL' : 'w-eLight', byItem[k], '図面の照明'); });
+    const W = lightWires(p);
+    if (W.sw) { add('l|sw', 'e-sw1', W.sw, '照明のある区画ごとに入口のそばに1つ'); add('l|swOn', 'w-eDev', W.sw, 'スイッチの取付'); }
+    add('l|vvf16', 'e-v16-2', W.mL, `スイッチ→照明（縦横にたどった長さ＋立ち下がり＋1台0.2m、余り${W.extra}%）`);
+    if (d.panel) { add('l|vvf20', 'e-v20-2', W.mH, `分電盤→各部屋のスイッチ（縦横の長さ＋立ち下がり、余り${W.extra}%）`); add('l|panel', 'e-panel', 1, '図面で置いた分電盤'); add('l|panelOn', 'w-ePanel', 1, ''); }
+    add('l|wire', 'w-eWire', W.mL + W.mH, 'ケーブルの合計');
+  }
+}
+
+/* 配線：前のKAKUと同じ計算（js/lighting.js wirePlan）。区画ごとにスイッチを入口のそばに置き、縦横にたどった長さを出す */
+export function lightWires(p) {
+  const d = p.drawing || {}, ch0 = planCH(d.plan) || opts().ceilH;
+  const chOf = fi => { const r = p.rooms.find(rr => rr.src === 'plan' && (rr.faces || []).includes(fi)); return (r && Number(r.h) > 0) ? Number(r.h) : ch0; };
+  const W = wirePlan({ plan: d.plan || { faces: [] }, doors: d.doors || [], lights: (d.lights || []).map(x => ({ key: x.id, l: [x.x, x.y] })), switches: (d.switches || []).map(x => ({ key: x.id, l: [x.x, x.y] })), panels: d.panel ? [d.panel] : [], chOf });
+  const extra = d.wireExtra ?? 10;
+  return { ...W, sw: W.sws.length, mL: cableQty(W.lenL, extra), mH: cableQty(W.lenH, extra), extra };
 }
 
 /* 測る時のくっつき：線の端（近い順）→ 線の上 → そのまま（1mm単位） */
@@ -312,7 +333,8 @@ function stepRooms(ctx) {
   const { p, body, refresh } = ctx;
   const sel = new Set();
   let view = null;
-  let mode = 'room', fsel = -1, addAt = null, cutA = null;
+  let mode = 'room', fsel = -1, addAt = null, cutA = null, panelMode = false;
+  const lset = state.lightSet || (state.lightSet = { room: 'all', use: '', item: 'e-dl100', lm: 800 });
   const wsel = new Set();
   const meas = { pts: [], cont: false };
   const FIX_SIZE = { toilet: [0.46, 0.8], urinal: [0.4, 0.36], counter: [1.2, 0.5], sink: [0.45, 0.36], slop: [0.8, 0.52], bath: [1.6, 1.6], kitchen: [2.55, 0.65] };
@@ -326,6 +348,15 @@ function stepRooms(ctx) {
     wsel.forEach(i => { const s = plan.segs[i]; if (s) h += `<line x1="${s[0]}" y1="${-s[1]}" x2="${s[2]}" y2="${-s[3]}" stroke="var(--accent)" stroke-width="${lw * 7}" stroke-linecap="round"/>`; });
     (d.hatsu || []).forEach(x => { if (!x.rect) return; const [a, b, c, e] = x.rect; h += `<rect x="${a}" y="${-e}" width="${c - a}" height="${e - b}" fill="#ff8a3d" fill-opacity=".18" stroke="#ff8a3d" stroke-width="${lw * 3}" stroke-dasharray="${lw * 6} ${lw * 4}"/>`; });
     if (cutA) h += `<circle cx="${cutA[0]}" cy="${-cutA[1]}" r="${lw * 6}" fill="var(--accent)"/>`;
+    if ((d.lights || []).length || d.panel) {
+      const W = lightWires(p);
+      const pd = pts => 'M' + pts.map(q => `${q[0]} ${-q[1]}`).join('L');
+      W.paths.forEach(w => { h += `<path d="${pd(w.pts)}" fill="none" stroke="#f3c04f" stroke-width="${lw * 1.6}" stroke-dasharray="${lw * 5} ${lw * 3}" opacity=".8"/>`; });
+      W.home.forEach(w => { h += `<path d="${pd(w.pts)}" fill="none" stroke="#c084fc" stroke-width="${lw * 1.6}" stroke-dasharray="${lw * 5} ${lw * 3}" opacity=".8"/>`; });
+      W.sws.forEach(s0 => { const q = s0.l; h += `<rect x="${q[0] - lw * 7}" y="${-q[1] - lw * 7}" width="${lw * 14}" height="${lw * 14}" fill="#f3c04f"/><text x="${q[0]}" y="${-q[1]}" font-size="${lw * 10}" text-anchor="middle" dominant-baseline="central" fill="#111" font-weight="800">S</text>`; });
+      (d.lights || []).forEach(x => { h += `<circle cx="${x.x}" cy="${-x.y}" r="${lw * 9}" fill="#f3c04f" fill-opacity=".35" stroke="#f3c04f" stroke-width="${lw * 2.2}"/><circle cx="${x.x}" cy="${-x.y}" r="${lw * 3}" fill="#f3c04f"/>`; });
+      if (d.panel) h += `<rect x="${d.panel[0] - lw * 12}" y="${-d.panel[1] - lw * 8}" width="${lw * 24}" height="${lw * 16}" fill="#c084fc"/><text x="${d.panel[0]}" y="${-d.panel[1]}" font-size="${lw * 9}" text-anchor="middle" dominant-baseline="central" fill="#111" font-weight="800">分電盤</text>`;
+    }
     return h;
   };
   const measOverlay = () => {
@@ -372,6 +403,24 @@ function stepRooms(ctx) {
             <select class="in" id="wItem" style="width:auto;min-height:40px;max-width:100%">${demoW.map(i => `<option value="${esc(i.id)}" ${i.id === (state.lastWallItem || 'w-dW-cloth') ? 'selected' : ''}>${esc(i.name)} ${esc(i.spec || '')}（${yen(i.price)}/${esc(i.unit)}）</option>`).join('')}</select>
             <button class="btn sm primary" data-act="wallAdd">${icon('plus')}壁の解体に入れる</button><button class="btn sm ghost" data-act="wallClear">選ぶのをやめる</button>`
           : `<span class="small muted">解体する壁の線をタップして選んでください（何本でも）。長さ×高さが解体の面積になります。</span>`;
+        return;
+      }
+      if (mode === 'light') {
+        const pr = p.rooms.filter(r => r.src === 'plan');
+        const lightItems = masterItems().filter(i => /^e-(dl|clight|bl|base)/.test(i.id));
+        const W = lightWires(p), n = (p.drawing.lights || []).length;
+        const res = pr.map(r => { const k = (p.drawing.lights || []).filter(x => x.room === r.id).length; if (!k) return ''; const u = r.lightUse || ''; const F = (r.faces || []).map(i => p.drawing.plan.faces.find(f => f.i === i)).filter(Boolean); const lx = u && F[0] ? Math.round(luxOf(F[0].poly, Number(r.h) || planCH(p.drawing.plan) || opts().ceilH, u, r.lightLm || 800, k) / 10) * 10 : 0; const tgt = (USES.find(x => x[0] === u) || [])[2]; return `<span class="pill ${lx && tgt && lx < tgt * 0.95 ? 'warn' : 'info'}">${esc(r.name)} ${k}台${lx ? `・約${lx}lx（目標${tgt}）` : ''}</span>`; }).join('');
+        bar.innerHTML = !pr.length ? `<span class="small muted">先に「部屋を作る」で部屋を作ってください。照明は部屋ごとに並べます。</span>` : `
+          <div class="grid g4" style="width:100%;align-items:end">
+            <label class="f">部屋<select class="in" id="lRoom"><option value="all">部屋にした所 全部</option>${pr.map(r => `<option value="${esc(r.id)}" ${lset.room === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></label>
+            <label class="f">部屋の用途<select class="in" id="lUse">${USES.map(u => `<option value="${u[0]}" ${lset.use === u[0] ? 'selected' : ''}>${u[1]}${u[2] ? `（${u[2]}lx）` : ''}</option>`).join('')}</select></label>
+            <label class="f">照明器具<select class="in" id="lItem">${lightItems.map(i => `<option value="${esc(i.id)}" ${lset.item === i.id ? 'selected' : ''}>${esc(i.name)}</option>`).join('')}</select></label>
+            <label class="f">1台の明るさ<span class="hint">カタログの器具光束</span><div class="unitwrap"><input class="in num" id="lLm" type="number" inputmode="numeric" value="${lset.lm}"><span>lm</span></div></label></div>
+          <button class="btn sm primary" data-act="lAuto">${icon('spark')}照明を自動で並べる</button>
+          <button class="btn sm ${panelMode ? 'primary' : ''}" data-act="lPanel">${panelMode ? '置く所をタップ' : (p.drawing.panel ? '分電盤を動かす' : '分電盤を置く')}</button>
+          ${n ? `<button class="btn sm ghost danger" data-act="lClear">照明を全部消す</button>` : ''}
+          <div class="small muted" style="width:100%">照明 ${n} 台・スイッチ ${W.sw} 個・ケーブル ${W.mL + W.mH} m（余り${W.extra}%込み）。図面の何も無い所をタップすると照明を足し、照明をタップすると消します。スイッチは入口のそばに置きます。${W.far ? `<b>分電盤から離れた所（別の階の図など）の ${W.far} 区画は、分電盤からの線を入れていません。</b>` : ''}</div>
+          ${res ? (n && (p.drawing.lights || []).length && res.split('<span').length > 7 ? `<details style="width:100%"><summary class="small">部屋ごとの台数と明るさを見る${res.includes('pill warn') ? '（目標に届かない部屋あり）' : ''}</summary><div class="row" style="margin-top:6px">${res}</div></details>` : `<div class="row" style="width:100%">${res}</div>`) : ''}`;
         return;
       }
       if (mode === 'cut') {
@@ -461,6 +510,16 @@ function stepRooms(ctx) {
             if (k >= 0) { fsel = fsel === k ? -1 : k; addAt = null; } else { fsel = -1; addAt = [x, y]; }
             paintSel(); return;
           }
+          if (mode === 'light') {
+            const d = p.drawing; d.lights = d.lights || [];
+            if (panelMode) { d.panel = [r3(x), r3(y)]; panelMode = false; syncDemoLines(p); touch(p); paintSel(); toast('分電盤を置きました'); return; }
+            const k = d.lights.findIndex(q => Math.hypot(q.x - x, q.y - y) < Math.max(0.2, sc * 14));
+            if (k >= 0) { const was = d.lights.splice(k, 1)[0]; syncDemoLines(p); touch(p); paintSel(); toast('照明を消しました', { action: '元に戻す', onAction: () => { d.lights.push(was); syncDemoLines(p); touch(p); paintSel(); } }); return; }
+            const r = p.rooms.find(rr => rr.src === 'plan' && (rr.faces || []).some(i => { const f = d.plan.faces.find(z => z.i === i); return f && pip(x, y, f.poly); }));
+            if (!r) { toast('部屋にした区画の中をタップしてください', { bad: true }); return; }
+            d.lights.push({ id: uid('L'), x: Math.round(x * 20) / 20, y: Math.round(y * 20) / 20, item: lset.item, room: r.id });
+            syncDemoLines(p); touch(p); paintSel(); return;
+          }
           if (mode === 'wall') {
             const i = nearestSeg(p.drawing.plan, x, y, sc * 18);
             if (i >= 0) { if (wsel.has(i)) wsel.delete(i); else wsel.add(i); paintSel(); }
@@ -500,7 +559,7 @@ function stepRooms(ctx) {
         } else res = await importDrawing(files);
         if (!res.plan || !res.plan.faces.length) { const msg = res.message || '部屋の区画が見つかりませんでした'; if (st) st.textContent = msg; toast(msg, { bad: true }); return; }
         p.rooms.forEach(r => { if (r.src === 'plan') { r.src = 'plan-old'; delete r.faces; } });
-        p.drawing = { fileName: (cad ? [cad] : files).map(f => f.name).join('、'), at: Date.now(), plan: res.plan, fixtures: cad ? res.fixtures : null, open: cad ? res.open : null, fixG: cad ? res.fixG : '', fixGd: cad ? res.fixGd : '' };
+        p.drawing = { fileName: (cad ? [cad] : files).map(f => f.name).join('、'), at: Date.now(), plan: res.plan, fixtures: cad ? res.fixtures : null, open: cad ? res.open : null, doors: cad ? (res.doorList || []) : [], fixG: cad ? res.fixG : '', fixGd: cad ? res.fixGd : '' };
         sel.clear(); touch(p); draw();
         toast(`区画を ${res.plan.faces.length} 個${cad ? `、器具を ${res.fixtures.filter(x => x.t !== 'other').length} 個` : ''}見つけました`);
       } catch (err) {
@@ -524,6 +583,7 @@ function stepRooms(ctx) {
   });
   body.addEventListener('change', e => {
     if (e.target.matches('[data-meas-cont]')) { meas.cont = e.target.checked; meas.pts = []; paintSel(); return; }
+    if (e.target.id === 'lItem') { lset.item = e.target.value; lset.lm = DEF_LM[lset.item] || 800; const i = $('#lLm', body); if (i) i.value = lset.lm; return; }
     const wr = e.target.closest('[data-wall]'), hr = e.target.closest('[data-hatsu]');
     if (wr && e.target.dataset.wk) { const w = (p.drawing.walls || []).find(x => x.id === wr.dataset.wall); if (w) { w.h = Math.max(0, Number(e.target.value) || 0); syncDemoLines(p); touch(p); paintSel(); } return; }
     if (hr && e.target.dataset.hk) { const h = (p.drawing.hatsu || []).find(x => x.id === hr.dataset.hatsu); if (h) { const k = e.target.dataset.hk; h[k] = e.target.type === 'checkbox' ? e.target.checked : Math.max(0, Number(e.target.value) || 0); syncDemoLines(p); touch(p); paintSel(); } return; }
@@ -532,7 +592,7 @@ function stepRooms(ctx) {
   });
   body.addEventListener('click', async e => {
     const mb = e.target.closest('[data-mode]');
-    if (mb) { mode = mb.dataset.mode; fsel = -1; addAt = null; cutA = null; wsel.clear(); if (mode !== 'meas') meas.pts = []; paintSel(); return; }
+    if (mb) { mode = mb.dataset.mode; fsel = -1; addAt = null; cutA = null; panelMode = false; wsel.clear(); if (mode !== 'meas') meas.pts = []; paintSel(); return; }
     const fb = e.target.closest('[data-face]');
     if (fb) { const i = +fb.dataset.face; if (sel.has(i)) sel.delete(i); else sel.add(i); paintSel(); return; }
     const da = e.target.closest('[data-act]');
@@ -541,6 +601,26 @@ function stepRooms(ctx) {
       if (a === 'fixLines') return fixLinesDialog(p, () => {});
       if (a === 'measClear') { meas.pts = []; paintSel(); return; }
       if (a === 'wallClear') { wsel.clear(); paintSel(); return; }
+      if (a === 'lPanel') { panelMode = !panelMode; paintSel(); return; }
+      if (a === 'lClear') { const before = p.drawing.lights; p.drawing.lights = []; syncDemoLines(p); touch(p); paintSel(); toast('照明を全部消しました', { action: '元に戻す', onAction: () => { p.drawing.lights = before; syncDemoLines(p); touch(p); paintSel(); } }); return; }
+      if (a === 'lAuto') {
+        lset.room = $('#lRoom', body).value; lset.use = $('#lUse', body).value; lset.item = $('#lItem', body).value; lset.lm = Number($('#lLm', body).value) || DEF_LM[lset.item] || 800;
+        const d = p.drawing, targets = p.rooms.filter(r => r.src === 'plan' && (lset.room === 'all' || r.id === lset.room));
+        d.lights = (d.lights || []).filter(x => !targets.some(r => r.id === x.room));
+        let n = 0;
+        (async () => {
+          toast('照明を並べています…');
+          for (const r of targets) {
+            r.lightUse = lset.use; r.lightLm = lset.lm;
+            const ch = Number(r.h) || planCH(d.plan) || opts().ceilH;
+            const faces = (r.faces || []).map(i => d.plan.faces.find(z => z.i === i)).filter(Boolean);
+            const res = await oldFaceLights(faces, d.fixtures, { base: lset.use ? 2 : pitchFor(ch, 2), need: f => lset.use ? needCount(f.poly, ch, lset.use, lset.lm) : 0 });
+            res.forEach(o => o.pts.forEach(q => { d.lights.push({ id: uid('L'), x: q[0], y: q[1], item: lset.item, room: r.id, auto: true }); n++; }));
+          }
+          syncDemoLines(p); touch(p); paintSel(); toast(`照明を ${n} 台並べました。スイッチと配線も明細に入れました`, { ms: 4000 });
+        })().catch(e => showError(e));
+        return;
+      }
       if (a === 'cutCancel') { cutA = null; paintSel(); return; }
       if (a === 'wallAdd') {
         const segs = [...wsel]; if (!segs.length) return;
