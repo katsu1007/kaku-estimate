@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-12.12";
+var KAKU_VERSION="2026-11-12.13";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -3821,7 +3821,7 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
           if(wn){box(b,q.a,q.c,0,wn.z0,cA,cB,true,true);box(b,q.a,q.c,Math.min(wn.z1,H),H,cA,cB,true,true)}
           else box(b,q.a,q.c,0,H,cA,cB,!pv||!!(pv.win&&pv.win.z0<H),!nx||!!(nx.win&&nx.win.z0<H))});
         b.wins.forEach(function(x){if(x.z0>=H)return;var w=WN[x.wi],z1=Math.min(x.z1,H),om=(b.oA+b.oB)/2,Q=function(sv,z){return[b.u[0]*sv+b.n[0]*om,b.u[1]*sv+b.n[1]*om,z]};
-          part({type:'win',wi:x.wi,attr:{width:x.b-x.a,height:x.z1-x.z0,sill:x.z0},title:'窓（自分で足した物）',rows:[['幅',Math.round((x.b-x.a)*1000)+' mm'],['高さ',Math.round((x.z1-x.z0)*1000)+' mm'],['床からの高さ',Math.round(x.z0*1000)+' mm'],['窓の面積',num((x.b-x.a)*(x.z1-x.z0),2)+' ㎡']],note:'3Dで足した窓です。見積もりの窓の数は、部屋の「工事内容」で入れた数を使っています（ここで足しても変わりません）。'});
+          part({type:'win',wi:x.wi,attr:{width:x.b-x.a,height:x.z1-x.z0,sill:x.z0},title:'窓（自分で足した物）',rows:[['幅',Math.round((x.b-x.a)*1000)+' mm'],['高さ',Math.round((x.z1-x.z0)*1000)+' mm'],['床からの高さ',Math.round(x.z0*1000)+' mm'],['窓の面積',num((x.b-x.a)*(x.z1-x.z0),2)+' ㎡']],note:'3Dで足した窓です。面している部屋の壁の面積から、この窓の面積を引いて見積もりを計算します（その部屋では「窓（か所）」の数は使いません）。'});
           M.quad(Q(x.a,x.z0),Q(x.b,x.z0),Q(x.b,z1),Q(x.a,z1),[.60,.80,.95,.45]);[[Q(x.a,x.z0),Q(x.b,x.z0)],[Q(x.b,x.z0),Q(x.b,z1)],[Q(x.b,z1),Q(x.a,z1)],[Q(x.a,z1),Q(x.a,x.z0)]].forEach(function(e){M.line(e[0],e[1],[.3,.4,.5,1])})});
         M.cur=-1})}
     /* ドア：扉の板（半分あけた向き）と、上の垂れ壁（2.0m〜天井） */
@@ -3970,13 +3970,13 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
       if(a==='only'){S.hide={};S.scene.rooms.forEach(function(r){if(r.k!==p.key)S.hide[r.k]=true});rebuild(true);bar()}
       else if(a==='all'){S.hide={};rebuild(true);bar()}
       else if(a==='win')winForm(hp)
-      else if(a==='delwin'){if(current.win3d&&p.wi!=null){current.win3d.splice(p.wi,1);save();rebuild(true);toast('窓を消しました')}}
+      else if(a==='delwin'){if(current.win3d&&p.wi!=null){current.win3d.splice(p.wi,1);save();try{refreshEngineRows();renderRooms()}catch(e){}rebuild(true);toast('窓を消しました')}}
       else select(-1)}});req()}
   /* 窓を足す：タップした所を真ん中にして、幅・高さ・床からの高さを入れる。案件に覚える（見積もりの数量は変えない） */
   function winForm(hp){var box=S.root.querySelector('.k3info'),L=S.winLast||{w:1200,h:1000,s:900},f=function(k,t,v){return'<label>'+t+'<input type="number" inputmode="numeric" data-k="'+k+'" value="'+v+'"></label>'};
-    box.innerHTML='<h4>窓を足す</h4><div class="k3form">'+f('w','幅 mm',L.w)+f('h','高さ mm',L.h)+f('s','床からの高さ mm',L.s)+'</div><p class="k3note">タップした所が窓の真ん中になります。見積もりの窓の数は変わりません。</p><div class="k3row"><button type="button" data-a="ok" class="on">足す</button><button type="button" data-a="x">やめる</button></div>';
+    box.innerHTML='<h4>窓を足す</h4><div class="k3form">'+f('w','幅 mm',L.w)+f('h','高さ mm',L.h)+f('s','床からの高さ mm',L.s)+'</div><p class="k3note">タップした所が窓の真ん中になります。面している部屋の壁の面積から、この窓の面積を引きます。</p><div class="k3row"><button type="button" data-a="ok" class="on">足す</button><button type="button" data-a="x">やめる</button></div>';
     lift(box);[].forEach.call(box.querySelectorAll('button'),function(b){b.onclick=function(){if(b.dataset.a!=='ok'){select(-1);return}var g=function(k){return+box.querySelector('input[data-k="'+k+'"]').value||0},w=Math.max(300,Math.min(6000,g('w'))),h=Math.max(200,Math.min(3000,g('h'))),sl=Math.max(0,Math.min(2500,g('s')));
-      S.winLast={w:w,h:h,s:sl};current.win3d=current.win3d||[];current.win3d.push({p:[Math.round(hp[0]*1000)/1000,Math.round(hp[1]*1000)/1000],w:w/1000,h:h/1000,sill:sl/1000});save();rebuild(true);toast('窓を足しました')}})}
+      S.winLast={w:w,h:h,s:sl};current.win3d=current.win3d||[];current.win3d.push({p:[Math.round(hp[0]*1000)/1000,Math.round(hp[1]*1000)/1000],w:w/1000,h:h/1000,sill:sl/1000});save();try{refreshEngineRows();renderRooms()}catch(e){}rebuild(true);toast('窓を足しました。壁の面積から引きます')}})}
   function select(i){S.sel=i;hl(i>=0?[i]:[]);info(i>=0&&S.scene?S.scene.parts[i]:null)}
   function selectMany(ids,p){S.sel=-1;S.hitP=null;hl(ids);info(p)}
   /* 数量の根拠：品目を選ぶと、もとになっている部材が全部光る */
@@ -4212,7 +4212,7 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
 })();
 </script>
 <script id="kaku-v25-open">
-/* ==== 2026-11-12.12 壁の面積から、図面で見つけた開口を引く
+/* ==== 2026-11-12.12 / .13 壁の面積から、図面で見つけた開口と、寸法を入れた窓を引く
    ・ドア：開く線（円弧）から、扉を閉めた位置を決めて、その幅×高さ2.0m（天井が低い時は天井高−5cm）
    ・扉の無い開口：区画の辺のうち、図面に壁の線が無い所（30cm〜3m）×天井高
    ・部屋ごとの面積を部屋に覚えて（図面を読み込んでいない時も同じ数字で計算できるように）、計算エンジンに渡す時だけ「ドアの数」に換算する
@@ -4248,22 +4248,30 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
     p.rooms.forEach(function(r){if(!r.plan||r.sk||!r.faces||!r.faces.length)return;var h=+r.ch>0?+r.ch:defH,dh=Math.min(2,h-.05),A=0,W=0,nd=0,ng=0,list=[];
       r.faces.forEach(function(i){(O[i]||[]).forEach(function(run){var mx=(run.a[0]+run.b[0])/2,my=(run.a[1]+run.b[1])/2,inner=[.1,.2,.35].some(function(o){var x=mx+run.n[0]*o,y=my+run.n[1]*o;return r.faces.some(function(j){if(j===i)return false;var f=P.faces.find(function(z){return z.i===j});return f&&f.poly&&KAKU_pip(x,y,f.poly)})});
           if(inner)return;var a=run.len*(run.ty==='d'?dh:h);A+=a;W+=run.len;if(run.ty==='d')nd++;else ng++;list.push([run.ty,Math.round(run.len*100)/100,Math.round(a*100)/100])})});
+      /* 3Dで足した窓：窓の位置が、この部屋の区画の辺から35cm以内にある物（壁の両側の部屋で1回ずつ引く） */
+      var w3=0,n3=0;(p.win3d||[]).forEach(function(w){if(!w||!w.p)return;var near=r.faces.some(function(i){var f=P.faces.find(function(z){return z.i===i});if(!f||!f.poly)return false;for(var k=0;k<f.poly.length;k++){var a=f.poly[k],b=f.poly[(k+1)%f.poly.length];if(KAKU_segDist([a[0],a[1],b[0],b[1]],w.p[0],w.p[1]).d<=.35)return true}return false});
+        if(near){var s0=+w.sill||0,hh=Math.max(0,Math.min(s0+(+w.h||0),h)-s0);w3+=(+w.w||0)*hh;n3++}});
+      w3=Math.round(w3*100)/100;if(w3>0){r.win3A=w3;r.win3N=n3}else{delete r.win3A;delete r.win3N}
       A=Math.round(A*100)/100;W=Math.round(W*100)/100;if(A>0){r.openA=A;r.openW=W;r.openD=nd;r.openG=ng;r.openL=list}else{delete r.openA;delete r.openW;delete r.openD;delete r.openG;delete r.openL}})}
+  /* 窓：部屋の「工事内容」で寸法を入れた窓（幅mm×高さmm×枚数）と、3Dで足した窓。寸法のある窓がある部屋は「窓（か所）」の数は使わない */
+  function winA(r){var a=0;(r.wins||[]).forEach(function(w){var x=(+w.w||0)/1000,y=(+w.h||0)/1000,n=Math.max(0,+w.n||0);if(x>0&&y>0)a+=x*y*n});return Math.round((a+(+r.win3A||0))*100)/100}
+  window.KX_winArea=winA;
   function total(p){var t=0;(p.rooms||[]).forEach(function(r){t+=+r.openA||0});return Math.round(t*100)/100}
   function adjust(p){if(!p||!p.rooms)return p;var cur=false;try{cur=p===current||(current&&p.id===current.id)}catch(e){}
     if(cur){try{update(current)}catch(e){console.error(e)}if(p!==current)p=Object.assign({},p,{rooms:p.rooms.map(function(r){var o=current.rooms.find(function(x){return x.id&&x.id===r.id});return o&&o.openA?Object.assign({},r,{openA:o.openA}):r})});
       var tt=total(current);if(current.openAuto!==false&&Math.abs(tt-(+current.openShown||0))>.005&&(tt>0||current.openShown)){current.openShown=tt;setTimeout(function(){try{if(tt>0)sheet(true)}catch(e){console.error(e)}},300)}}
-    if(p.openAuto===false||!p.rooms.some(function(r){return r.openA>0}))return p;
-    return Object.assign({},p,{rooms:p.rooms.map(function(r){return r.openA>0&&!r.kxWall?Object.assign({},r,{door:r.openA/DOOR_A}):r})})}
+    var au=p.openAuto!==false;if(!p.rooms.some(function(r){return(au&&r.openA>0)||winA(r)>0}))return p;
+    return Object.assign({},p,{rooms:p.rooms.map(function(r){if(r.kxWall)return r;var o=null,wa=winA(r);if(au&&r.openA>0)o={door:r.openA/DOOR_A};if(wa>0){o=o||{};o.win=wa/DOOR_A}return o?Object.assign({},r,o):r})})}
   window.KX_openAdjust=adjust;window.KX_openScan=scan;
   function wrapEngine(e){if(!e||e.__kxOpen)return;var s0=e.sync;e.sync=function(p){return s0.call(this,adjust(p))};e.__kxOpen=true}
   setInterval(function(){try{if(typeof engine!=='undefined'&&engine&&engine.__kxSpec&&!engine.__kxOpen){wrapEngine(engine);if(typeof current!=='undefined'&&current&&typeof refreshEngineRows==='function')refreshEngineRows()}}catch(e){}},250);
   /* ポップアップ：何を引いたかの内訳と、引く・引かないの切り替え */
   function sheet(changed){if(typeof current==='undefined'||!current||typeof KAKU_sheet!=='function')return;var on=current.openAuto!==false,R=(current.rooms||[]).filter(function(r){return r.openA>0}),tt=total(current),tw=0;R.forEach(function(r){tw+=+r.openW||0});
+    var WR=(current.rooms||[]).filter(function(r){return winA(r)>0}),wt=0;WR.forEach(function(r){wt+=winA(r)});var wli=WR.map(function(r){var n=0;(r.wins||[]).forEach(function(w){if(+w.w>0&&+w.h>0)n+=Math.max(0,+w.n||0)});return'<li>'+esc(r.name||'部屋')+'：寸法を入れた窓 '+n+' 枚'+(r.win3N?'・3Dで足した窓 '+r.win3N+' 枚':'')+' → <b>'+winA(r).toFixed(2)+' ㎡</b></li>'}).join('');
     var li=R.map(function(r){var a=[];if(r.openD)a.push('ドア '+r.openD+' か所');if(r.openG)a.push('扉の無い開口 '+r.openG+' か所');return'<li>'+esc(r.name||'部屋')+'：'+a.join('・')+'（幅の合計 '+(+r.openW).toFixed(2)+' m）→ <b>'+(+r.openA).toFixed(2)+' ㎡</b></li>'}).join('');
     var body='<p>'+(on?(changed?'図面から開口（ドアと、扉の無い出入り口）を見つけたので、<b>壁の面積から合計 '+tt.toFixed(2)+' ㎡ を引いて</b>計算しました。':'図面から見つけた開口を、壁の面積から合計 '+tt.toFixed(2)+' ㎡ 引いて計算しています。'):'今は、図面から見つけた開口を<b>引かずに</b>計算しています（見つけた開口は合計 '+tt.toFixed(2)+' ㎡）。')+'</p>'+
-      '<ul class="mini" style="padding-left:18px;margin:8px 0">'+li+'</ul>'+
-      '<p class="mini">・ドアは「幅×高さ2.0m」、扉の無い開口は「幅×天井高」で引きます。ドアの高さは図面に無いので 2.0m と仮に決めています。<br>・巾木も、開口の幅の合計（'+tw.toFixed(2)+' m）ぶん短くなります。<br>・開口を見つけた部屋では、「工事内容」の「ドア（か所）」に入れた数は使いません（二重に引かないため）。「窓（か所）」は今までどおり引きます。<br>・図面の描き方によっては、開口を見落としたり、壁のある所を開口と見間違えたりすることがあります。上の内訳を確かめてください。</p>'+
+      '<ul class="mini" style="padding-left:18px;margin:8px 0">'+li+'</ul>'+(wli?'<p>窓（寸法を入れた物）は、壁の面積から合計 <b>'+wt.toFixed(2)+' ㎡</b> 引いています。</p><ul class="mini" style="padding-left:18px;margin:8px 0">'+wli+'</ul>':'')+
+      '<p class="mini">・ドアは「幅×高さ2.0m」、扉の無い開口は「幅×天井高」で引きます。ドアの高さは図面に無いので 2.0m と仮に決めています。<br>・巾木も、開口の幅の合計（'+tw.toFixed(2)+' m）ぶん短くなります。<br>・開口を見つけた部屋では、「工事内容」の「ドア（か所）」に入れた数は使いません（二重に引かないため）。窓は、寸法を入れた部屋（「工事内容」の「窓の寸法」か、3Dで足した窓）ではその面積を引き、「窓（か所）」の数は使いません。寸法を入れていない部屋は、今までどおり「窓（か所）」の数で引きます。<br>・図面の描き方によっては、開口を見落としたり、壁のある所を開口と見間違えたりすることがあります。上の内訳を確かめてください。</p>'+
       '<div style="display:grid;gap:8px;margin-top:12px"><button type="button" class="btn orange" id="kxOpenOk">'+(on?'この計算でよい':'閉じる')+'</button><button type="button" class="btn light" id="kxOpenTg">'+(on?'開口を引かない（前の計算に戻す）':'開口を引いて計算する')+'</button></div>';
     KAKU_sheet('kxOpenSheet','壁の面積と開口',body);
     document.getElementById('kxOpenOk').onclick=function(){KAKU_closeSheet('kxOpenSheet')};
@@ -4274,7 +4282,18 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
       var p=document.createElement('p');p.className='mini kxopen-note';p.style.cssText='margin:8px 0;padding:8px 10px;border-radius:10px;background:rgba(214,120,40,.12)';
       p.innerHTML=(on?'図面から見つけた開口（'+[r.openD?'ドア '+r.openD+' か所':'',r.openG?'扉の無い開口 '+r.openG+' か所':''].filter(Boolean).join('・')+'）を、壁の面積から <b>'+(+r.openA).toFixed(2)+' ㎡</b> 引いています。この部屋では「ドア（か所）」の数は使いません。':'図面から開口を見つけていますが、今は引かずに計算しています。')+' <button type="button" class="btn light" style="min-height:36px;margin-left:4px">内訳を見る</button>';
       p.querySelector('button').onclick=function(e){e.preventDefault();sheet(false)};d.appendChild(p)})}
-  if(typeof window.renderRooms==='function'){var rr=window.renderRooms;window.renderRooms=function(){var r=rr.apply(this,arguments);try{notes()}catch(e){console.error(e)}return r}}
+  function winUI(){if(typeof current==='undefined'||!current)return;[].forEach.call(document.querySelectorAll('#rooms details.roomwork'),function(d){var i=+d.dataset.i,r=current.rooms[i],old=d.querySelector('.kxwin');if(old)old.remove();if(!r)return;
+      var W=r.wins||[],box=document.createElement('div');box.className='kxwin';box.style.cssText='margin:10px 0;padding:10px;border-radius:10px;border:1px solid rgba(128,128,128,.35)';
+      var row=function(w,k){return'<div class="kxwin-row" data-k="'+k+'" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px"><input type="number" inputmode="numeric" min="0" step="10" data-f="w" value="'+(w.w||'')+'" placeholder="幅 mm" aria-label="窓の幅 mm" style="flex:1 1 80px;min-width:0"><span>×</span><input type="number" inputmode="numeric" min="0" step="10" data-f="h" value="'+(w.h||'')+'" placeholder="高さ mm" aria-label="窓の高さ mm" style="flex:1 1 80px;min-width:0"><span>×</span><input type="number" inputmode="numeric" min="1" step="1" data-f="n" value="'+(w.n||1)+'" aria-label="枚数" style="flex:0 1 56px;min-width:0"><span>枚</span><button type="button" class="btn light" data-del="'+k+'" style="min-height:40px">消す</button></div>'};
+      var a=winA(r),has=a>0;
+      box.innerHTML='<b>窓の寸法（壁の面積から引きます）</b>'+W.map(row).join('')+'<div style="margin-top:8px"><button type="button" class="btn light" data-add="1" style="min-height:40px">＋ 窓を足す</button></div>'+
+        '<p class="mini" style="margin:8px 0 0">'+(has?'この部屋の窓：合計 <b>'+a.toFixed(2)+' ㎡</b> を壁の面積から引いています'+(r.win3N?'（うち3Dで足した窓 '+r.win3N+' 枚・'+(+r.win3A).toFixed(2)+' ㎡）':'')+'。寸法を入れたので、上の「窓（か所）」の数は使いません。':'幅と高さを mm で入れると、その面積を壁から引きます。入れない時は、上の「窓（か所）」の数（1か所 1.6㎡）で引きます。')+'</p>';
+      var done=function(msg){r.wins=W;save();try{refreshEngineRows()}catch(e){}renderRooms();if(msg)toast(msg)};
+      box.querySelector('[data-add]').onclick=function(e){e.preventDefault();W.push({w:'',h:'',n:1});r.wins=W;save();renderRooms()};
+      [].forEach.call(box.querySelectorAll('[data-del]'),function(b){b.onclick=function(e){e.preventDefault();W.splice(+b.dataset.del,1);done('窓を消しました')}});
+      [].forEach.call(box.querySelectorAll('.kxwin-row input'),function(inp){inp.onchange=function(){var k=+inp.parentNode.dataset.k,f=inp.dataset.f,v=Math.max(0,+inp.value||0);if(f==='n')v=Math.max(1,Math.round(v));else v=Math.min(20000,v);W[k][f]=v;var x=W[k];done(x.w>0&&x.h>0?'窓 '+(x.w/1000*x.h/1000*(x.n||1)).toFixed(2)+' ㎡ を壁の面積から引きました':'')}});
+      var note=d.querySelector('.kxopen-note');d.insertBefore(box,note||null)})}
+  if(typeof window.renderRooms==='function'){var rr=window.renderRooms;window.renderRooms=function(){var r=rr.apply(this,arguments);try{notes()}catch(e){console.error(e)}try{winUI()}catch(e){console.error(e)}return r}}
 })();
 </script>
 </body></html>
