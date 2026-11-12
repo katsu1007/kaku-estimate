@@ -111,7 +111,7 @@ function shell() {
     ${NAV.map(([k, h, ic, t]) => `<a class="nav ${r === k ? 'on' : ''}" href="${h}">${icon(ic)}${t}</a>`).join('')}
     <div class="sep"></div>
     <div class="lab">前のKAKU</div>
-    <a class="nav" href="./old/" title="図面の読み込み・照明の自動配置・3Dは、新しい画面に移るまで前の画面で使えます">${icon('layers')}図面・照明・3D</a>
+    <a class="nav" href="./old/" title="照明の自動配置・器具・3Dは、新しい画面に移るまで前の画面で使えます">${icon('layers')}照明・器具・3D</a>
     <a class="nav ${r === 'help' ? 'on' : ''}" href="#/help">${icon('help')}使い方</a>
     <div class="foot">KAKU ${APP_VERSION}（${APP_DATE}）</div>`;
   $('#bottom').innerHTML = NAV.map(([k, h, ic, t]) => `<a class="${r === k ? 'on' : ''}" href="${h}">${icon(ic)}${t === '単価マスター' ? '単価' : t}</a>`).join('');

@@ -2,6 +2,8 @@
 import { state, registerView, setTop, go, touch, opts, findProject, masterItems, categories, removeProject, restoreProject, newProject, flush } from './app.js';
 import { roomGeom, lineQty, netQty, totals, check, MEASURES, KINDS, isRoomBased } from './calc.js';
 import { SYS, MANY, sysOptions, rebuild, PIPE_LOSS } from './piping.js';
+import { importDrawing, groupGeom, planCH } from './drawing.js';
+import { planView, roomColor } from './planview.js';
 import { uid } from './store.js';
 import { icon, esc, yen, fmt, pct, toast, modal, ask, matchItem, $, $$ } from './ui.js';
 import { STATUS } from './home.js';
@@ -9,7 +11,7 @@ import { docsStep } from './docs.js';
 
 const STEPS = [
   { n: 1, t: '現場', s: 'お客様と現場', lead: 'お客様の名前と現場の住所を入れてください。見積書にそのまま載ります。' },
-  { n: 2, t: '部屋', s: '寸法を入れる', lead: '部屋ごとに幅と奥行（m）を入れてください。床・壁・天井の面積が自動で出ます。L字などは「形」を「面積で入れる」にしてください。' },
+  { n: 2, t: '部屋', s: '寸法を入れる', lead: '図面がある時は「図面を選ぶ」で読み込んで、区画をタップして部屋にしてください。図面が無い時は「部屋を足す」で幅と奥行（m）を入れてください。床・壁・天井の面積が自動で出ます。' },
   { n: 3, t: '工事', s: '品目を選ぶ', lead: '「一覧から選ぶ」で工事の品目を選んでください。床・壁・天井の品目は、部屋の寸法から数量が自動で入ります（材料はロス込み）。' },
   { n: 4, t: '確認', s: '検算と金額', lead: '計算をもう一度別の方法で確かめ、間違いやすい所を出します。赤い所を直してから書類を作ってください。' },
   { n: 5, t: '書類', s: '見積書を出す', lead: '見積書・請求書・内訳書を作ります。見積書を出すたびに「第○版」として記録が残り、前の版と比べられます。' }
@@ -158,7 +160,7 @@ function roomCard(r, i) {
   const free = r.shape === 'free';
   const num = (k, label, unit, hint = '', step = '0.01') => `<label class="f">${label}${hint ? `<span class="hint">${hint}</span>` : ''}<div class="unitwrap"><input class="in num" inputmode="decimal" type="number" step="${step}" min="0" data-rk="${k}" value="${esc(r[k] ?? '')}"><span>${unit}</span></div></label>`;
   return `<div class="roomc" data-room="${r.id}">
-    <div class="head"><span class="pill">${i + 1}</span><input class="in" data-rk="name" value="${esc(r.name)}" aria-label="部屋の名前" style="flex:1">
+    <div class="head"><span class="pill" ${r.src === 'plan' ? `style="background:${roomColor(r.color)};color:#111"` : ''}>${i + 1}</span>${r.src === 'plan' ? `<span class="pill info" title="図面の区画 ${(r.faces || []).length} つから作った部屋">図面</span>` : ''}<input class="in" data-rk="name" value="${esc(r.name)}" aria-label="部屋の名前" style="flex:1">
       <button class="iconbtn" data-act="dupRoom" title="同じ部屋をもう1つ">${icon('copy')}</button>
       <button class="iconbtn" data-act="delRoom" title="この部屋を消す">${icon('trash')}</button></div>
     <div class="row" style="margin-bottom:10px"><span class="small muted">形</span><div class="seg"><button data-shape="rect" class="${free ? '' : 'on'}">四角（幅×奥行）</button><button data-shape="free" class="${free ? 'on' : ''}">面積で入れる（L字など）</button></div></div>
@@ -181,12 +183,98 @@ function roomCard(r, i) {
   </div>`;
 }
 
+function drawingCard(p) {
+  const d = p.drawing;
+  if (!d || !d.plan) return `<div class="card" style="margin-bottom:14px"><div class="row"><div style="flex:1;min-width:220px"><h2>図面から部屋を作る</h2>
+      <div class="sub" style="margin:0">JWW・DXF・PDF の図面を読み込むと、部屋の区画が自動で見つかります。区画をタップして部屋にしてください。</div></div>
+      <label class="btn primary" style="cursor:pointer">${icon('up')}図面を選ぶ<input type="file" id="dwgFile" accept=".jww,.jwc,.dxf,.pdf,application/pdf" hidden></label></div>
+      <div class="small muted" id="dwgStatus" style="margin-top:8px"></div></div>`;
+  return `<div class="card" style="margin-bottom:14px">
+    <div class="row" style="margin-bottom:10px"><div style="flex:1;min-width:200px"><h2>${icon('layers').replace('<svg', '<svg style="width:18px;height:18px;vertical-align:-3px"')} ${esc(d.fileName || '図面')}</h2>
+      <div class="sub" style="margin:0">区画 ${d.plan.faces.length} 個${planCH(d.plan) ? `・図面の天井高 ${planCH(d.plan)}m` : ''}。区画をタップして選び、下のボタンで部屋にしてください。</div></div>
+      <label class="btn sm" style="cursor:pointer">${icon('up')}読み直す<input type="file" id="dwgFile" accept=".jww,.jwc,.dxf,.pdf,application/pdf" hidden></label>
+      <button class="btn sm ghost danger" data-act="dwgClear">${icon('trash')}図面を消す</button></div>
+    <div id="dwgView"></div>
+    <div class="addbar" style="margin-top:10px" id="dwgBar"></div>
+    <details class="more"><summary>区画の一覧から選ぶ（図面で押しにくい小さい区画など）</summary><div class="facelist" id="dwgFaces"></div></details>
+    <div class="small muted" id="dwgStatus" style="margin-top:6px"></div></div>`;
+}
+
 function stepRooms(ctx) {
   const { p, body, refresh } = ctx;
+  const sel = new Set();
+  let view = null;
+  const owner = () => { const m = new Map(); p.rooms.forEach(r => (r.faces || []).forEach(i => m.set(i, r.color))); return m; };
+  const paintSel = () => {
+    if (!p.drawing || !p.drawing.plan) return;
+    if (view) view.paint();
+    const own = owner();
+    const fl = body.querySelector('#dwgFaces');
+    if (fl) fl.innerHTML = [...p.drawing.plan.faces].sort((a, b) => a.no - b.no).map(f => `<button data-face="${f.i}" class="${sel.has(f.i) ? 'on' : ''} ${own.has(f.i) && !sel.has(f.i) ? 'used' : ''}">${f.no}${f.name ? ' ' + esc(f.name) : ''} ${Math.round(f.area * 100) / 100}㎡</button>`).join('');
+    const bar = body.querySelector('#dwgBar');
+    if (bar) bar.innerHTML = sel.size
+      ? `<button class="btn primary" data-act="mkOne">${icon('plus')}選んだ ${sel.size} 区画を1部屋にする</button>${sel.size > 1 ? `<button class="btn" data-act="mkEach">1区画ずつ部屋にする</button>` : ''}<button class="btn ghost" data-act="selClear">選ぶのをやめる</button>`
+      : `<span class="small muted">区画をタップすると選べます。</span><span class="spacer"></span><button class="btn sm" data-act="selRest">まだ部屋にしていない区画を全部選ぶ</button>`;
+  };
+  const makeRooms = each => {
+    const plan = p.drawing.plan;
+    const ids = [...sel];
+    /* 選んだ区画が別の部屋に入っていたら、その部屋から外す */
+    p.rooms.forEach(r => {
+      if (!r.faces) return;
+      const keep = r.faces.filter(i => !sel.has(i));
+      if (keep.length !== r.faces.length) {
+        r.faces = keep;
+        if (keep.length) { const g = groupGeom(keep.map(i => plan.faces.find(f => f.i === i)).filter(Boolean)); r.area = g.area; r.perim = g.perim; }
+      }
+    });
+    p.rooms = p.rooms.filter(r => !(r.src === 'plan' && r.faces && !r.faces.length));
+    const used = new Set(p.rooms.map(r => r.color));
+    const nextColor = () => { for (let c = 0; c < 99; c++) if (!used.has(c)) { used.add(c); return c; } return 0; };
+    const byNo = (a, b) => plan.faces.find(f => f.i === a).no - plan.faces.find(f => f.i === b).no;
+    const groups = each ? ids.sort(byNo).map(i => [i]) : [ids.sort(byNo)];
+    const defCH = planCH(plan);
+    groups.forEach(g => {
+      const F = g.map(i => plan.faces.find(f => f.i === i)).filter(Boolean);
+      const geo = groupGeom(F);
+      const names = [...new Set(F.map(f => f.name).filter(Boolean))];
+      const chs = F.map(f => +f.ch || 0).filter(v => v > 0);
+      p.rooms.push({ id: uid('r'), name: names.join('・') || `区画 ${F.map(f => f.no).join('・')}`, shape: 'free', area: geo.area, perim: geo.perim,
+        h: chs.length ? Math.max(...chs) : (defCH || ''), qty: 1, doors: 0, winCount: 0, windows: [], faces: g, src: 'plan', color: nextColor() });
+    });
+    const n = groups.length;
+    sel.clear(); touch(p); draw();
+    toast(`${n} 部屋を作りました`);
+  };
   const draw = () => {
-    body.innerHTML = `<div class="rooms">${p.rooms.map(roomCard).join('') || `<div class="card empty"><b>まだ部屋がありません</b>下のボタンで部屋を足してください。</div>`}</div>
+    body.innerHTML = drawingCard(p) + `<div class="rooms">${p.rooms.map(roomCard).join('') || `<div class="card empty"><b>まだ部屋がありません</b>下のボタンで部屋を足してください。</div>`}</div>
       <div class="addbar" style="margin-top:12px"><button class="btn primary" id="addRoom">${icon('plus')}部屋を足す</button>
-      ${p.rooms.length ? '' : '<a class="btn" href="./old/">図面から部屋を作る（前の画面）</a>'}</div>`;
+      </div>`;
+    view = null;
+    if (p.drawing && p.drawing.plan) {
+      view = planView(body.querySelector('#dwgView'), p.drawing.plan, {
+        selected: () => sel, owner,
+        onTap: i => { if (sel.has(i)) sel.delete(i); else sel.add(i); paintSel(); }
+      });
+      paintSel();
+    }
+    const fi = body.querySelector('#dwgFile');
+    if (fi) fi.onchange = async e => {
+      const files = [...e.target.files]; if (!files.length) return;
+      if (p.drawing && p.rooms.some(r => r.src === 'plan') && !(await ask('図面を読み直しますか？', '今の図面から作った部屋は残りますが、図面とのつながりは外れます。', { ok: '読み直す' }))) { e.target.value = ''; return; }
+      const st = body.querySelector('#dwgStatus'); if (st) st.textContent = '図面を読み込んでいます…（大きい図面は少し時間がかかります）';
+      try {
+        const res = await importDrawing(files);
+        if (!res.plan) { if (st) st.textContent = res.message; toast(res.message, { bad: true }); return; }
+        p.rooms.forEach(r => { if (r.src === 'plan') { r.src = 'plan-old'; delete r.faces; } });
+        p.drawing = { fileName: files.map(f => f.name).join('、'), at: Date.now(), plan: res.plan };
+        sel.clear(); touch(p); draw();
+        toast(`区画を ${res.plan.faces.length} 個見つけました`);
+      } catch (err) {
+        if (st) st.textContent = '読み込めませんでした：' + err.message;
+        toast('図面を読み込めませんでした：' + err.message, { bad: true });
+      }
+    };
     $('#addRoom').onclick = () => {
       p.rooms.push({ id: uid('r'), name: `部屋 ${String(p.rooms.length + 1).padStart(2, '0')}`, shape: 'rect', w: '', d: '', h: '', qty: 1, doors: 0, winCount: 0, windows: [] });
       touch(p); draw(); refresh();
@@ -202,6 +290,22 @@ function stepRooms(ctx) {
     touch(p); refresh();
   });
   body.addEventListener('click', async e => {
+    const fb = e.target.closest('[data-face]');
+    if (fb) { const i = +fb.dataset.face; if (sel.has(i)) sel.delete(i); else sel.add(i); paintSel(); return; }
+    const da = e.target.closest('[data-act]');
+    if (da && !da.closest('[data-room]')) {
+      const a = da.dataset.act;
+      if (a === 'mkOne') return makeRooms(false);
+      if (a === 'mkEach') return makeRooms(true);
+      if (a === 'selClear') { sel.clear(); paintSel(); return; }
+      if (a === 'selRest') { const own = owner(); p.drawing.plan.faces.forEach(f => { if (!own.has(f.i)) sel.add(f.i); }); paintSel(); return; }
+      if (a === 'dwgClear') {
+        if (!(await ask('図面を消しますか？', '図面から作った部屋は残ります（図面とのつながりだけ外れます）。', { ok: '消す', danger: true }))) return;
+        const old = p.drawing; p.drawing = null; p.rooms.forEach(r => { if (r.src === 'plan') r.src = 'plan-old'; });
+        touch(p); draw(); toast('図面を消しました', { action: '元に戻す', onAction: () => { p.drawing = old; p.rooms.forEach(r => { if (r.src === 'plan-old' && r.faces) r.src = 'plan'; }); touch(p); draw(); } });
+        return;
+      }
+    }
     const card = e.target.closest('[data-room]'); if (!card) return;
     const r = p.rooms.find(x => x.id === card.dataset.room); if (!r) return;
     const sh = e.target.closest('[data-shape]');

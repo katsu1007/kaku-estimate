@@ -69,7 +69,7 @@ registerView('home', async el => {
     <div class="actions">
       <button class="action" id="aNew"><div class="ic">${icon('plus')}</div><b>見積もりを作る</b><span>現場の情報と部屋の寸法を入れると、数量が自動で出ます</span></button>
       <button class="action" id="aLast" ${last ? '' : 'disabled'}><div class="ic b">${icon('folder')}</div><b>続きから</b><span>${last ? esc(last.name || '名前のない案件') + ' を開く' : 'まだ案件がありません'}</span></button>
-      <a class="action" href="./old/"><div class="ic y">${icon('layers')}</div><b>図面・照明・3D</b><span>図面の読み込み・照明の自動配置・3Dは前の画面で使えます</span></a>
+      <a class="action" href="./old/"><div class="ic y">${icon('layers')}</div><b>照明・器具・3D</b><span>図面は「②部屋」で読み込めます。照明の自動配置・器具・3Dは、今は前の画面で使えます</span></a>
       <a class="action" href="#/master"><div class="ic g">${icon('tag')}</div><b>単価を確かめる</b><span>品目と単価、掛け率を会社に合わせます</span></a>
     </div>
     <div class="kpis">
