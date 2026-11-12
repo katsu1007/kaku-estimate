@@ -2,6 +2,7 @@
 import { state, touch, opts, go } from './app.js';
 import { totals, check, compare, roomGeom, KINDS } from './calc.js';
 import { projectXlsx, projectCsv } from './export.js';
+import { floorsOf, autoFloors, floorBreakdown } from './floors.js';
 import { icon, esc, yen, fmt, today, toast, modal, ask, share, $ } from './ui.js';
 
 const fileBase = p => (p.name || '見積').replace(/[\\/:*?"<>|]/g, '_');
@@ -21,6 +22,7 @@ export function docsStep({ p, body, refresh }) {
         <button class="docbtn" data-doc="csv">${icon('down')}<div><b>CSV で書き出す</b><span>ほかのソフトに取り込む時に</span></div></button>
         <a class="docbtn" href="#/settings">${icon('user')}<div><b>会社情報・振込先</b><span>${state.company.name ? esc(state.company.name) : 'まだ入っていません'}</span></div></a>
       </div>
+      ${floorCard(p)}
       <div class="card" style="margin-top:14px"><h2>${icon('history').replace('<svg', '<svg style="width:18px;height:18px;vertical-align:-3px"')} 見積もりの履歴</h2>
         <div class="sub">見積書を出すたびに、その時の内容を残します。前の版と今の金額を比べられます。</div>
         ${hist.length ? `<div class="tablewrap"><table class="list"><thead><tr><th>版</th><th>出した日</th><th class="r">合計（税込）</th><th class="r">今との差</th><th></th></tr></thead><tbody>
@@ -31,7 +33,14 @@ export function docsStep({ p, body, refresh }) {
       </div>`;
     refresh();
   };
+  body.addEventListener('change', e => {
+    const i = e.target.closest('[data-lv]'); if (!i) return;
+    const r = p.rooms.find(x => x.id === i.dataset.lv); if (!r) return;
+    r.lv = i.value.trim(); touch(p); draw();
+  });
   body.addEventListener('click', async e => {
+    if (e.target.closest('[data-act=floorAuto]')) { const r = autoFloors(p); if (!r) { toast('図面から作った部屋がありません', { bad: true }); return; } touch(p); draw(); toast(`${r.names.length}つに分けました（${r.fromTitle ? '図面の見出しから' : '左から'} ${r.names.join('・')}）`, { ms: 4000 }); return; }
+    if (e.target.closest('[data-act=floorPrint]')) { const res = floorBreakdown(p, opts()); if (res) printDoc(floorHtml(p, res)); return; }
     const d = e.target.closest('[data-doc]');
     if (d) {
       const k = d.dataset.doc;
@@ -157,3 +166,34 @@ function breakdownHtml(p) {
   </div>`;
 }
 void $;
+
+/* ---------- 階・場所ごとの内訳 ---------- */
+function floorCard(p) {
+  const F = floorsOf(p), hasPlan = p.rooms.some(r => r.src === 'plan');
+  let res = null; try { res = F.length ? floorBreakdown(p, opts()) : null; } catch (e) { console.error(e); }
+  const q = v => (+v).toLocaleString('ja-JP', { maximumFractionDigits: 2 });
+  return `<div class="card" style="margin-top:14px"><h2>${icon('layers').replace('<svg', '<svg style="width:18px;height:18px;vertical-align:-3px"')} 階・場所ごとの内訳</h2>
+    <div class="sub">部屋ごとに「階・場所」を入れると、その単位で数え直して金額を分けます（例：1F、2F、外構）。空欄の部屋と、手で入れた行・配管は「共通」になります。</div>
+    <details ${F.length ? '' : 'open'}><summary class="small" style="cursor:pointer;padding:6px 0">部屋ごとの階・場所（${p.rooms.length} 部屋${F.length ? '：' + F.map(f => esc(f) + ' ' + p.rooms.filter(r => String(r.lv || '').trim() === f).length).join('・') : ''}）</summary>
+      <div class="grid g4" style="margin-top:6px">${p.rooms.map(r => `<label class="f">${esc(r.name)}<input class="in" data-lv="${esc(r.id)}" value="${esc(r.lv || '')}" placeholder="例：1F" list="lvList" autocomplete="off"></label>`).join('')}</div>
+      <datalist id="lvList">${[...new Set(['1F', '2F', '3F', '4F', 'B1F', '外構', ...F])].map(v => `<option value="${esc(v)}">`).join('')}</datalist></details>
+    <div class="row" style="margin-top:8px">${hasPlan ? `<button class="btn sm" data-act="floorAuto">図面から 1F・2F… と付ける</button>` : ''}${res ? `<button class="btn sm primary" data-act="floorPrint">${icon('print')}階ごとの内訳書</button>` : ''}</div>
+    ${res ? `<div class="tablewrap" style="margin-top:10px"><table class="list"><thead><tr><th>階・場所</th><th class="r">行数</th><th class="r">金額（税抜）</th></tr></thead><tbody>
+      ${res.parts.map(x => `<tr><td><b>${esc(x.name)}</b></td><td class="r">${x.rows.length}</td><td class="r money">${yen(x.sub)}</td></tr>`).join('')}
+      <tr><td>内訳の合計</td><td></td><td class="r money"><b>${yen(res.sum)}</b></td></tr></tbody></table></div>
+      <div class="small muted" style="margin-top:6px">見積もり全体の小計 ${yen(res.total)}${Math.abs(res.sum - res.total) >= 1 ? `（差 ${yen(Math.abs(res.sum - res.total))}）。階ごとに数え直すので、ロスの切り上げや器具の数の振り分けで少し差が出ます。` : ''}</div>
+      ${res.parts.map(x => `<details style="margin-top:6px"><summary class="small" style="cursor:pointer">${esc(x.name)} の明細（${x.rows.length} 行）</summary><div class="tablewrap"><table class="list"><tbody>
+        ${x.rows.map(r => `<tr><td>${esc(r.l.name)}<div class="small muted">${esc(r.l.spec || '')}</div></td><td class="r">${q(r.qty)} ${esc(r.l.unit || '')}</td><td class="r money">${yen(r.amount)}</td></tr>`).join('')}</tbody></table></div></details>`).join('')}` : ''}
+  </div>`;
+}
+function floorHtml(p, res) {
+  return `<div class="doc"><h1>内訳書（階・場所ごと）</h1>
+    <table class="meta"><tr><td>件名</td><td>${esc(p.name || '')}</td></tr><tr><td>お客様</td><td>${esc(p.customer || '')} 様</td></tr><tr><td>作成日</td><td>${today()}</td></tr></table>
+    <h2>階・場所ごとの金額</h2><table class="items"><thead><tr><th>階・場所</th><th style="width:30%">金額（税抜）</th></tr></thead><tbody>
+      ${res.parts.map(x => `<tr><td>${esc(x.name)}</td><td class="r">${x.sub.toLocaleString('ja-JP')}</td></tr>`).join('')}
+      <tr><td><b>合計</b></td><td class="r"><b>${res.sum.toLocaleString('ja-JP')}</b></td></tr></tbody></table>
+    ${res.parts.map(x => `<h2>${esc(x.name)}　${yen(x.sub)}</h2><table class="items"><thead><tr><th>工事項目</th><th style="width:22%">規格・仕様</th><th style="width:12%">数量</th><th style="width:6%">単位</th><th style="width:12%">単価</th><th style="width:14%">金額</th></tr></thead><tbody>
+      ${x.rows.map(r => `<tr><td>${esc(r.l.name)}</td><td>${esc(r.l.spec || '')}</td><td class="r">${fmt(r.qty, 3)}</td><td>${esc(r.l.unit || '')}</td><td class="r">${Math.round(r.l.price || 0).toLocaleString('ja-JP')}</td><td class="r">${r.amount.toLocaleString('ja-JP')}</td></tr>`).join('')}</tbody></table>`).join('')}
+    ${Math.abs(res.sum - res.total) >= 1 ? `<div class="note">見積もり全体の小計 ${yen(res.total)}。階ごとに数え直すため、材料の切り上げなどで少し差が出ることがあります。</div>` : ''}
+  </div>`;
+}
