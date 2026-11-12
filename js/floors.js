@@ -50,7 +50,7 @@ export function floorBreakdown(p, o) {
   const boxes = {};
   F.forEach(f => p.rooms.filter(r => String(r.lv || '').trim() === f).forEach(r => { const b = roomBox(p, r); if (!b) return; const B = boxes[f]; boxes[f] = B ? [Math.min(B[0], b[0]), Math.min(B[1], b[1]), Math.max(B[2], b[2]), Math.max(B[3], b[3])] : b; }));
   const floorAt = (x, y) => F.find(f => inB(x, y, boxes[f])) || null;
-  const wallAt = w => { const S = (w.segs || []).map(i => plan && plan.segs[i]).filter(Boolean); if (!S.length) return null; const x = S.reduce((s, q) => s + q[0] + q[2], 0) / (2 * S.length), y = S.reduce((s, q) => s + q[1] + q[3], 0) / (2 * S.length); return floorAt(x, y); };
+  const wallAt = w => { if (w.pts && w.pts.length) { const x = w.pts.reduce((t, q) => t + q[0], 0) / w.pts.length, y = w.pts.reduce((t, q) => t + q[1], 0) / w.pts.length; return floorAt(x, y); } const S = (w.segs || []).map(i => plan && plan.segs[i]).filter(Boolean); if (!S.length) return null; const x = S.reduce((s, q) => s + q[0] + q[2], 0) / (2 * S.length), y = S.reduce((s, q) => s + q[1] + q[3], 0) / (2 * S.length); return floorAt(x, y); };
   const hatsuAt = h => floorAt((h.rect[0] + h.rect[2]) / 2, (h.rect[1] + h.rect[3]) / 2);
   const fxAt = x => floorAt((x.b[0] + x.b[2]) / 2, (x.b[1] + x.b[3]) / 2);
   /* 器具の数（種類ごと・階ごと） */
