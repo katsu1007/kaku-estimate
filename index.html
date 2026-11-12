@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-12.5";
+var KAKU_VERSION="2026-11-12.6";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -3920,6 +3920,89 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
       ids.forEach(function(id){F[id].pts.forEach(function(x){x.o.p=KF_G([Math.round(x.q[0]*1000)/1000,Math.round(x.q[1]*1000)/1000])})})}
     catch(e){console.error(e)}
     return out}
+})();
+</script>
+<script id="kaku-v24-lux">
+/* ==== 2026-11-12.6 部屋の用途から照明の数を決める（光束法）
+   参考：パナソニック 照明設計資料（オフィス照明・平均照度の計算法）、ダウンライト計算ツール（recessedlight-calculator.com）
+   ・部屋の用途を選ぶと目標の照度（lx）が決まる。「なし」は今までどおり間隔だけで並べる
+   ・必要な台数 N = 目標照度 × 床面積 ÷（1台の明るさ lm × 照明率 × 保守率）
+   ・室指数 K = 2 × 床面積 ÷（作業面から天井までの高さ × 周りの長さ）（四角の部屋なら 間口×奥行÷(高さ×(間口+奥行)) と同じ）
+   ・照明率は室指数から一般的なダウンライト・ベースライトの目安の値（天井70%・壁50%・床10%くらい）で読む。器具ごとの照明率表ではない
+   ・保守率は LED・屋内・普通の目安で 0.8
+   ・並べ方は今までと同じ（壁からの寸法＋均等割り）。間隔で並べた数が足りない時だけ、間隔を少しずつ詰めて数を増やす（多い方を使う）
+   ・天井が高い部屋は、高さが室指数に入るので自動で数が増える（用途を選んだ時は、前の「0.3mごとに1割詰める」は使わない） ==== */
+(function(){
+  if(typeof window.KF_raw!=='function'||typeof window.KF_chPitch!=='function')return;
+  /* 用途：目標照度 lx、作業面の高さ m（廊下・トイレ・倉庫は床） */
+  var USES=[
+    ['','なし（間隔だけで並べる）',0,0],
+    ['office','事務室',750,.75],['meeting','会議室・応接室',500,.75],['drafting','設計室・製図室',1500,.75],
+    ['shop','店舗（売場）',500,.85],['restaurant','飲食店（客席）',300,.75],['kitchen-biz','厨房・調理室',500,.85],
+    ['living','居間・リビング',200,.75],['dining','ダイニング・キッチン',300,.75],['bedroom','寝室・和室',150,.4],
+    ['study','書斎・子供部屋',500,.75],['bath','浴室・洗面所・脱衣所',300,.75],
+    ['toilet','トイレ',200,0],['corridor','廊下・階段・玄関',100,0],['storage','倉庫・物置',100,0],
+    ['custom','自分で照度を入れる',0,.75]];
+  var USE={};USES.forEach(function(u){USE[u[0]]={name:u[1],lx:u[2],wp:u[3]}});
+  /* 1台の明るさの目安 lm（品目の型番の器具光束。違う器具を使う時は画面で直す） */
+  var DEF_LM={'e-dl100':800,'e-dl100s':650,'e-dl125':1200,'e-dl150':1600,'e-clight':4000,'e-light':800,'e-bl':2000,'e-base':5200,'e-foot':0,'e-ceil':0};
+  /* 照明率の目安（室指数 → 照明率） */
+  var UT=[[.6,.40],[.8,.48],[1,.54],[1.25,.60],[1.5,.64],[2,.70],[2.5,.74],[3,.77],[4,.80],[5,.82]];
+  var MF=0.8;
+  function util(K){if(K<=UT[0][0])return UT[0][1]*Math.max(.5,K/UT[0][0]);for(var i=1;i<UT.length;i++)if(K<=UT[i][0]){var a=UT[i-1],b=UT[i];return a[1]+(b[1]-a[1])*(K-a[0])/(b[0]-a[0])}return UT[UT.length-1][1]}
+  function lmOf(item){var m=typeof current!=='undefined'&&current&&current.lightLm;if(m&&+m[item]>0)return+m[item];return DEF_LM[item]!=null?DEF_LM[item]:800}
+  function luxOf(p){if(!p||!p.use)return 0;if(p.use==='custom')return+p.lux||0;var u=USE[p.use];return u?u.lx:0}
+  function wpOf(p){var u=USE[p&&p.use];return u?u.wp:.75}
+  function perim(P){var s=0;for(var i=0;i<P.length;i++){var a=P[i],b=P[(i+1)%P.length];s+=Math.hypot(b[0]-a[0],b[1]-a[1])}return s}
+  /* 区画1つの計算 */
+  function calc(i,p){var f=KF_face(i);if(!f||!(f.area>0))return null;var E=luxOf(p),F=lmOf(p.item);if(!(E>0)||!(F>0))return null;
+    var ch=KF_chOf(i),Hm=Math.max(.5,ch-wpOf(p)),K=2*f.area/(Hm*perim(f.poly)),U=util(K);
+    return{E:E,F:F,A:f.area,ch:ch,Hm:Hm,K:K,U:U,need:Math.max(1,Math.ceil(E*f.area/(F*U*MF)-1e-9))}}
+  /* 間隔を詰めて、必要な数に届く間隔を探す（届かない時は 0.9m まで） */
+  var cache=new Map();
+  function pitchFor(i,p){var c=calc(i,p);if(!c)return null;var p0=+p.pitch||2,e=(current&&current.lightEdge)||.6;
+    var g='';try{g=JSON.stringify(window.KX_gridFor&&window.KX_gridFor(i)||'')}catch(_){}
+    var key=[i,c.E,c.F,p0,c.ch,e,c.A.toFixed(3),g].join('|');if(cache.has(key))return cache.get(key);
+    var f=KF_face(i),pp=p0,n=(KF_faceLights(f,pp)||[]).length;
+    while(n<c.need&&pp>0.9+1e-6){pp=Math.max(0.9,pp*0.92);n=(KF_faceLights(f,pp)||[]).length}
+    var r={pitch:pp,n:n,c:c};if(cache.size>300)cache.clear();cache.set(key,r);return r}
+  /* 並べる時：用途がある照明は、上の間隔を使う */
+  var CUR=null,chp=window.KF_chPitch;
+  window.KF_chPitch=function(i,p){if(CUR&&luxOf(CUR)>0){var r=pitchFor(i,CUR);if(r)return r.pitch}return chp.apply(this,arguments)};
+  var raw=window.KF_raw;
+  window.KF_raw=function(p){var keep=CUR;CUR=p;try{return raw.apply(this,arguments)}finally{CUR=keep}};
+  /* 結果：置いてある数（動かした・消した後）から照度を出す */
+  window.KX_luxResult=function(p){if(!p||p.auto!=='light'||!(luxOf(p)>0))return null;var its=KF_items(p),A=0,L=0,need=0,n=0;
+    (p.faces||[]).forEach(function(i){var c=calc(i,p);if(!c)return;var k=its.filter(function(o){return String(o.k).split(':')[0]===String(i)}).length;A+=c.A;L+=k*c.F*c.U*MF;need+=c.need;n+=k});
+    if(!A)return null;return{E:luxOf(p),got:L/A,n:n,need:need,A:A}};
+  /* 画面：用途・目標照度・1台の明るさ */
+  window.KX_lightUse=window.KX_lightUse||{use:'',lux:500};
+  var S=window.KX_lightUse;
+  function addFields(){if(typeof KAKU_mode==='undefined'||KAKU_mode!=='elec')return;var sel=document.getElementById('kfLight');if(!sel)return;var form=sel.closest('.kpform');if(!form||form.querySelector('.kx-use'))return;
+    var item=sel.value,cur=lmOf(item);
+    var wrap=document.createElement('div');wrap.className='kx-use';
+    wrap.innerHTML='<label>部屋の用途<select class="kx-use-sel">'+USES.map(function(u){return'<option value="'+u[0]+'"'+(u[0]===S.use?' selected':'')+'>'+u[1]+(u[2]?'（'+u[2]+' lx）':'')+'</option>'}).join('')+'</select>'+
+      '<span class="mini">用途を選ぶと、目標の明るさ（JISの推奨照度）に足りるように照明の数を決めます。間隔で並べた数の方が多い時はそのままです</span></label>'+
+      '<label class="kx-use-lux"'+(S.use==='custom'?'':' style="display:none"')+'>目標の照度 lx<input type="number" inputmode="numeric" step="50" min="50" max="3000" value="'+(+S.lux||500)+'"></label>'+
+      '<label class="kx-use-lm"'+(S.use?'':' style="display:none"')+'>この照明1台の明るさ lm<input type="number" inputmode="numeric" step="10" min="50" max="30000" value="'+cur+'">'+
+      '<span class="mini">カタログの「器具光束」を入れてください。最初の値は目安です</span></label>';
+    var after=sel.closest('label');form.insertBefore(wrap,after?after.nextSibling:form.firstChild);
+    var us=wrap.querySelector('.kx-use-sel');us.onchange=function(){S.use=this.value;wrap.querySelector('.kx-use-lux').style.display=S.use==='custom'?'':'none';wrap.querySelector('.kx-use-lm').style.display=S.use?'':'none'};
+    wrap.querySelector('.kx-use-lux input').onchange=function(){S.lux=Math.max(50,Math.min(3000,+this.value||500))};
+    wrap.querySelector('.kx-use-lm input').onchange=function(){var v=Math.max(50,Math.min(30000,+this.value||0));if(!current)return;current.lightLm=current.lightLm||{};current.lightLm[sel.value]=v;cache.clear();save();try{KP_sync()}catch(_){}KAKU_renderEditor()};
+    sel.addEventListener('change',function(){var i=wrap.querySelector('.kx-use-lm input');if(i)i.value=lmOf(sel.value)});
+    /* 並べた照明の照度の目安 */
+    var res=(current.places||[]).filter(function(p){return p.where==='fix'&&p.auto==='light'&&luxOf(p)>0}).map(function(p){var r=window.KX_luxResult(p);if(!r)return'';var u=USE[p.use],nm=p.use==='custom'?'目標 '+r.E+' lx':(u?u.name:'');var low=r.got<r.E*0.95;
+      return'<li>'+esc(nm)+'：'+esc(KP_name(p.item))+' '+r.n+'台 → 約 <b>'+Math.round(r.got/10)*10+' lx</b>（目標 '+r.E+' lx）'+(low?' <b style="color:#9b3528">足りません。照明を足すか、明るい器具にしてください</b>':'')+'</li>'}).join('');
+    if(res){var d=document.createElement('div');d.className='kx-use-res';d.innerHTML='<p class="mini" style="margin:6px 0 2px"><b>照度の目安（光束法・照明率と保守率は目安の値）</b></p><ul class="mini" style="margin:0;padding-left:18px">'+res+'</ul>';form.appendChild(d)}}
+  if(typeof window.KAKU_renderEditor==='function'){var re=window.KAKU_renderEditor;window.KAKU_renderEditor=function(){var r=re.apply(this,arguments);try{addFields()}catch(e){console.error(e)}return r}}
+  /* 自動で並べる時に、用途を照明に付ける */
+  if(typeof window.KF_auto==='function'){var au=window.KF_auto;window.KF_auto=function(){var before=new Set((current&&current.places||[]).map(function(p){return p}));
+    var r=au.apply(this,arguments);
+    try{var nw=(current.places||[]).filter(function(p){return!before.has(p)&&p.where==='fix'&&p.auto==='light'});
+      if(nw.length&&S.use){nw.forEach(function(p){p.use=S.use;if(S.use==='custom')p.lux=+S.lux||500});KP_sync();save();KAKU_renderEditor();renderRooms();
+        var t=nw.map(window.KX_luxResult).filter(Boolean);if(t.length){var x=t[0];toast('照明 '+x.n+'台を並べました（約 '+Math.round(x.got/10)*10+' lx・目標 '+x.E+' lx）')}}}
+    catch(e){console.error(e)}return r}}
 })();
 </script>
 </body></html>
