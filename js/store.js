@@ -5,31 +5,59 @@ const DB_VER = 1;
 export const DATA_VERSION = 1;
 const OLD_KEY = 'kaku-estimate-v1';
 
+/* iPhoneアプリ（KAKU.ipa）の中で動いている時：保存のたびに全部をアプリのファイルにも書く（kakuDB）。
+ * 起動の時にアプリが前回の中身を window.__kakuDB に入れてくれる。
+ * IndexedDB が開けない時は、その中身を使って端末のメモリで動かし、書いた物はアプリのファイルに残す */
+const NATIVE = typeof window !== 'undefined' && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.kakuDB;
+let mem = null;
+function memDB() {
+  const src = (typeof window !== 'undefined' && window.__kakuDB) || {};
+  mem = { projects: new Map((src.projects || []).map(p => [p.id, p])), kv: new Map(Object.entries(src.kv || {})) };
+  return mem;
+}
+let mirrorT = null;
+function mirror() {
+  if (!NATIVE) return;
+  clearTimeout(mirrorT);
+  mirrorT = setTimeout(async () => { try { NATIVE.postMessage(JSON.stringify(await exportAll())); } catch (e) { console.warn('アプリへの控えに失敗', e); } }, 3000);
+}
+export const usingMemory = () => !!mem;
+
 let dbp = null;
 function open() {
   if (dbp) return dbp;
   dbp = new Promise((resolve, reject) => {
-    if (!('indexedDB' in self)) { reject(new Error('この端末では保存の機能（IndexedDB）が使えません。')); return; }
-    const rq = indexedDB.open(DB_NAME, DB_VER);
+    if (!('indexedDB' in self)) { if (NATIVE) { resolve(null); memDB(); return; } reject(new Error('この端末では保存の機能（IndexedDB）が使えません。')); return; }
+    let rq;
+    try { rq = indexedDB.open(DB_NAME, DB_VER); } catch (e) { if (NATIVE) { memDB(); resolve(null); return; } reject(new Error('保存場所を開けませんでした：' + e.message)); return; }
     rq.onupgradeneeded = () => {
       const db = rq.result;
       if (!db.objectStoreNames.contains('projects')) db.createObjectStore('projects', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
     };
     rq.onsuccess = () => resolve(rq.result);
-    rq.onerror = () => reject(new Error('保存場所を開けませんでした：' + (rq.error && rq.error.message)));
+    rq.onerror = () => { if (NATIVE) { memDB(); resolve(null); return; } reject(new Error('保存場所を開けませんでした：' + (rq.error && rq.error.message))); };
     rq.onblocked = () => reject(new Error('別のタブでKAKUが開いています。ほかのタブを閉じてください。'));
   });
   return dbp;
 }
 
+/* メモリで動いている時の入れ物（IndexedDB の objectStore と同じ呼び方だけ用意する） */
+const done = v => { const r = { result: v }; setTimeout(() => r.onsuccess && r.onsuccess()); return r; };
+function memStore(name) {
+  const M = mem[name];
+  return {
+    getAll: () => done([...M.values()]), get: k => done(M.get(k)), put: (v, k) => { M.set(k === undefined ? v.id : k, v); return done(k); }, delete: k => { M.delete(k); return done(); },
+    openCursor: () => { const it = [...M.entries()]; let i = 0; const c = { result: null }; const step = () => setTimeout(() => { c.result = i < it.length ? { key: it[i][0], value: it[i][1], continue: () => { i++; step(); } } : null; c.onsuccess && c.onsuccess(); }); step(); return c; }
+  };
+}
 function tx(store, mode, fn) {
-  return open().then(db => new Promise((resolve, reject) => {
+  return open().then(db => !db ? Promise.resolve(fn(memStore(store))).then(r => { if (mode === 'readwrite') mirror(); return r; }) : new Promise((resolve, reject) => {
     const t = db.transaction(store, mode);
     const s = t.objectStore(store);
     let result;
     Promise.resolve(fn(s)).then(r => { result = r; }, reject);
-    t.oncomplete = () => resolve(result);
+    t.oncomplete = () => { if (mode === 'readwrite') mirror(); resolve(result); };
     t.onerror = () => reject(new Error(quotaMsg(t.error)));
     t.onabort = () => reject(new Error(quotaMsg(t.error)));
   }));
@@ -150,4 +178,15 @@ async function importOldArray(arr) {
   const list = convertOld(arr);
   for (const p of list) await putProject(p);
   return list.length;
+}
+
+/* iPhoneアプリ：IndexedDB が空なのにアプリのファイルに前回の中身がある時（アプリの更新でブラウザ側の保存が消えた時など）は戻す */
+export async function restoreFromApp() {
+  if (!NATIVE || mem) return 0;
+  const src = window.__kakuDB;
+  if (!src || !Array.isArray(src.projects) || !src.projects.length) return 0;
+  if ((await listProjects()).length) return 0;
+  for (const p of src.projects) await putProject(p);
+  for (const [k, v] of Object.entries(src.kv || {})) await setKV(k, v);
+  return src.projects.length;
 }

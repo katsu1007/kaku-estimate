@@ -185,8 +185,10 @@ export async function boot() {
   window.addEventListener('error', e => showError('エラーが起きました：' + (e.message || e.error)));
   window.addEventListener('unhandledrejection', e => showError('エラーが起きました：' + (e.reason && e.reason.message || e.reason)));
   try {
-    const moved = await store.migrateOnce();
+    const back = await store.restoreFromApp();
+    const moved = back ? 0 : await store.migrateOnce();
     await reload();
+    if (back) toast(`アプリに残っていた案件を ${back} 件戻しました`);
     applyTheme();
     if (moved) toast(`前のKAKUの案件を ${moved} 件引き継ぎました`);
     store.persist().then(ok => { state.persisted = ok; });

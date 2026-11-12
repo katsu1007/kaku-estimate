@@ -96,7 +96,19 @@ function showCompare(p, no) {
 }
 
 /* ---------- 印刷 ---------- */
-export function printDoc(html) {
+export async function printDoc(html) {
+  /* iPhoneアプリの中：印刷の画面が出ないので、アプリでPDFにして共有メニューを出す */
+  const H = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pdf;
+  if (H) {
+    let css = '';
+    try { css = await (await fetch('./css/app.css')).text(); } catch (e) { /* 無くても中身は出る */ }
+    const title = ((html.match(/<h1[^>]*>([^<]*)<\/h1>/) || [])[1] || '書類').trim();
+    const name = `${title}_${today()}`.replace(/[\\/:*?"<>|]/g, '_');
+    const docCss = css.split('\n').filter(l => /^\.doc[\s.{]/.test(l)).join('\n');
+    H.postMessage({ name, html: `<!doctype html><html lang="ja"><head><meta charset="utf-8"><style>html,body{margin:0;background:#fff;color:#111;font-family:-apple-system,'Hiragino Sans','Hiragino Kaku Gothic ProN',sans-serif;-webkit-print-color-adjust:exact}${docCss}</style></head><body>${html}</body></html>` });
+    toast('PDFを作っています…');
+    return;
+  }
   let root = document.getElementById('print');
   if (!root) { root = document.createElement('div'); root.id = 'print'; document.body.appendChild(root); }
   root.innerHTML = html;

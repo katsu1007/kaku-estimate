@@ -101,6 +101,7 @@ export function ask(title, text, { ok = 'はい', cancel = 'やめる', danger =
 }
 
 export function download(blob, name) {
+  if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.share) { share(blob, name); return; }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = name;
@@ -110,6 +111,13 @@ export function download(blob, name) {
 }
 /* iPhone ではファイルを「共有」から保存できるようにする（できなければダウンロード） */
 export async function share(blob, name) {
+  /* iPhoneアプリの中：アプリの共有メニューに渡す（ブラウザのダウンロードはアプリでは動かないため） */
+  const H = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.share;
+  if (H) {
+    const b64 = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = () => rej(r.error); r.readAsDataURL(blob); });
+    H.postMessage({ name, b64 });
+    return;
+  }
   try {
     const file = new File([blob], name, { type: blob.type });
     if (navigator.canShare && navigator.canShare({ files: [file] }) && /iPhone|iPad/.test(navigator.userAgent)) {
