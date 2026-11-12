@@ -1,7 +1,8 @@
 /* 単価マスター・設定・使い方・初めての案内・見本の案件 */
-import { state, registerView, setTop, go, saveSettings, saveKV, masterItems, categories, newProject, applyTheme, reload, render, APP_VERSION, APP_DATE, opts } from './app.js';
+import { state, registerView, setTop, go, saveSettings, saveKV, masterItems, categories, newProject, applyTheme, reload, render, APP_VERSION, APP_DATE, opts, flush } from './app.js';
 import { MEASURES, KINDS, DEFAULTS } from './calc.js';
 import * as store from './store.js';
+import * as sync from './sync.js';
 import { BUILTIN_ITEMS } from './master-data.js';
 import { icon, esc, yen, toast, modal, ask, share, matchItem, $ } from './ui.js';
 
@@ -152,6 +153,7 @@ registerView('settings', async el => {
       <div class="row"><button class="btn primary" id="bexp">${icon('down')}バックアップを書き出す</button>
       <label class="btn" style="cursor:pointer">${icon('up')}バックアップから戻す<input type="file" id="bimp" accept=".json,application/json" hidden></label></div>
       <p class="small muted" style="margin-bottom:0">前のKAKUで書き出したバックアップも読み込めます。保存の状態：${state.persisted ? '<span class="pill ok">端末に消されにくい保存</span>' : '<span class="pill warn">ブラウザが容量不足の時に消すことがあります。バックアップを取ってください</span>'}</p></div>
+    <div class="card" id="syncCard"><h2>保存先フォルダ（会社の OneDrive・Googleドライブなど）</h2>${syncCardHtml()}</div>
     <div class="card"><h2>そのほか</h2>
       <div class="row"><button class="btn" id="intro">${icon('help')}最初の案内をもう一度見る</button><button class="btn" id="sample">${icon('spark')}見本の案件を入れる</button><a class="btn" href="./old/">${icon('layers')}前のKAKUを開く</a><button class="btn" id="reold">${icon('up')}前のKAKUの案件を取り込み直す</button></div>
       <p class="small muted">前のKAKU（図面・照明・3D）で作ったり直したりした案件を、こちらに取り込みます。前のKAKUから来た案件は上書きされます。</p>
@@ -195,6 +197,7 @@ registerView('settings', async el => {
     try { const n = await store.reimportOld(); await reload(); toast(`${n} 件の案件を取り込みました`); }
     catch (err) { toast(err.message, { bad: true }); }
   };
+  bindSync(el, render);
   $('#intro').onclick = showIntro;
   $('#sample').onclick = addSample;
 });
@@ -289,3 +292,44 @@ export function addSample() {
   toast('見本の案件を入れました');
 }
 void opts;
+
+/* ---------- 保存先フォルダ ---------- */
+function syncCardHtml() {
+  const m = sync.mode();
+  if (m === 'share') return `<div class="sub">案件を、会社の OneDrive・Googleドライブ・iCloud などに置けます。案件1つにつき、KAKUが読む「.kaku.json」と、iPhoneでもそのまま開いて見られる「.xlsx」（明細）の2つです。</div>
+    <div class="row"><button class="btn primary" id="syShare">${icon('down')}共有メニューで保存（全部の案件）</button>
+    <label class="btn" style="cursor:pointer">${icon('up')}ファイルから読み込む<input type="file" id="syFiles" accept=".json,application/json" multiple hidden></label></div>
+    <p class="small muted" style="margin-bottom:0">保存：共有メニューの「"ファイル"に保存」で、OneDrive などのフォルダを選んでください。読み込み：同じフォルダの「.kaku.json」を選んでください（まとめて選べます）。新しい方に合わせ、両方で直した案件だけ、どちらにするか聞きます。この画面（Safari）では自動で保存されません。iPhoneアプリかパソコンの Chrome・Edge なら、フォルダに自動で保存できます。</p>`;
+  return `<div class="sub">フォルダを1回選ぶと、保存のたびにそこへ自動で書きます。案件1つにつき、KAKUが読む「.kaku.json」と、そのまま開いて見られる「.xlsx」（明細）の2つです。単価・会社情報も「_KAKU_会社の設定」に入れて、会社で同じ単価を使えます。</div>
+    <div class="row" style="align-items:center"><span class="pill info" id="syName">確かめています…</span>
+    <button class="btn" id="syPick">${icon('layers')}フォルダを選ぶ</button><button class="btn primary" id="syNow">${icon('up')}フォルダと揃える</button></div>
+    <p class="small muted" style="margin-bottom:0">「フォルダと揃える」で、ほかの人や別の端末が書いた案件を読み込みます。新しい方に合わせ、両方で直した案件だけ、どちらにするか聞きます。この端末で消した案件は、フォルダから戻しません。${m === 'fs' ? 'パソコンでは OneDrive・Googleドライブのフォルダ（パソコンの中に同期されている所）を選んでください。' : 'iPhoneの「ファイル」に出てくる所（OneDrive・Googleドライブ・iCloud・Dropbox など）を選べます。'}</p>`;
+}
+function bindSync(el, render) {
+  const nameEl = $('#syName');
+  if (nameEl) sync.folderName().then(n => { nameEl.textContent = n ? `保存先：${n}` : 'まだ選んでいません'; nameEl.className = 'pill ' + (n ? 'ok' : 'warn'); });
+  const after = async r => {
+    await reload(); render();
+    const msg = [`読み込み ${r.pulled.length} 件`, r.pushed != null && sync.mode() !== 'share' ? `書き出し ${r.pushed} 件` : '', r.company === 'pull' ? '会社の設定を読み込み' : '', r.kept ? `この端末で消した ${r.kept} 件は戻していません` : ''].filter(Boolean).join('・');
+    toast(msg || '揃っています', { ms: 5000 });
+  };
+  const pick = $('#syPick'); if (pick) pick.onclick = async () => {
+    try { const n = await sync.pickFolder(); if (n) { toast(`保存先を「${n}」にしました。続けて「フォルダと揃える」を押してください`, { ms: 5000 }); render(); } }
+    catch (e) { if (e && e.name === 'AbortError') return; toast('フォルダを選べませんでした：' + (e.message || e), { bad: true }); }
+  };
+  const now = $('#syNow'); if (now) now.onclick = async () => {
+    if (!(await sync.folderName())) { toast('先に「フォルダを選ぶ」で保存先を選んでください', { bad: true }); return; }
+    try { await flush(); after(await sync.syncNow(state.projects, opts())); }
+    catch (e) { toast('揃えられませんでした：' + (e.message || e), { bad: true, ms: 6000 }); }
+  };
+  const sh = $('#syShare'); if (sh) sh.onclick = async () => {
+    try { await flush(); const n = await sync.shareFiles(state.projects, opts()); toast(`${n} 個のファイルを渡しました`); }
+    catch (e) { if (e && e.name === 'AbortError') return; toast('保存できませんでした：' + (e.message || e), { bad: true }); }
+  };
+  const fi = $('#syFiles'); if (fi) fi.onchange = async e => {
+    const files = await Promise.all([...e.target.files].map(async f => ({ name: f.name, text: await f.text() })));
+    e.target.value = '';
+    try { await flush(); after(await sync.syncNow(state.projects, opts(), files)); }
+    catch (err) { toast('読み込めませんでした：' + (err.message || err), { bad: true }); }
+  };
+}

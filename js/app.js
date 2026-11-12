@@ -1,5 +1,6 @@
 /* 起動・画面の切り替え・保存のまとめ役 */
 import * as store from './store.js';
+import * as sync from './sync.js';
 import { DEFAULTS } from './calc.js';
 import { BUILTIN_ITEMS, CATEGORIES } from './master-data.js';
 import { icon, esc, toast, showError, $ } from './ui.js';
@@ -48,6 +49,7 @@ export async function flush() {
   try {
     for (const p of list) await store.putProject(p);
     setSave('ok');
+    sync.autoSave(list, opts());
   } catch (e) {
     list.forEach(p => pending.set(p.id, p));
     setSave('bad', e.message);
@@ -66,12 +68,14 @@ function setSave(kind, msg) {
   if (msg) el.title = msg;
 }
 
+let compT = null;
+const companySoon = () => { clearTimeout(compT); compT = setTimeout(() => sync.autoCompany(), 2000); };
 export async function saveSettings() {
-  try { await store.setKV('settings', state.settings); }
+  try { await store.setKV('settings', state.settings); companySoon(); }
   catch (e) { toast(e.message, { bad: true }); }
 }
 export async function saveKV(key, val) {
-  try { await store.setKV(key, val); }
+  try { await store.setKV(key, val); if (['company', 'priceOverrides', 'customItems'].includes(key)) companySoon(); }
   catch (e) { toast(e.message, { bad: true }); throw e; }
 }
 
