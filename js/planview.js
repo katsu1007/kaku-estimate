@@ -30,6 +30,12 @@ function fixSymbol(x, lw) {
   return `<g>${g}</g>`;
 }
 
+/* 見つけた器具の印：図面の器具の絵はそのまま見せて、その周りに種類の色の点線の枠だけを付ける（文字は出さない） */
+function fixBox(x, lw) {
+  const [x0, y0, x1, y1] = x.b, c = FIX_COLOR[x.t] || '#9aa7b8', pad = lw * 3;
+  return `<rect x="${x0 - pad}" y="${-y1 - pad}" width="${x1 - x0 + pad * 2}" height="${y1 - y0 + pad * 2}" rx="${lw * 3}" fill="${c}" fill-opacity=".1" stroke="${c}" stroke-width="${lw * 1.6}" stroke-dasharray="${lw * 4} ${lw * 2.5}"><title>${FIX_LABEL[x.t] || ''}</title></rect>`;
+}
+
 export function planView(box, plan, opt = {}) {
   const xs = [], ys = [];
   plan.segs.forEach(s => { xs.push(s[0], s[2]); ys.push(s[1], s[3]); });
@@ -45,7 +51,9 @@ export function planView(box, plan, opt = {}) {
       <g class="faces"></g>
       <path d="${pathOf(plan.dsegs || [])}" fill="none" stroke="var(--faint)" stroke-width="${lw}" stroke-dasharray="${lw * 4} ${lw * 3}"/>
       <path d="${pathOf(plan.segs)}" fill="none" stroke="var(--text)" stroke-width="${lw}" stroke-linecap="round" opacity=".85"/>
-      <g class="fixes" pointer-events="none">${(opt.fixtures || []).filter(x => x.t !== 'other').map(x => fixSymbol(x, lw)).join('')}</g>
+      ${opt.fixG ? `<path d="${opt.fixG}" transform="scale(0.001,0.001)" fill="none" stroke="var(--text)" stroke-width="${lw * 1000}" opacity=".8" pointer-events="none"/>` : ''}
+      ${opt.fixGd ? `<path d="${opt.fixGd}" transform="scale(0.001,0.001)" fill="none" stroke="var(--faint)" stroke-width="${lw * 1000}" stroke-dasharray="${lw * 4000} ${lw * 3000}" pointer-events="none"/>` : ''}
+      <g class="fixes" pointer-events="none">${(opt.fixtures || []).filter(x => x.t !== 'other').map(x => fixBox(x, lw)).join('')}</g>
       <g class="labels" font-size="${fs}" text-anchor="middle"></g></svg>
     <div class="pv-tools"><button class="iconbtn" data-z="in" aria-label="拡大">＋</button><button class="iconbtn" data-z="out" aria-label="縮小">－</button><button class="iconbtn" data-z="fit" aria-label="全体を表示">⤢</button></div></div>`;
   const svg = box.querySelector('svg');

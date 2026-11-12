@@ -309,7 +309,7 @@ function stepRooms(ctx) {
     if (p.drawing && p.drawing.plan && p.drawing.plan.order !== 2) { orderFacesOf(p.drawing.plan); p.drawing.plan.order = 2; touch(p); }
     if (p.drawing && p.drawing.plan) {
       view = planView(body.querySelector('#dwgView'), p.drawing.plan, {
-        selected: () => sel, owner, fixtures: p.drawing.fixtures || [],
+        selected: () => sel, owner, fixtures: p.drawing.fixtures || [], fixG: p.drawing.fixG || '', fixGd: p.drawing.fixGd || '',
         onTap: i => { if (sel.has(i)) sel.delete(i); else sel.add(i); paintSel(); }
       });
       paintSel();
@@ -328,7 +328,7 @@ function stepRooms(ctx) {
         } else res = await importDrawing(files);
         if (!res.plan || !res.plan.faces.length) { const msg = res.message || '部屋の区画が見つかりませんでした'; if (st) st.textContent = msg; toast(msg, { bad: true }); return; }
         p.rooms.forEach(r => { if (r.src === 'plan') { r.src = 'plan-old'; delete r.faces; } });
-        p.drawing = { fileName: (cad ? [cad] : files).map(f => f.name).join('、'), at: Date.now(), plan: res.plan, fixtures: cad ? res.fixtures : null, open: cad ? res.open : null };
+        p.drawing = { fileName: (cad ? [cad] : files).map(f => f.name).join('、'), at: Date.now(), plan: res.plan, fixtures: cad ? res.fixtures : null, open: cad ? res.open : null, fixG: cad ? res.fixG : '', fixGd: cad ? res.fixGd : '' };
         sel.clear(); touch(p); draw();
         toast(`区画を ${res.plan.faces.length} 個${cad ? `、器具を ${res.fixtures.filter(x => x.t !== 'other').length} 個` : ''}見つけました`);
       } catch (err) {

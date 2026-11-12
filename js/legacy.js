@@ -52,7 +52,7 @@ export async function readWithFixtures(file) {
       if(F&&F.fx){fixtures=F.fx.map(x=>({t:x.t,b:KF_gbox(x.b).map(q),back:KF_gback(x.back)||''}));
         const O=(typeof KX_openScan==='function'&&KX_openScan())||{};
         Object.keys(O).forEach(k=>{open[k]=O[k].map(r=>({ty:r.ty,len:Math.round(r.len*100)/100,a:r.a.map(q),b:r.b.map(q),n:r.n.map(q)}))})}
-      return JSON.stringify({plan,fixtures,open,doors:F&&F.doors?F.doors.length:0})})()`);
+      return JSON.stringify({plan,fixtures,open,doors:F&&F.doors?F.doors.length:0,fixG:F&&F.g||'',fixGd:F&&F.gd||''})})()`);
     return JSON.parse(R);
   } finally {
     /* 作業用の案件と、その図面の保存を消す（前のKAKUの案件一覧に残さない） */
