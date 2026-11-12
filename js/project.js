@@ -196,9 +196,10 @@ function drawingCard(p) {
       <div class="sub" style="margin:0">区画 ${d.plan.faces.length} 個${planCH(d.plan) ? `・図面の天井高 ${planCH(d.plan)}m` : ''}。区画をタップして選び、下のボタンで部屋にしてください。</div></div>
       <label class="btn sm" style="cursor:pointer">${icon('up')}読み直す<input type="file" id="dwgFile" accept=".jww,.jwc,.dxf,.pdf,application/pdf" hidden></label>
       <button class="btn sm ghost danger" data-act="dwgClear">${icon('trash')}図面を消す</button></div>
+    <div class="seg" id="dwgMode" style="margin-bottom:8px"><button data-mode="room">部屋を作る</button><button data-mode="fix">器具を直す</button><button data-mode="meas">測る</button></div>
     <div id="dwgView"></div>
     <div class="addbar" style="margin-top:10px" id="dwgBar"></div>
-    ${fixSummary(d)}
+    <div id="dwgFix">${fixSummary(d)}</div>
     <details class="more"><summary>区画の一覧から選ぶ（図面で押しにくい小さい区画など）</summary><div class="facelist" id="dwgFaces"></div></details>
     <div class="small muted" id="dwgStatus" style="margin-top:6px"></div></div>`;
 }
@@ -249,14 +250,73 @@ function fixLinesDialog(p, after) {
   };
 }
 
+/* 測る時のくっつき：線の端（近い順）→ 線の上 → そのまま（1mm単位） */
+function snapPt(plan, x, y, tol) {
+  let best = null, bd = tol;
+  const segs = plan.segs;
+  for (const s of segs) for (const q of [[s[0], s[1]], [s[2], s[3]]]) { const d = Math.hypot(q[0] - x, q[1] - y); if (d < bd) { bd = d; best = q; } }
+  if (best) return [best[0], best[1]];
+  bd = tol * 0.7;
+  for (const s of segs) {
+    const dx = s[2] - s[0], dy = s[3] - s[1], L2 = dx * dx + dy * dy; if (!L2) continue;
+    const t = Math.max(0, Math.min(1, ((x - s[0]) * dx + (y - s[1]) * dy) / L2));
+    const px = s[0] + t * dx, py = s[1] + t * dy, d = Math.hypot(px - x, py - y);
+    if (d < bd) { bd = d; best = [px, py]; }
+  }
+  if (best) return best;
+  return [Math.round(x * 1000) / 1000, Math.round(y * 1000) / 1000];
+}
+
 function stepRooms(ctx) {
   const { p, body, refresh } = ctx;
   const sel = new Set();
   let view = null;
+  let mode = 'room', fsel = -1, addAt = null;
+  const meas = { pts: [], cont: false };
+  const FIX_SIZE = { toilet: [0.46, 0.8], urinal: [0.4, 0.36], counter: [1.2, 0.5], sink: [0.45, 0.36], slop: [0.8, 0.52], bath: [1.6, 1.6], kitchen: [2.55, 0.65] };
+  const BACKS = [['N', '上'], ['E', '右'], ['S', '下'], ['W', '左']];
+  const fxList = () => (p.drawing && p.drawing.fixtures) || [];
   const owner = () => { const m = new Map(); p.rooms.forEach(r => (r.faces || []).forEach(i => m.set(i, r.color))); return m; };
+  const measOverlay = () => {
+    if (!view) return '';
+    const lw = view.lw, P = meas.pts;
+    if (!P.length) return '';
+    let h = `<polyline points="${P.map(q => q[0] + ',' + -q[1]).join(' ')}" fill="none" stroke="var(--accent)" stroke-width="${lw * 3}"/>`;
+    P.forEach(q => { h += `<circle cx="${q[0]}" cy="${-q[1]}" r="${lw * 5}" fill="var(--accent)"/>`; });
+    if (P.length > 1) { const a = P[P.length - 2], b = P[P.length - 1]; h += `<text x="${(a[0] + b[0]) / 2}" y="${-(a[1] + b[1]) / 2}" font-size="${lw * 18}" fill="var(--accent)" stroke="var(--bg)" stroke-width="${lw * 4}" paint-order="stroke" text-anchor="middle" font-weight="800">${Math.hypot(b[0] - a[0], b[1] - a[1]).toFixed(3)}m</text>`; }
+    if (addAt) h += `<circle cx="${addAt[0]}" cy="${-addAt[1]}" r="${lw * 6}" fill="none" stroke="var(--accent)" stroke-width="${lw * 3}"/>`;
+    return h;
+  };
   const paintSel = () => {
     if (!p.drawing || !p.drawing.plan) return;
-    if (view) view.paint();
+    $$('#dwgMode button', body).forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
+    if (view) { view.paint(); view.overlay(mode === 'meas' || addAt ? measOverlay() : ''); }
+    const fxBox = body.querySelector('#dwgFix'); if (fxBox) fxBox.innerHTML = fixSummary(p.drawing);
+    if (mode !== 'room') {
+      const bar = body.querySelector('#dwgBar');
+      if (mode === 'meas') {
+        const P = meas.pts; let last = 0, total = 0;
+        for (let k = 1; k < P.length; k++) { const d = Math.hypot(P[k][0] - P[k - 1][0], P[k][1] - P[k - 1][1]); total += d; last = d; }
+        bar.innerHTML = `<span class="small muted">${P.length ? '' : '測りたい所を2点タップしてください。線の端や線の上にくっつきます。'}</span>
+          ${P.length > 1 ? `<span class="pill acc" style="font-size:15px">長さ ${last.toFixed(3)} m</span>${meas.cont && P.length > 2 ? `<span class="pill info" style="font-size:15px">合計 ${total.toFixed(3)} m</span>` : ''}` : ''}
+          <span class="spacer"></span><label class="row small muted" style="gap:6px"><input type="checkbox" data-meas-cont ${meas.cont ? 'checked' : ''} style="width:20px;height:20px">続けて測る（合計を出す）</label>
+          <button class="btn sm" data-act="measClear">やり直す</button>`;
+      } else {
+        const fx = fxList();
+        const x = fx[fsel];
+        const types = Object.entries(FIX_NAMES);
+        bar.innerHTML = x ? `<b class="small">選んだ器具</b>
+            <select class="in" data-fx="t" style="width:auto;min-height:40px">${types.map(([k, n]) => `<option value="${k}" ${x.t === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
+            <label class="row small muted" style="gap:6px">壁側<select class="in" data-fx="back" style="width:auto;min-height:40px"><option value="">—</option>${BACKS.map(([k, n]) => `<option value="${k}" ${x.back === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+            <button class="btn sm danger" data-act="fxDel">${icon('trash')}消す</button><button class="btn sm ghost" data-act="fxDone">選ぶのをやめる</button>`
+          : addAt ? `<b class="small">ここに器具を足す</b>
+            <select class="in" id="fxNewT" style="width:auto;min-height:40px">${types.filter(([k]) => FIX_SIZE[k]).map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select>
+            <label class="row small muted" style="gap:6px">壁側<select class="in" id="fxNewB" style="width:auto;min-height:40px">${BACKS.map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select></label>
+            <button class="btn sm primary" data-act="fxAdd">${icon('plus')}足す</button><button class="btn sm ghost" data-act="fxDone">やめる</button>`
+          : `<span class="small muted">器具をタップすると、種類を変えたり消したりできます。何も無い所をタップすると、そこに器具を足せます。</span>`;
+      }
+      return;
+    }
     const own = owner();
     const fl = body.querySelector('#dwgFaces');
     if (fl) fl.innerHTML = [...p.drawing.plan.faces].sort((a, b) => a.no - b.no).map(f => `<button data-face="${f.i}" class="${sel.has(f.i) ? 'on' : ''} ${own.has(f.i) && !sel.has(f.i) ? 'used' : ''}">区画${f.no}${f.name ? ' ' + esc(f.name) : ''} ${Math.round(f.area * 100) / 100}㎡</button>`).join('');
@@ -309,8 +369,20 @@ function stepRooms(ctx) {
     if (p.drawing && p.drawing.plan && p.drawing.plan.order !== 2) { orderFacesOf(p.drawing.plan); p.drawing.plan.order = 2; touch(p); }
     if (p.drawing && p.drawing.plan) {
       view = planView(body.querySelector('#dwgView'), p.drawing.plan, {
-        selected: () => sel, owner, fixtures: p.drawing.fixtures || [], fixG: p.drawing.fixG || '', fixGd: p.drawing.fixGd || '',
-        onTap: i => { if (sel.has(i)) sel.delete(i); else sel.add(i); paintSel(); }
+        selected: () => sel, owner, fixtures: fxList, fixSel: () => (mode === 'fix' ? fsel : -1), mode: () => mode, fixG: p.drawing.fixG || '', fixGd: p.drawing.fixGd || '',
+        onTap: i => { if (sel.has(i)) sel.delete(i); else sel.add(i); paintSel(); },
+        onPoint: (x, y, sc) => {
+          if (mode === 'fix') {
+            const k = fxList().findIndex(f => x >= f.b[0] - 0.03 && x <= f.b[2] + 0.03 && y >= f.b[1] - 0.03 && y <= f.b[3] + 0.03);
+            if (k >= 0) { fsel = fsel === k ? -1 : k; addAt = null; } else { fsel = -1; addAt = [x, y]; }
+            paintSel(); return;
+          }
+          if (mode === 'meas') {
+            const q = snapPt(p.drawing.plan, x, y, sc * 16);
+            if (!meas.cont && meas.pts.length >= 2) meas.pts = [];
+            meas.pts.push(q); paintSel();
+          }
+        }
       });
       paintSel();
     }
@@ -350,13 +422,37 @@ function stepRooms(ctx) {
     if (e.target.dataset.wk) { const w = r.windows[+e.target.dataset.wi]; w[e.target.dataset.wk] = e.target.value === '' ? '' : Number(e.target.value); }
     touch(p); refresh();
   });
+  body.addEventListener('change', e => {
+    if (e.target.matches('[data-meas-cont]')) { meas.cont = e.target.checked; meas.pts = []; paintSel(); return; }
+    const k = e.target.dataset.fx;
+    if (k && fsel >= 0) { const x = fxList()[fsel]; if (!x) return; x[k] = e.target.value; x.edited = true; touch(p); paintSel(); }
+  });
   body.addEventListener('click', async e => {
+    const mb = e.target.closest('[data-mode]');
+    if (mb) { mode = mb.dataset.mode; fsel = -1; addAt = null; if (mode !== 'meas') meas.pts = []; paintSel(); return; }
     const fb = e.target.closest('[data-face]');
     if (fb) { const i = +fb.dataset.face; if (sel.has(i)) sel.delete(i); else sel.add(i); paintSel(); return; }
     const da = e.target.closest('[data-act]');
     if (da && !da.closest('[data-room]')) {
       const a = da.dataset.act;
       if (a === 'fixLines') return fixLinesDialog(p, () => {});
+      if (a === 'measClear') { meas.pts = []; paintSel(); return; }
+      if (a === 'fxDone') { fsel = -1; addAt = null; paintSel(); return; }
+      if (a === 'fxDel') {
+        const fx = fxList(), x = fx[fsel]; if (!x) return;
+        fx.splice(fsel, 1); fsel = -1; touch(p); paintSel();
+        toast(`${FIX_NAMES[x.t] || '器具'}を消しました`, { action: '元に戻す', onAction: () => { fxList().push(x); touch(p); paintSel(); } });
+        return;
+      }
+      if (a === 'fxAdd' && addAt) {
+        const t = $('#fxNewT', body).value, bk = $('#fxNewB', body).value;
+        let [w, h] = FIX_SIZE[t] || [0.5, 0.5]; if (bk === 'E' || bk === 'W') [w, h] = [h, w];
+        const q3 = v => Math.round(v * 1000) / 1000;
+        if (!p.drawing.fixtures) p.drawing.fixtures = [];
+        p.drawing.fixtures.push({ t, b: [q3(addAt[0] - w / 2), q3(addAt[1] - h / 2), q3(addAt[0] + w / 2), q3(addAt[1] + h / 2)], back: bk, added: true });
+        addAt = null; fsel = -1; touch(p); paintSel(); toast(`${FIX_NAMES[t]}を足しました`);
+        return;
+      }
       if (a === 'mkOne') return makeRooms(false);
       if (a === 'mkEach') return makeRooms(true);
       if (a === 'selClear') { sel.clear(); paintSel(); return; }

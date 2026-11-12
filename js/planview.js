@@ -31,9 +31,9 @@ function fixSymbol(x, lw) {
 }
 
 /* 見つけた器具の印：図面の器具の絵はそのまま見せて、その周りに種類の色の点線の枠だけを付ける（文字は出さない） */
-function fixBox(x, lw) {
+function fixBox(x, lw, on) {
   const [x0, y0, x1, y1] = x.b, c = FIX_COLOR[x.t] || '#9aa7b8', pad = lw * 3;
-  return `<rect x="${x0 - pad}" y="${-y1 - pad}" width="${x1 - x0 + pad * 2}" height="${y1 - y0 + pad * 2}" rx="${lw * 3}" fill="${c}" fill-opacity=".1" stroke="${c}" stroke-width="${lw * 1.6}" stroke-dasharray="${lw * 4} ${lw * 2.5}"><title>${FIX_LABEL[x.t] || ''}</title></rect>`;
+  return `<rect x="${x0 - pad}" y="${-y1 - pad}" width="${x1 - x0 + pad * 2}" height="${y1 - y0 + pad * 2}" rx="${lw * 3}" fill="${c}" fill-opacity="${on ? '.35' : '.1'}" stroke="${on ? 'var(--accent)' : c}" stroke-width="${lw * (on ? 3.5 : 1.6)}" ${on ? '' : `stroke-dasharray="${lw * 4} ${lw * 2.5}"`}><title>${FIX_LABEL[x.t] || ''}</title></rect>`;
 }
 
 export function planView(box, plan, opt = {}) {
@@ -53,7 +53,8 @@ export function planView(box, plan, opt = {}) {
       <path d="${pathOf(plan.segs)}" fill="none" stroke="var(--text)" stroke-width="${lw}" stroke-linecap="round" opacity=".85"/>
       ${opt.fixG ? `<path d="${opt.fixG}" transform="scale(0.001,0.001)" fill="none" stroke="var(--text)" stroke-width="${lw * 1000}" opacity=".8" pointer-events="none"/>` : ''}
       ${opt.fixGd ? `<path d="${opt.fixGd}" transform="scale(0.001,0.001)" fill="none" stroke="var(--faint)" stroke-width="${lw * 1000}" stroke-dasharray="${lw * 4000} ${lw * 3000}" pointer-events="none"/>` : ''}
-      <g class="fixes" pointer-events="none">${(opt.fixtures || []).filter(x => x.t !== 'other').map(x => fixBox(x, lw)).join('')}</g>
+      <g class="fixes" pointer-events="none"></g>
+      <g class="overlay" pointer-events="none"></g>
       <g class="labels" font-size="${fs}" text-anchor="middle"></g></svg>
     <div class="pv-tools"><button class="iconbtn" data-z="in" aria-label="拡大">＋</button><button class="iconbtn" data-z="out" aria-label="縮小">－</button><button class="iconbtn" data-z="fit" aria-label="全体を表示">⤢</button></div></div>`;
   const svg = box.querySelector('svg');
@@ -65,6 +66,8 @@ export function planView(box, plan, opt = {}) {
   window.addEventListener('resize', fitH);
 
   function paint() {
+    const fsel = opt.fixSel ? opt.fixSel() : -1;
+    svg.querySelector('.fixes').innerHTML = (opt.fixtures ? opt.fixtures() : []).map((x, k) => x.t === 'other' && k !== fsel ? '' : fixBox(x, lw, k === fsel)).join('');
     const sel = opt.selected ? opt.selected() : new Set();
     const owner = opt.owner ? opt.owner() : new Map();
     svg.querySelector('.faces').innerHTML = plan.faces.map(f => {
@@ -79,11 +82,20 @@ export function planView(box, plan, opt = {}) {
     }).join('');
   }
   paint();
+  const overlay = html => { svg.querySelector('.overlay').innerHTML = html; };
+  const scale = () => toUser(0, 0)[2];
 
   /* ---- 指・マウスの操作 ---- */
   const pts = new Map();
   let moved = false, startDist = 0, startVb = null, startMid = null;
-  const toUser = (cx, cy) => { const r = svg.getBoundingClientRect(); const s = Math.max(vb[2] / r.width, vb[3] / r.height); const ox = (r.width * s - vb[2]) / 2, oy = (r.height * s - vb[3]) / 2; return [vb[0] - ox + (cx - r.left) * s, vb[1] - oy + (cy - r.top) * s, s]; };
+  /* 画面の位置 → 図面の位置。ブラウザの変換（getScreenCTM）を使うので、拡大・移動・画面の大きさに関係なく正しい */
+  const toUser = (cx, cy) => {
+    const m = svg.getScreenCTM();
+    if (!m) { const r = svg.getBoundingClientRect(); const s = Math.max(vb[2] / r.width, vb[3] / r.height); const ox = (r.width * s - vb[2]) / 2, oy = (r.height * s - vb[3]) / 2; return [vb[0] - ox + (cx - r.left) * s, vb[1] - oy + (cy - r.top) * s, s]; }
+    const pt = svg.createSVGPoint(); pt.x = cx; pt.y = cy;
+    const q = pt.matrixTransform(m.inverse());
+    return [q.x, q.y, 1 / m.a];
+  };
   const zoomAt = (cx, cy, k) => {
     const [ux, uy] = toUser(cx, cy);
     const nw = Math.min(base[2] * 1.5, Math.max(base[2] / 60, vb[2] / k)), f = nw / vb[2];
@@ -108,7 +120,10 @@ export function planView(box, plan, opt = {}) {
     if (was === 1 && !moved && e.type === 'pointerup') {
       const t = document.elementFromPoint(e.clientX, e.clientY);
       const pg = t && t.closest && t.closest('polygon[data-i]');
-      if (pg && opt.onTap) opt.onTap(+pg.dataset.i);
+      const [ux, uy, sc] = toUser(e.clientX, e.clientY);
+      const mode = opt.mode ? opt.mode() : 'room';
+      if (mode === 'room' && pg && opt.onTap) opt.onTap(+pg.dataset.i);
+      else if (opt.onPoint) opt.onPoint(ux, -uy, sc);
     }
   };
   svg.addEventListener('pointerup', up); svg.addEventListener('pointercancel', up);
@@ -118,5 +133,5 @@ export function planView(box, plan, opt = {}) {
     const r = svg.getBoundingClientRect();
     if (z.dataset.z === 'fit') { vb = base.slice(); set(); } else zoomAt(r.left + r.width / 2, r.top + r.height / 2, z.dataset.z === 'in' ? 1.4 : 1 / 1.4);
   });
-  return { paint };
+  return { paint, overlay, scale, lw };
 }
