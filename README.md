@@ -13,6 +13,7 @@ GitHub Pages にそのまま置いて、iPhone の Safari で使える PWA（ホ
 ├── icon-192.png        … アプリアイコン
 ├── icon-512.png        … アプリアイコン
 ├── README.md           … この説明書
+├── vendor/three/       … 3D表示の部品 three.js r170（MITライセンス、ネットなしで動かすため同梱）
 └── vendor/pdfjs/       … PDF図面を読むための部品（ネットなしで動かすため同梱）
     ├── pdf.min.mjs
     ├── pdf.worker.min.mjs
