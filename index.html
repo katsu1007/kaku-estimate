@@ -258,7 +258,7 @@ async function KAKU_share(name,text,type){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast('CSVを書き出しました');
 }
 /* アプリの版（sw.template.js の VERSION と同じ） */
-var KAKU_VERSION="2026-11-12.7";
+var KAKU_VERSION="2026-11-12.8";
 /* =====================================================================
    KAKU 図面まわり（区画→部屋、部屋ごとの工事内容、壁の解体、土間カッター、測る）
    ===================================================================== */
@@ -3741,7 +3741,16 @@ html[data-theme=dark] #k3d,html[data-sk=dark] #k3d{background:#1c1f1a}
       if((da<.06&&Math.abs(db-d.r)<.07)||(db<.06&&Math.abs(da-d.r)<.07)){var ang=Math.abs(Math.atan2(b[1]-a[1],b[0]-a[0]))%(Math.PI/2);return ang>.05&&ang<Math.PI/2-.05}
       return false})};
     var arcish=function(s){var dx=s[2]-s[0],dy=s[3]-s[1],L=Math.hypot(dx,dy);if(L>=.35)return false;var ang=Math.abs(Math.atan2(dy,dx))%(Math.PI/2);return ang>.06&&ang<Math.PI/2-.06};
-    if(S.show.wall)P.segs.forEach(function(s){var dx=s[2]-s[0],dy=s[3]-s[1],L=Math.hypot(dx,dy);if(L<.04||isDoorLine(s)||arcish(s))return;var n=[-dy/L*.015,dx/L*.015],hr=near((s[0]+s[2])/2,(s[1]+s[3])/2),h=S.low?Math.min(1,hr):hr,fs=NF.slice();
+    /* ドアの開口：扉を閉めた時の線（蝶番から扉の幅ぶん）に重なる壁の線は、その幅だけ切り取る（壁の両面の線・敷居の線・通しで描いた線）。開口の上は垂れ壁を別に描く */
+    var OP=((fx&&fx.doors)||[]).filter(function(d){return d.c&&d.m}).map(function(d){var c=G(d.c),m=G(d.m),r=+d.r||.8,v=[m[0]-c[0],m[1]-c[1]],vl=Math.hypot(v[0],v[1])||1;v=[v[0]/vl,v[1]/vl];
+      var cand=[Math.PI/4,-Math.PI/4].map(function(a){return[v[0]*Math.cos(a)-v[1]*Math.sin(a),v[0]*Math.sin(a)+v[1]*Math.cos(a)]}),sc=cand.map(function(u){var best=0;P.segs.forEach(function(s){var sx=s[2]-s[0],sy=s[3]-s[1],sl=Math.hypot(sx,sy);if(sl<.2)return;var mx=Math.min(Math.hypot(s[0]-c[0],s[1]-c[1]),Math.hypot(s[2]-c[0],s[3]-c[1]));if(mx>.25)return;best=Math.max(best,Math.abs((sx*u[0]+sy*u[1])/sl))});return best});
+      return{c:c,r:r,cl:sc[0]>=sc[1]?cand[0]:cand[1]}});
+    var cutDoor=function(s){var dx=s[2]-s[0],dy=s[3]-s[1],L=Math.hypot(dx,dy);if(L<.04||!OP.length)return[s];var ux=dx/L,uy=dy/L,iv=[[0,L]];
+      OP.forEach(function(d){if(Math.abs(ux*d.cl[0]+uy*d.cl[1])<.97)return;var ax=s[0]-d.c[0],ay=s[1]-d.c[1];if(Math.abs(ax*d.cl[1]-ay*d.cl[0])>.25)return;
+        var ta=ax*d.cl[0]+ay*d.cl[1],tb=(s[2]-d.c[0])*d.cl[0]+(s[3]-d.c[1])*d.cl[1];if(Math.abs(tb-ta)<1e-6)return;var t0=(0-ta)/(tb-ta)*L,t1=(d.r-ta)/(tb-ta)*L,lo=Math.max(0,Math.min(t0,t1)),hi=Math.min(L,Math.max(t0,t1));if(hi-lo<.3)return;
+        var nx=[];iv.forEach(function(q){if(hi<=q[0]||lo>=q[1]){nx.push(q);return}if(lo>q[0])nx.push([q[0],lo]);if(hi<q[1])nx.push([hi,q[1]])});iv=nx});
+      return iv.map(function(q){return[s[0]+ux*q[0],s[1]+uy*q[0],s[0]+ux*q[1],s[1]+uy*q[1]]})};
+    if(S.show.wall)P.segs.reduce(function(a,s){return a.concat(isDoorLine(s)||arcish(s)?[]:cutDoor(s))},[]).forEach(function(s){var dx=s[2]-s[0],dy=s[3]-s[1],L=Math.hypot(dx,dy);if(L<.04||isDoorLine(s)||arcish(s))return;var n=[-dy/L*.015,dx/L*.015],hr=near((s[0]+s[2])/2,(s[1]+s[3])/2),h=S.low?Math.min(1,hr):hr,fs=NF.slice();
       if(fs.length&&!fs.some(fvis))return;
       var rows=[['線の長さ',num(L,2)+' m'],['高さ',num(hr,2)+' m'],['片面の面積',num(L*hr,2)+' ㎡'],['面している所',fs.length?fs.map(rname).filter(function(v,i,a){return a.indexOf(v)===i}).join('・'):'—']];
       fs.forEach(function(i){if(!roomOf[i])return;var w=[mat(i,'wallBoard'),mat(i,'wallFin')].filter(Boolean).join('＋');rows.push([rname(i)+' 側の壁',w||'なし']);var d=mat(i,'dWall');if(d)rows.push([rname(i)+' 側の解体',d])});
