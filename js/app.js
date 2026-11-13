@@ -115,7 +115,7 @@ function shell() {
     ${NAV.map(([k, h, ic, t]) => `<a class="nav ${r === k ? 'on' : ''}" href="${h}">${icon(ic)}${t}</a>`).join('')}
     <div class="sep"></div>
     <div class="lab">前のKAKU</div>
-    <a class="nav" href="./old/" title="照明・器具・3Dは新しい画面の「図面」に移りました。前の画面は、前に作った案件を見る時だけ使います">${icon('layers')}前の画面（見るだけ）</a>
+    <a class="nav" href="./old/index.html" title="照明・器具・3Dは新しい画面の「図面」に移りました。前の画面は、前に作った案件を見る時だけ使います">${icon('layers')}前の画面（見るだけ）</a>
     <a class="nav ${r === 'help' ? 'on' : ''}" href="#/help">${icon('help')}使い方</a>
     <div class="foot">KAKU ${APP_VERSION}（${APP_DATE}）</div>`;
   $('#bottom').innerHTML = NAV.map(([k, h, ic, t]) => `<a class="${r === k ? 'on' : ''}" href="${h}">${icon(ic)}${t === '単価マスター' ? '単価' : t}</a>`).join('');

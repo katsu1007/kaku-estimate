@@ -70,7 +70,7 @@ export async function open3D(p, { onClose } = {}) {
   const f = document.createElement('iframe');
   f.title = '3Dで見る';
   f.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0;z-index:10000;background:#1c1f1a';
-  f.src = './old/?view3d=1';
+  f.src = './old/index.html?view3d=1';
   document.body.appendChild(f); layer = f;
   const W = await new Promise((res, rej) => {
     let n = 0;

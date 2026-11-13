@@ -10,7 +10,7 @@ function getReader() {
     const f = document.createElement('iframe');
     f.title = '器具の読み取り'; f.setAttribute('aria-hidden', 'true');
     f.style.cssText = 'position:absolute;left:-9999px;top:0;width:1200px;height:800px;border:0;visibility:hidden';
-    f.src = './old/?reader=1';
+    f.src = './old/index.html?reader=1';
     document.body.appendChild(f);
     let n = 0;
     const t = setInterval(() => {
