@@ -189,6 +189,12 @@ function roomCard(r, i, p) {
       ${num('doors', 'ドア', 'か所', '1か所 1.6㎡', '1')}
       ${num('winCount', '窓（数だけ）', 'か所', '1か所 1.6㎡', '1')}
     </div>
+    ${free ? '' : `<div class="parts">${(r.parts || []).map((x, pi) => `<div class="partrow">
+        <select class="in" data-pk="s" data-pi="${pi}" style="min-height:44px">${[['1', '＋ 足す（出っ張り）'], ['-1', '－ 引く（角を欠く・L字）'], ['-1w', '－ 引く（壁際の柱・へこみ）'], ['-1c', '－ 引く（部屋の中の柱）']].map(([v, l]) => `<option value="${v}" ${(x.s < 0 ? '-1' + (x.k === 'wall' ? 'w' : x.k === 'col' ? 'c' : '') : '1') === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <label class="f">幅<div class="unitwrap"><input class="in num" type="number" inputmode="decimal" step="0.01" data-pk="w" data-pi="${pi}" value="${esc(x.w ?? '')}"><span>m</span></div></label>
+        <label class="f">奥行<div class="unitwrap"><input class="in num" type="number" inputmode="decimal" step="0.01" data-pk="h" data-pi="${pi}" value="${esc(x.h ?? '')}"><span>m</span></div></label>
+        <button class="iconbtn" data-act="delPart" data-pi="${pi}" aria-label="この寸法を消す">${icon('x')}</button></div>`).join('')}
+      <button class="btn sm ghost" data-act="addPart">${icon('plus')}寸法を足す・引く（L字・出っ張り・柱など）</button></div>`}
     <details class="more" ${(r.windows || []).length ? 'open' : ''}><summary>窓を寸法で入れる（mm）</summary>
       <div class="wins">${(r.windows || []).map((w, wi) => `<div class="winrow">
         <label class="f">幅<div class="unitwrap"><input class="in num" type="number" inputmode="numeric" data-wk="w" data-wi="${wi}" value="${esc(w.w)}"><span>mm</span></div></label>
@@ -752,6 +758,8 @@ function stepRooms(ctx) {
     const r = p.rooms.find(x => x.id === card.dataset.room); if (!r) return;
     if (e.target.dataset.rk) r[e.target.dataset.rk] = e.target.dataset.rk === 'name' ? e.target.value : e.target.value === '' ? '' : Number(e.target.value);
     if (e.target.dataset.wk) { const w = r.windows[+e.target.dataset.wi]; w[e.target.dataset.wk] = e.target.value === '' ? '' : Number(e.target.value); }
+    if (e.target.dataset.pk) { const x = (r.parts || [])[+e.target.dataset.pi]; if (x) { const k = e.target.dataset.pk, v = e.target.value;
+      if (k === 's') { x.s = v.startsWith('-') ? -1 : 1; x.k = v === '-1w' ? 'wall' : v === '-1c' ? 'col' : undefined; } else x[k] = v === '' ? '' : Number(v); } }
     touch(p); refresh();
   });
   body.addEventListener('change', e => {
@@ -935,6 +943,8 @@ function stepRooms(ctx) {
     const a = e.target.closest('[data-act]'); if (!a) return;
     if (a.dataset.act === 'addWin') { r.windows = r.windows || []; r.windows.push({ w: 1690, h: 1800, n: 1 }); }
     if (a.dataset.act === 'delWin') r.windows.splice(+a.dataset.wi, 1);
+    if (a.dataset.act === 'addPart') { (r.parts = r.parts || []).push({ s: 1, w: '', h: '' }); touch(p); draw(); return; }
+    if (a.dataset.act === 'delPart') { r.parts.splice(+a.dataset.pi, 1); touch(p); draw(); return; }
     if (a.dataset.act === 'roomFin') { openRoomFin(p, [r.id], { title: `「${r.name}」の仕上げ`, onDone: () => { touch(p); draw(); } }); return; }
     if (a.dataset.act === 'dupRoom') { const c = JSON.parse(JSON.stringify(r)); c.id = uid('r'); c.name = r.name + '（コピー）'; p.rooms.splice(p.rooms.indexOf(r) + 1, 0, c); }
     if (a.dataset.act === 'delRoom') {

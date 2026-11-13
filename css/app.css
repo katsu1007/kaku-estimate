@@ -410,3 +410,6 @@ tr.click, tr.click * { -webkit-touch-callout: none; -webkit-user-select: none; u
 .pv-loupe { position: absolute; width: 150px; height: 150px; border-radius: 50%; overflow: hidden; border: 3px solid var(--accent); background: var(--bg); box-shadow: 0 8px 24px rgba(0,0,0,.45); pointer-events: none; z-index: 5; }
 .pv-loupe svg { width: 100%; height: 100%; display: block; }
 .linkbtn { border: 0; background: none; color: inherit; font-weight: 800; padding: 0 2px; cursor: pointer; }
+.parts { margin: 4px 0 8px; display: grid; gap: 8px; }
+.partrow { display: grid; grid-template-columns: 1.6fr 1fr 1fr 40px; gap: 8px; align-items: end; }
+@media (max-width: 760px) { .partrow { grid-template-columns: 1fr 1fr 40px; } .partrow select { grid-column: 1 / -1; } }

@@ -54,6 +54,14 @@ export function roomGeom(room, opt = DEFAULTS) {
     const w = Math.max(0, num(room.w)), d = Math.max(0, num(room.d));
     area = w * d;
     perim = w > 0 && d > 0 ? 2 * (w + d) : 0;
+    /* 寸法を足す・引く（前のKAKUと同じ）：足す＝出っ張り（周り＋奥行×2）、引く＝角を欠く（周りそのまま）、
+     * 壁際の柱・へこみ（周り＋奥行×2）、部屋の中の柱（周り＋柱の周り）。50以上の数字は mm として m に直す */
+    if (perim > 0) (room.parts || []).forEach(x => {
+      const m = v => { v = num(v); return v >= 50 ? v / 1000 : v; }, pw = Math.max(0, m(x.w)), ph = Math.max(0, m(x.h));
+      if (num(x.s, 1) < 0) { area -= pw * ph; perim += x.k === 'col' ? 2 * (pw + ph) : x.k === 'wall' ? 2 * ph : 0; }
+      else { area += pw * ph; perim += 2 * ph; }
+    });
+    area = Math.max(0, area);
   }
   const doors = Math.max(0, Math.round(num(room.doors)));
   const wins = Array.isArray(room.windows) ? room.windows : [];

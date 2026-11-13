@@ -227,3 +227,16 @@ test('壁の下の層の解体は、下の層の行からだけ引く', async ()
   assert.equal(netQty(L(2), [r]), 29.6);    // 2層目：33.6−4
   assert.equal(netQty(L(3), [r]), 33.6);    // 3層目は入れていない
 });
+
+test('寸法を足す・引く（L字・出っ張り・柱）：前のKAKUと同じ計算', async () => {
+  const { roomGeom } = await import('../js/calc.js');
+  const R = parts => roomGeom({ shape: 'rect', w: 4, d: 3, h: 2.4, qty: 1, parts });
+  // 出っ張り 1×0.5：面積 12+0.5、周り 14+0.5×2
+  let g = R([{ s: 1, w: 1, h: 0.5 }]); assert.equal(g.floor, 12.5); assert.equal(g.perim, 15);
+  // 角を欠く 1×1（L字）：面積 11、周りは 14 のまま
+  g = R([{ s: -1, w: 1, h: 1 }]); assert.equal(g.floor, 11); assert.equal(g.perim, 14);
+  // 壁際の柱 500×300（mmで入れても同じ）：面積 12−0.15、周り 14+0.3×2
+  g = R([{ s: -1, k: 'wall', w: 500, h: 300 }]); assert.equal(g.floor, 11.85); assert.equal(g.perim, 14.6);
+  // 部屋の中の柱 0.4×0.4：面積 12−0.16、周り 14+1.6
+  g = R([{ s: -1, k: 'col', w: 0.4, h: 0.4 }]); assert.equal(g.floor, 11.84); assert.equal(g.perim, 15.6);
+});
