@@ -402,3 +402,6 @@ details.more[open] > summary::before { content: "－ "; }
   #dwgMode { grid-template-columns: repeat(3, 1fr); }
   #lTool { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* 案件の行は長押しでメニューを出すので、iPhoneの文字選択・リンクの吹き出しを出さない */
+tr.click, tr.click * { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }

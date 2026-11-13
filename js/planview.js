@@ -101,11 +101,26 @@ export function planView(box, plan, opt = {}) {
     const nw = Math.min(base[2] * 1.5, Math.max(base[2] / 60, vb[2] / k)), f = nw / vb[2];
     vb = [ux - (ux - vb[0]) * f, uy - (uy - vb[1]) * f, vb[2] * f, vb[3] * f]; set();
   };
+  /* 物をつかんで動かす（opt.onDragStart が物を返した時だけ。図はずらさない）。0.45秒押したままなら long（1個だけ動かす合図） */
+  let drag = null, dragStart = null, longT = null;
   svg.addEventListener('pointerdown', e => { svg.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]); moved = false;
-    if (pts.size === 2) { const [a, b] = [...pts.values()]; startDist = Math.hypot(a[0] - b[0], a[1] - b[1]); startVb = vb.slice(); startMid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; } });
+    drag = null; clearTimeout(longT);
+    if (pts.size === 1 && opt.onDragStart) {
+      const [ux, uy, sc] = toUser(e.clientX, e.clientY);
+      drag = opt.onDragStart(ux, -uy, sc) || null;
+      if (drag) { dragStart = [e.clientX, e.clientY]; longT = setTimeout(() => { if (drag && !moved) { drag.long = true; if (navigator.vibrate) navigator.vibrate(15); drag.onLong && drag.onLong(); } }, 450); }
+    }
+    if (pts.size === 2) { drag = null; clearTimeout(longT); const [a, b] = [...pts.values()]; startDist = Math.hypot(a[0] - b[0], a[1] - b[1]); startVb = vb.slice(); startMid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; } });
   svg.addEventListener('pointermove', e => {
     if (!pts.has(e.pointerId)) return;
     const prev = pts.get(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]);
+    if (pts.size === 1 && drag) {
+      const tx = e.clientX - dragStart[0], ty = e.clientY - dragStart[1];
+      if (!moved && Math.hypot(tx, ty) < 6) return;
+      moved = true; clearTimeout(longT);
+      const s = toUser(0, 0)[2]; drag.move(tx * s, -ty * s, tx, ty);
+      return;
+    }
     if (pts.size === 1) {
       const dx = e.clientX - prev[0], dy = e.clientY - prev[1];
       if (Math.abs(dx) + Math.abs(dy) > 0) { if (Math.hypot(dx, dy) > 1) moved = true; const s = toUser(0, 0)[2]; vb[0] -= dx * s; vb[1] -= dy * s; set(); }
@@ -116,7 +131,9 @@ export function planView(box, plan, opt = {}) {
     }
   });
   const up = e => {
-    const was = pts.size; pts.delete(e.pointerId);
+    const was = pts.size; pts.delete(e.pointerId); clearTimeout(longT);
+    if (drag && moved) { const d = drag; drag = null; d.end(e.type !== 'pointerup'); return; }
+    drag = null;
     if (was === 1 && !moved && e.type === 'pointerup') {
       const t = document.elementFromPoint(e.clientX, e.clientY);
       const pg = t && t.closest && t.closest('polygon[data-i]');

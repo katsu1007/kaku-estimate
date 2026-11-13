@@ -69,7 +69,12 @@ export async function open3D(p, { onClose } = {}) {
   close3D();
   const f = document.createElement('iframe');
   f.title = '3Dで見る';
-  f.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0;z-index:10000;background:#1c1f1a';
+  /* 用意ができるまでは隠して、幕（3Dを用意しています）を出す。前の画面が一瞬見えないように */
+  f.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:0;z-index:10000;background:#1c1f1a;visibility:hidden';
+  const cover = document.createElement('div');
+  cover.style.cssText = 'position:fixed;inset:0;z-index:10001;background:#1c1f1a;color:#e8e6df;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px';
+  cover.textContent = '3Dを用意しています…';
+  document.body.appendChild(cover); cover3 = cover;
   f.src = './old/index.html?view3d=1';
   document.body.appendChild(f); layer = f;
   const W = await new Promise((res, rej) => {
@@ -89,8 +94,10 @@ export async function open3D(p, { onClose } = {}) {
   W.__k3 = toOld(p);
   W.eval('KAKU_plan=window.__k3.plan;KAKU_fix=window.__k3.fix;current=window.__k3.cur;window.KW_calc=function(){return window.__k3.wire};KAKU_open3D()');
   await new Promise(r => setTimeout(r, 300));
+  f.style.visibility = 'visible'; cover.remove();
   const btn = W.document.querySelector('#k3d .k3close');
   if (btn) { btn.textContent = '閉じる'; btn.onclick = e => { e.preventDefault(); let wins = null; try { wins = JSON.parse(W.eval('JSON.stringify(current.win3d||[])')); } catch (er) { /* 読めなければそのまま */ } close3D(); onClose && onClose(wins); }; }
   return W;
 }
-export function close3D() { if (layer) { layer.remove(); layer = null; } }
+let cover3 = null;
+export function close3D() { if (layer) { layer.remove(); layer = null; } if (cover3) { cover3.remove(); cover3 = null; } }

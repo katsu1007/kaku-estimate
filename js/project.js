@@ -487,17 +487,20 @@ function stepRooms(ctx) {
         const lightItems = masterItems().filter(i => /^e-(dl|clight|bl|base)/.test(i.id));
         const W = lightWires(p), n = (p.drawing.lights || []).length;
         const res = pr.map(r => { const k = (p.drawing.lights || []).filter(x => x.room === r.id).length; if (!k) return ''; const u = r.lightUse || ''; const F = (r.faces || []).map(i => p.drawing.plan.faces.find(f => f.i === i)).filter(Boolean); const lx = u && F[0] ? Math.round(luxOf(F[0].poly, Number(r.h) || planCH(p.drawing.plan) || opts().ceilH, u, r.lightLm || 800, k) / 10) * 10 : 0; const tgt = (USES.find(x => x[0] === u) || [])[2]; return `<span class="pill ${lx && tgt && lx < tgt * 0.95 ? 'warn' : 'info'}">${esc(r.name)} ${k}台${lx ? `・約${lx}lx（目標${tgt}）` : ''}</span>`; }).join('');
-        bar.innerHTML = !pr.length ? `<span class="small">照明は部屋ごとに並べます。まだ部屋がありません。</span><button class="btn sm primary" data-act="lMakeAll">${icon('plus')}全部の区画を1つずつ部屋にする</button><span class="small muted" style="width:100%">まとめたい区画がある時は、先に「部屋を作る」で区画をタップして部屋にしてください。</span>` : `
+        const hasOut = (p.drawing.fixtures || []).some(x => x.out || ((x.t === 'toilet' || x.t === 'counter') && x.back));
+        if (!pr.length && lset.room !== 'faces') lset.room = 'faces';
+        bar.innerHTML = `
           <div class="grid g4" style="width:100%;align-items:end">
-            <label class="f">部屋<select class="in" id="lRoom"><option value="all">部屋にした所 全部</option>${pr.map(r => `<option value="${esc(r.id)}" ${lset.room === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></label>
+            <label class="f">並べる所<select class="in" id="lRoom"><option value="faces" ${lset.room === 'faces' ? 'selected' : ''}>図面の区画 全部${pr.length ? '（部屋にしていない所も）' : ''}</option>${pr.length ? `<option value="all" ${lset.room === 'all' ? 'selected' : ''}>部屋にした所 全部</option>` : ''}${pr.map(r => `<option value="${esc(r.id)}" ${lset.room === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></label>
             <label class="f">部屋の用途<select class="in" id="lUse">${USES.map(u => `<option value="${u[0]}" ${lset.use === u[0] ? 'selected' : ''}>${u[1]}${u[2] ? `（${u[2]}lx）` : ''}</option>`).join('')}</select></label>
             <label class="f">照明器具<select class="in" id="lItem">${lightItems.map(i => `<option value="${esc(i.id)}" ${lset.item === i.id ? 'selected' : ''}>${esc(i.name)}</option>`).join('')}</select></label>
-            <label class="f">1台の明るさ<span class="hint">カタログの器具光束</span><div class="unitwrap"><input class="in num" id="lLm" type="number" inputmode="numeric" value="${lset.lm}"><span>lm</span></div></label></div>
-          <button class="btn sm primary" data-act="lAuto">${icon('spark')}照明を自動で並べる</button>
-          ${(p.drawing.fixtures || []).some(x => x.out || ((x.t === 'toilet' || x.t === 'counter') && x.back)) ? `<button class="btn sm" data-act="oAuto">コンセントを器具に合わせて置く</button>` : ''}
+            <label class="f">1台の明るさ<span class="hint">カタログの器具光束</span><div class="unitwrap"><input class="in num" id="lLm" type="number" inputmode="numeric" value="${lset.lm}"><span>lm</span></div></label>
+            <label class="f">照明の間隔の目安<span class="hint">天井が高い所は自動で詰めます</span><div class="unitwrap"><input class="in num" id="lPitch" type="number" inputmode="decimal" step="0.1" min="0.9" max="6" value="${lset.pitch || 2}"><span>m</span></div></label></div>
+          <button class="btn sm primary" data-act="lAuto" data-out="${hasOut ? 1 : ''}">${icon('spark')}${hasOut ? '器具に合わせて自動（照明とコンセント）' : '照明を自動で並べる'}</button>
+          ${hasOut ? `<button class="btn sm" data-act="oAuto">コンセントだけ置き直す</button>` : ''}
           ${n ? `<button class="btn sm ghost danger" data-act="lClear">照明を全部消す</button>` : ''}${(p.drawing.outlets || []).length ? `<button class="btn sm ghost danger" data-act="oClear">コンセントを全部消す</button>` : ''}
           <div class="seg" style="width:100%" id="lTool">${[['light', '照明'], ['sw', 'スイッチ'], ['out', 'コンセント'], ['panel', '分電盤'], ['link', 'つなぎ替え']].map(t => `<button data-ltool="${t[0]}" class="${ltool === t[0] ? 'on' : ''}">${t[1]}</button>`).join('')}</div>
-          <div class="small" style="width:100%">${{ light: '何も無い所をタップで照明を足す・照明をタップで消す', sw: 'タップでスイッチを置く（その区画は置いたスイッチにつなぐ）・置いたスイッチ（青）をタップで消す', out: 'タップでコンセントを置く・コンセントをタップで消す', panel: 'タップした所に分電盤を置く（もう一度で動かす）', link: linkSel ? 'つなぐスイッチをタップしてください' : '照明をタップしてから、つなぎたいスイッチをタップ' }[ltool]}${ltool === 'out' ? `　<select class="in" id="oItem" style="display:inline-block;width:auto;min-height:34px">${masterItems().filter(i => /^e-con/.test(i.id)).map(i => `<option value="${esc(i.id)}" ${(lset.out || 'e-cone') === i.id ? 'selected' : ''}>${esc(i.name)}</option>`).join('')}</select>` : ''}${ltool === 'link' && Object.keys(p.drawing.link || {}).length ? `　<button class="btn sm ghost" data-act="linkClear">つなぎ替え ${Object.keys(p.drawing.link).length} 件を元に戻す</button>` : ''}</div>
+          <div class="small" style="width:100%">${{ light: '何も無い所をタップで照明を足す・照明をタップで消す。照明を縦になぞると横一列、横になぞると縦一列がまとめて動きます（長押ししてからなぞると1個だけ）', sw: 'タップでスイッチを置く（その区画は置いたスイッチにつなぐ）・置いたスイッチ（青）をタップで消す・なぞって動かす', out: 'タップでコンセントを置く・コンセントをタップで消す・なぞって動かす', panel: 'タップした所に分電盤を置く（なぞっても動かせます）', link: linkSel ? 'つなぐスイッチをタップしてください' : '照明をタップしてから、つなぎたいスイッチをタップ' }[ltool]}${ltool === 'out' ? `　<select class="in" id="oItem" style="display:inline-block;width:auto;min-height:34px">${masterItems().filter(i => /^e-con/.test(i.id)).map(i => `<option value="${esc(i.id)}" ${(lset.out || 'e-cone') === i.id ? 'selected' : ''}>${esc(i.name)}</option>`).join('')}</select>` : ''}${ltool === 'link' && Object.keys(p.drawing.link || {}).length ? `　<button class="btn sm ghost" data-act="linkClear">つなぎ替え ${Object.keys(p.drawing.link).length} 件を元に戻す</button>` : ''}</div>
           <div class="small muted" style="width:100%">照明 ${n} 台・スイッチ ${W.sw} 個（黄＝自動・青＝置いた物）・コンセント ${(p.drawing.outlets || []).length} 個・ケーブル ${W.mL + W.mH} m（余り${W.extra}%込み）。スイッチは入口のそばに自動で置きます${W.booths ? `。トイレのブース ${W.booths} か所は、外の部屋のスイッチで点けます` : ''}。${W.far ? `<b>分電盤から離れた所（別の階の図など）の ${W.far} 区画は、分電盤からの線を入れていません。</b>` : ''}</div>
           ${res ? (n && (p.drawing.lights || []).length && res.split('<span').length > 7 ? `<details style="width:100%"><summary class="small">部屋ごとの台数と明るさを見る${res.includes('pill warn') ? '（目標に届かない部屋あり）' : ''}</summary><div class="row" style="margin-top:6px">${res}</div></details>` : `<div class="row" style="width:100%">${res}</div>`) : ''}`;
         return;
@@ -520,6 +523,7 @@ function stepRooms(ctx) {
         bar.innerHTML = x ? `<b class="small">選んだ器具</b>
             <select class="in" data-fx="t" style="width:auto;min-height:40px">${types.map(([k, n]) => `<option value="${k}" ${x.t === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
             <label class="row small muted" style="gap:6px">壁側<select class="in" data-fx="back" style="width:auto;min-height:40px"><option value="">—</option>${BACKS.map(([k, n]) => `<option value="${k}" ${x.back === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+            ${(x.t === 'toilet' || x.t === 'counter') ? `<button class="btn sm" data-act="fxFlip">コンセントを反対側へ${x.flip ? '（反対側にしています）' : ''}</button>` : ''}
             <button class="btn sm danger" data-act="fxDel">${icon('trash')}消す</button><button class="btn sm ghost" data-act="fxDone">選ぶのをやめる</button>`
           : addAt ? `<b class="small">ここに器具を足す</b>
             <select class="in" id="fxNewT" style="width:auto;min-height:40px">${types.filter(([k]) => FIX_SIZE[k]).map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select>
@@ -536,6 +540,54 @@ function stepRooms(ctx) {
     if (bar) bar.innerHTML = sel.size
       ? `<span class="small"><b>${sel.size} 区画</b>を選んでいます。続けてタップで足す・もう一度で外す。</span><span class="spacer"></span><button class="btn primary" data-act="mkOne">${icon('check')}終了：1部屋にする</button>${sel.size > 1 ? `<button class="btn" data-act="mkEach">1区画ずつ部屋にする</button>` : ''}<button class="btn ghost" data-act="selClear">選ぶのをやめる</button>`
       : `<span class="small muted">部屋にする区画を順番にタップして、選び終わったら「終了」。そのまま床・壁・天井の仕上げを決められます。</span><span class="spacer"></span><button class="btn sm" data-act="selRest">まだ部屋にしていない区画を全部選ぶ</button>`;
+  };
+  /* コンセントを器具に合わせて置く（自分で置いた物は残す）。「反対側へ」にした器具は器具の真ん中で反対側 */
+  const placeOutlets = () => {
+    const d = p.drawing, item = lset.out || 'e-cone';
+    const pts = (d.fixtures || []).map(x => { const q = x.out || outFallback(x); if (!q || !x.flip || !x.b) return q; const hor = x.back === 'N' || x.back === 'S';
+      return hor ? [r3(x.b[0] + x.b[2] - q[0]), q[1]] : [q[0], r3(x.b[1] + x.b[3] - q[1])]; }).filter(Boolean);
+    d.outlets = (d.outlets || []).filter(o => !o.auto).concat(pts.map(q => ({ id: uid('O'), x: q[0], y: q[1], item, auto: true })));
+    return pts.length;
+  };
+  /* 照明・コンセント・置いたスイッチ・分電盤を指でなぞって動かす。
+   * 照明：縦になぞると同じ横一列（同じ部屋・区画で高さがそろっている物）が上下に、横になぞると縦一列が左右に動く。長押ししてからなぞると1個だけ。5cm単位にそろえる */
+  const dragStart = (x, y, sc) => {
+    if (mode !== 'light' || linkSel) return null;
+    const d = p.drawing, tol = Math.max(0.2, sc * 14);
+    const near = list => (list || []).findIndex(q => Math.hypot(q.x - x, q.y - y) < tol);
+    const g5 = v => Math.round(v * 20) / 20;
+    const done = (msg, back) => { syncDemoLines(p); touch(p); paintSel(); toast(msg, { action: '元に戻す', onAction: () => { back(); syncDemoLines(p); touch(p); paintSel(); } }); };
+    if (ltool === 'panel' && d.panel && Math.hypot(d.panel[0] - x, d.panel[1] - y) < tol * 1.5) {
+      const o = d.panel.slice();
+      return { move: (dx, dy) => { d.panel = [r3(o[0] + dx), r3(o[1] + dy)]; paintSel(); }, end: c => { if (c) { d.panel = o; paintSel(); return; } done('分電盤を動かしました', () => { d.panel = o; }); } };
+    }
+    const list = ltool === 'out' ? d.outlets : ltool === 'sw' ? d.switches : ltool === 'light' ? d.lights : null;
+    const k = near(list); if (k < 0) return null;
+    const one = list[k], o0 = { x: one.x, y: one.y };
+    if (ltool !== 'light') return { move: (dx, dy) => { one.x = r3(o0.x + dx); one.y = r3(o0.y + dy); paintSel(); },
+      end: c => { if (c) { Object.assign(one, o0); paintSel(); return; } one.auto = false; done(ltool === 'out' ? 'コンセントを動かしました' : 'スイッチを動かしました', () => Object.assign(one, o0)); } };
+    const same = q => one.room ? q.room === one.room : (q.face != null && q.face === one.face) || (!q.room && one.face == null);
+    let axis = null, group = null;
+    const orig = new Map();
+    const h = {
+      move: (dx, dy, px, py) => {
+        if (!group) {
+          if (h.long) { axis = 'xy'; group = [one]; }
+          else if (Math.abs(py) >= Math.abs(px)) { axis = 'y'; group = d.lights.filter(q => same(q) && Math.abs(q.y - one.y) < 0.06); }
+          else { axis = 'x'; group = d.lights.filter(q => same(q) && Math.abs(q.x - one.x) < 0.06); }
+          group.forEach(q => orig.set(q, { x: q.x, y: q.y }));
+        }
+        group.forEach(q => { const o = orig.get(q); if (axis !== 'y') q.x = g5(o.x + dx); if (axis !== 'x') q.y = g5(o.y + dy); });
+        paintSel();
+      },
+      end: c => {
+        const back = () => orig.forEach((o, q) => Object.assign(q, o));
+        if (c || !group) { back(); paintSel(); return; }
+        done(group.length > 1 ? `照明 ${group.length} 台（${axis === 'y' ? '横一列' : '縦一列'}）を動かしました` : '照明を1台動かしました', back);
+      },
+      onLong: () => toast('この照明だけ動かします', { ms: 1200 })
+    };
+    return h;
   };
   const makeRooms = each => {
     const plan = p.drawing.plan;
@@ -584,6 +636,7 @@ function stepRooms(ctx) {
       view = planView(body.querySelector('#dwgView'), p.drawing.plan, {
         selected: () => sel, owner, fixtures: fxList, fixSel: () => (mode === 'fix' ? fsel : -1), mode: () => mode, fixG: p.drawing.fixG || '', fixGd: p.drawing.fixGd || '',
         onTap: i => { if (sel.has(i)) sel.delete(i); else sel.add(i); paintSel(); },
+        onDragStart: (x, y, sc) => dragStart(x, y, sc),
         onPoint: (x, y, sc) => {
           if (mode === 'fix') {
             const k = fxList().findIndex(f => x >= f.b[0] - 0.03 && x <= f.b[2] + 0.03 && y >= f.b[1] - 0.03 && y <= f.b[3] + 0.03);
@@ -616,8 +669,9 @@ function stepRooms(ctx) {
             const k = near(d.lights);
             if (k >= 0) { const was = d.lights.splice(k, 1)[0]; delete d.link[was.id]; redo(); undoT('照明を消しました', () => d.lights.push(was)); return; }
             const r = p.rooms.find(rr => rr.src === 'plan' && (rr.faces || []).some(i => { const f = d.plan.faces.find(z => z.i === i); return f && pip(x, y, f.poly); }));
-            if (!r) { toast('部屋にした区画の中をタップしてください', { bad: true }); return; }
-            d.lights.push({ id: uid('L'), x: Math.round(x * 20) / 20, y: Math.round(y * 20) / 20, item: lset.item, room: r.id });
+            const fc = r ? null : d.plan.faces.find(f => pip(x, y, f.poly));
+            if (!r && !fc) { toast('区画の中をタップしてください', { bad: true }); return; }
+            d.lights.push({ id: uid('L'), x: Math.round(x * 20) / 20, y: Math.round(y * 20) / 20, item: lset.item, room: r ? r.id : null, face: fc ? fc.i : undefined });
             redo(); return;
           }
           if (mode === 'wall' && wway === 'range') { wpts.push(snapPt(p.drawing.plan, x, y, sc * 16)); paintSel(); return; }
@@ -685,6 +739,7 @@ function stepRooms(ctx) {
   body.addEventListener('change', e => {
     if (e.target.matches('[data-meas-cont]')) { meas.cont = e.target.checked; meas.pts = []; paintSel(); return; }
     if (e.target.id === 'oItem') { lset.out = e.target.value; return; }
+    if (e.target.id === 'lPitch') { lset.pitch = Math.max(0.9, Math.min(6, Number(e.target.value) || 2)); return; }
     if (e.target.id === 'lItem') { lset.item = e.target.value; lset.lm = DEF_LM[lset.item] || 800; const i = $('#lLm', body); if (i) i.value = lset.lm; return; }
     const wr = e.target.closest('[data-wall]'), hr = e.target.closest('[data-hatsu]');
     if (wr && e.target.dataset.wk) { const w = (p.drawing.walls || []).find(x => x.id === wr.dataset.wall); if (w) { const k = e.target.dataset.wk; if (k === 'room') w.room = e.target.value; else w[k === 'open' ? 'open' : 'h'] = Math.max(0, Number(e.target.value) || 0); syncDemoLines(p); touch(p); paintSel(); } return; }
@@ -733,28 +788,31 @@ function stepRooms(ctx) {
       } }).catch(e => showError(e)); return; }
       if (a === 'linkClear') { const was = p.drawing.link; p.drawing.link = {}; syncDemoLines(p); touch(p); paintSel(); toast('つなぎ替えを元に戻しました', { action: '取り消す', onAction: () => { p.drawing.link = was; syncDemoLines(p); touch(p); paintSel(); } }); return; }
       if (a === 'oClear') { const was = p.drawing.outlets; p.drawing.outlets = []; syncDemoLines(p); touch(p); paintSel(); toast('コンセントを全部消しました', { action: '元に戻す', onAction: () => { p.drawing.outlets = was; syncDemoLines(p); touch(p); paintSel(); } }); return; }
-      if (a === 'oAuto') {
-        const d = p.drawing, item = lset.out || 'e-cone';
-        const pts = (d.fixtures || []).map(x => x.out || outFallback(x)).filter(Boolean);
-        d.outlets = (d.outlets || []).filter(o => !o.auto).concat(pts.map(q => ({ id: uid('O'), x: q[0], y: q[1], item, auto: true })));
-        syncDemoLines(p); touch(p); paintSel(); toast(`コンセントを ${pts.length} 個置きました（便器の横・洗面カウンターの背面）`); return;
-      }
+      if (a === 'oAuto') { const k = placeOutlets(); syncDemoLines(p); touch(p); paintSel(); toast(`コンセントを ${k} 個置きました（便器の横・洗面カウンターの背面）`); return; }
       if (a === 'lClear') { const before = p.drawing.lights; p.drawing.lights = []; syncDemoLines(p); touch(p); paintSel(); toast('照明を全部消しました', { action: '元に戻す', onAction: () => { p.drawing.lights = before; syncDemoLines(p); touch(p); paintSel(); } }); return; }
       if (a === 'lAuto') {
         lset.room = $('#lRoom', body).value; lset.use = $('#lUse', body).value; lset.item = $('#lItem', body).value; lset.lm = Number($('#lLm', body).value) || DEF_LM[lset.item] || 800;
-        const d = p.drawing, targets = p.rooms.filter(r => r.src === 'plan' && (lset.room === 'all' || r.id === lset.room));
-        d.lights = (d.lights || []).filter(x => !targets.some(r => r.id === x.room));
+        lset.pitch = Math.max(0.9, Math.min(6, Number($('#lPitch', body).value) || 2));
+        const withOut = !!da.dataset.out;
+        const d = p.drawing, pr = p.rooms.filter(r => r.src === 'plan'), own = owner();
+        /* 並べる所：部屋（部屋の区画をまとめて）と、部屋にしていない区画（0.6㎡以上） */
+        let groups;
+        if (lset.room === 'faces') groups = [...pr.map(r => ({ r, faces: r.faces || [] })), ...d.plan.faces.filter(f => !own.has(f.i) && f.area >= 0.6).map(f => ({ r: null, faces: [f.i] }))];
+        else groups = pr.filter(r => lset.room === 'all' || r.id === lset.room).map(r => ({ r, faces: r.faces || [] }));
+        const facesOf = new Set(groups.flatMap(g => g.faces));
+        d.lights = (d.lights || []).filter(x => x.room ? !groups.some(g => g.r && g.r.id === x.room) : !d.plan.faces.some(f => facesOf.has(f.i) && pip(x.x, x.y, f.poly)));
         let n = 0;
         (async () => {
           toast('照明を並べています…');
-          for (const r of targets) {
-            r.lightUse = lset.use; r.lightLm = lset.lm;
-            const ch = Number(r.h) || planCH(d.plan) || opts().ceilH;
-            const faces = (r.faces || []).map(i => d.plan.faces.find(z => z.i === i)).filter(Boolean);
-            const res = await oldFaceLights(faces, d.fixtures, { base: lset.use ? 2 : pitchFor(ch, 2), need: f => lset.use ? needCount(f.poly, ch, lset.use, lset.lm) : 0 });
-            res.forEach(o => o.pts.forEach(q => { d.lights.push({ id: uid('L'), x: q[0], y: q[1], item: lset.item, room: r.id, auto: true }); n++; }));
+          for (const g of groups) {
+            if (g.r) { g.r.lightUse = lset.use; g.r.lightLm = lset.lm; }
+            const ch = (g.r && Number(g.r.h)) || planCH(d.plan) || opts().ceilH;
+            const faces = g.faces.map(i => d.plan.faces.find(z => z.i === i)).filter(Boolean);
+            const res = await oldFaceLights(faces, d.fixtures, { base: lset.use ? lset.pitch : pitchFor(ch, lset.pitch), need: f => lset.use ? needCount(f.poly, ch, lset.use, lset.lm) : 0 });
+            res.forEach(o => o.pts.forEach(q => { d.lights.push({ id: uid('L'), x: q[0], y: q[1], item: lset.item, room: g.r ? g.r.id : null, face: g.r ? undefined : o.i, auto: true }); n++; }));
           }
-          syncDemoLines(p); touch(p); paintSel(); toast(`照明を ${n} 台並べました。スイッチと配線も明細に入れました`, { ms: 4000 });
+          const no = withOut ? placeOutlets() : 0;
+          syncDemoLines(p); touch(p); paintSel(); toast(`照明 ${n} 台${withOut ? `・コンセント ${no} 個` : ''}を並べました。スイッチと配線も明細に入れました`, { ms: 4000 });
         })().catch(e => showError(e));
         return;
       }
@@ -783,6 +841,15 @@ function stepRooms(ctx) {
         return;
       }
       if (a === 'fxDone') { fsel = -1; addAt = null; paintSel(); return; }
+      if (a === 'fxFlip') {
+        const x = fxList()[fsel]; if (!x) return;
+        x.flip = !x.flip; x.edited = true;
+        const had = (p.drawing.outlets || []).some(o => o.auto);
+        if (had) placeOutlets();
+        syncDemoLines(p); touch(p); paintSel();
+        toast(had ? 'コンセントを反対側にしました' : '反対側にしました。「照明・配線」でコンセントを置くと反対側に付きます');
+        return;
+      }
       if (a === 'fxDel') {
         const fx = fxList(), x = fx[fsel]; if (!x) return;
         fx.splice(fsel, 1); fsel = -1; touch(p); paintSel();
@@ -1069,7 +1136,7 @@ function stepCheck({ p, body, refresh }) {
   draw();
 }
 
-async function duplicate(p) {
+export async function duplicate(p) {
   await flush();
   const { id, number, ...rest } = JSON.parse(JSON.stringify(p));
   void id; void number;

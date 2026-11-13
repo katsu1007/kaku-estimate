@@ -1,7 +1,8 @@
 /* ホームと案件一覧 */
-import { state, registerView, setTop, go, newProject, opts, render } from './app.js';
+import { state, registerView, setTop, go, newProject, opts, render, touch, removeProject, restoreProject } from './app.js';
+import { duplicate } from './project.js';
 import { totals, check } from './calc.js';
-import { icon, esc, yen, pct, when, $ } from './ui.js';
+import { icon, esc, yen, pct, when, toast, modal, $ } from './ui.js';
 import { showIntro, showNotice } from './pages.js';
 
 export const STATUS = { draft: ['見積中', 'acc'], sent: ['提出済', 'info'], won: ['受注', 'ok'], lost: ['失注', ''] };
@@ -31,8 +32,32 @@ const table = list => `<div class="tablewrap"><table class="list cards">
   <thead><tr><th>案件・お客様</th><th class="r">金額（税込）</th><th class="hide-m">粗利率</th><th>状態</th><th class="hide-m">更新</th></tr></thead>
   <tbody>${rowsHtml(list)}</tbody></table></div>`;
 
+/* 案件の行：タップで開く。長押し（パソコンは右クリック）で 開く・複製・状態を変える・削除 */
 function bindOpen(el) {
-  el.querySelectorAll('[data-open]').forEach(tr => tr.onclick = () => go('#/p/' + encodeURIComponent(tr.dataset.open) + '/1'));
+  el.querySelectorAll('[data-open]').forEach(tr => {
+    let t = null, longed = false, sx = 0, sy = 0;
+    const id = tr.dataset.open;
+    tr.addEventListener('pointerdown', e => { longed = false; sx = e.clientX; sy = e.clientY; clearTimeout(t); t = setTimeout(() => { longed = true; if (navigator.vibrate) navigator.vibrate(15); rowMenu(id); }, 500); });
+    tr.addEventListener('pointermove', e => { if (Math.hypot(e.clientX - sx, e.clientY - sy) > 10) clearTimeout(t); });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(k => tr.addEventListener(k, () => clearTimeout(t)));
+    tr.addEventListener('contextmenu', e => { e.preventDefault(); clearTimeout(t); if (!longed) rowMenu(id); longed = true; });
+    tr.onclick = () => { if (longed) { longed = false; return; } go('#/p/' + encodeURIComponent(id) + '/1'); };
+  });
+}
+function rowMenu(id) {
+  const p = state.projects.find(x => x.id === id); if (!p) return;
+  const m = modal({ title: p.name || '名前のない案件', body: `<div class="grid" style="gap:8px">
+    <button class="btn" data-m="open">${icon('next')}開く</button>
+    <button class="btn" data-m="dup">${icon('copy')}複製する</button>
+    <label class="f">状態<select class="in" data-m-status>${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${(p.status || 'draft') === k ? 'selected' : ''}>${v[0]}</option>`).join('')}</select></label>
+    <button class="btn danger" data-m="del">${icon('trash')}この案件を削除する</button></div>` });
+  m.el.querySelector('[data-m-status]').onchange = e => { p.status = e.target.value; touch(p); m.el.remove(); render(); toast(`「${STATUS[p.status][0]}」にしました`); };
+  m.el.querySelectorAll('[data-m]').forEach(b => b.onclick = async () => {
+    const a = b.dataset.m; m.el.remove();
+    if (a === 'open') go('#/p/' + encodeURIComponent(id) + '/1');
+    if (a === 'dup') duplicate(p);
+    if (a === 'del') { await removeProject(p); render(); toast(`「${p.name || '名前のない案件'}」を削除しました`, { action: '元に戻す', ms: 6000, onAction: async () => { await restoreProject(p); render(); } }); }
+  });
 }
 
 async function create() {
