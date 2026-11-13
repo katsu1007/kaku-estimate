@@ -212,10 +212,10 @@ function roomCard(r, i, p) {
 function drawingCard(p) {
   const d = p.drawing;
   if (!d || !d.plan) return `<div class="card" style="margin-bottom:14px"><div class="row"><div style="flex:1;min-width:220px"><h2>図面から部屋を作る</h2>
-      <div class="sub" style="margin:0">JWW・DXF・PDF の図面を読み込むと、部屋の区画が自動で見つかります。区画をタップして部屋にしてください。</div></div>
-      <label class="btn primary" style="cursor:pointer">${icon('up')}図面を選ぶ<input type="file" id="dwgFile" accept=".jww,.jwc,.dxf,.pdf,application/pdf" hidden></label>
-      <button class="btn" data-act="sketch">${icon('grid')}寸法で間取りを作る</button></div>
-      <div class="small muted" style="margin-top:6px">図面ファイルが無い時は「寸法で間取りを作る」：四角の寸法・向きと長さ・写真や手描きの図の角をタップして、間取りを作れます。</div>
+      <div class="sub" style="margin:0">JWW・DXF・PDF の図面を読み込むと、部屋の区画が自動で見つかります。区画をタップして部屋にしてください。写真やスキャンしたPDFは、下に敷いて角をなぞって拾えます。</div></div>
+      <label class="btn primary" style="cursor:pointer">${icon('up')}図面を選ぶ<input type="file" id="dwgFile" accept=".jww,.jwc,.dxf,.pdf,application/pdf,image/*" hidden></label>
+      <button class="btn" data-act="sketch">${icon('grid')}寸法・なぞって間取りを作る</button></div>
+      <div class="small muted" style="margin-top:6px">図面ファイルが無い時は「寸法・なぞって間取りを作る」：四角の寸法・向きと長さ・PDFや写真の角をなぞって、間取りを作れます。</div>
       <div class="small muted" id="dwgStatus" style="margin-top:8px"></div></div>`;
   return `<div class="card" style="margin-bottom:14px">
     <div class="row" style="margin-bottom:10px"><div style="flex:1;min-width:200px"><h2>${icon('layers').replace('<svg', '<svg style="width:18px;height:18px;vertical-align:-3px"')} ${esc(d.fileName || '図面')}</h2>
@@ -223,7 +223,7 @@ function drawingCard(p) {
       ${d.fixtures ? `<button class="btn sm primary" data-act="open3d">${icon('cube')}3Dで見る</button>` : ''}
       ${d.sketch ? `<button class="btn sm" data-act="sketch">${icon('grid')}間取りを直す</button>` : ''}
       <button class="btn sm" data-act="cadOut">${icon('down')}JWW・DXF</button>
-      <label class="btn sm" style="cursor:pointer">${icon('up')}読み直す<input type="file" id="dwgFile" accept=".jww,.jwc,.dxf,.pdf,application/pdf" hidden></label>
+      <label class="btn sm" style="cursor:pointer">${icon('up')}読み直す<input type="file" id="dwgFile" accept=".jww,.jwc,.dxf,.pdf,application/pdf,image/*" hidden></label>
       <button class="btn sm ghost danger" data-act="dwgClear">${icon('trash')}図面を消す</button></div>
     <div class="seg" id="dwgMode" style="margin-bottom:8px"><button data-mode="room">部屋を作る</button><button data-mode="fix">器具を直す</button><button data-mode="wall">壁の解体・仕上げ</button><button data-mode="cut">カッター</button><button data-mode="light">照明・配線</button><button data-mode="place">器具を置く</button><button data-mode="meas">測る</button></div>
     <div id="dwgView"></div>
@@ -665,6 +665,25 @@ function stepRooms(ctx) {
     };
     return h;
   };
+  /* 寸法で間取りを作る・なぞって拾う（file を渡すと、その図を下に敷いて始める） */
+  const openSk = file => openSketch(p, { file, onSave: () => touch(p), onApply: async sk => {
+    const had = p.rooms.some(r => r.src === 'plan');
+    if (had && !(await ask('間取りを入れ替えますか？', '今の図面と、図面から作った部屋を、この間取りに入れ替えます。手で足した部屋はそのままです。', { ok: '入れ替える' }))) return false;
+    const keep = p.drawing && p.drawing.sketch ? p.drawing : null;
+    const plan = sketchPlan(sk.rooms); orderFacesOf(plan); plan.order = 2;
+    p.drawing = { fileName: sk.img && sk.rooms.some(r => r.photo) ? 'なぞって作った間取り' : '寸法で作った間取り', bg: sk.img && sk.rooms.some(r => r.photo) ? { s: sk.s } : null, at: Date.now(), plan, fixtures: [], open: {}, doors: [], fixG: '', fixGd: '', sketch: true,
+      lights: [], walls: [], hatsu: [], panel: null, wireExtra: keep ? keep.wireExtra : undefined };
+    /* 間取りを直しただけなら、置いた照明・器具・壁などはそのまま */
+    if (keep) ['lights', 'outlets', 'switches', 'link', 'panel', 'walls', 'hatsu', 'places', 'win3d'].forEach(k => { if (keep[k] != null) p.drawing[k] = keep[k]; });
+    const old = new Map(p.rooms.filter(r => r.src === 'plan' && r.sk).map(r => [r.sk, r]));
+    p.rooms = p.rooms.filter(r => r.src !== 'plan');
+    plan.faces.slice().sort((a, b) => a.no - b.no).forEach((f, k) => {
+      const o = old.get(f.sk);
+      p.rooms.push({ ...(o || { id: uid('r'), qty: 1, doors: 0, winCount: 0, windows: [], h: '' }), name: f.name || `区画 ${f.no}`, shape: 'free', area: f.area, perim: f.peri, faces: [f.i], src: 'plan', sk: f.sk, color: o ? o.color : k, openRuns: [] });
+    });
+    syncDemoLines(p); touch(p); draw(); toast(`${plan.faces.length} 部屋の間取りを図面にしました`);
+    return true;
+  } });
   const makeRooms = each => {
     const plan = p.drawing.plan;
     const ids = [...sel];
@@ -710,7 +729,7 @@ function stepRooms(ctx) {
     if (p.drawing && p.drawing.plan && p.drawing.plan.order !== 2) { orderFacesOf(p.drawing.plan); p.drawing.plan.order = 2; touch(p); }
     if (p.drawing && p.drawing.plan) {
       view = planView(body.querySelector('#dwgView'), p.drawing.plan, {
-        selected: () => sel, owner, fixtures: fxList, fixSel: () => (mode === 'fix' ? fsel : -1), mode: () => mode, fixG: p.drawing.fixG || '', fixGd: p.drawing.fixGd || '',
+        selected: () => sel, owner, fixtures: fxList, bg: p.drawing.bg && p.sketch && p.sketch.img ? { ...p.sketch.img, s: p.drawing.bg.s } : null, fixSel: () => (mode === 'fix' ? fsel : -1), mode: () => mode, fixG: p.drawing.fixG || '', fixGd: p.drawing.fixGd || '',
         onTap: i => { if (sel.has(i)) sel.delete(i); else sel.add(i); paintSel(); },
         onDragStart: (x, y, sc) => dragStart(x, y, sc),
         /* 虫めがねの吸い付き：測る・カッター・壁の範囲・照明の置き場所で、線の端や線の上に吸い付く */
@@ -800,11 +819,16 @@ function stepRooms(ctx) {
       try {
         const cad = files.find(f => /\.(jww|jwc|dxf)$/i.test(f.name));
         let res;
+        const pic = !cad && files.find(f => /^image\//.test(f.type) || /\.(png|jpe?g|heic|webp|gif)$/i.test(f.name));
+        if (pic) { if (st) st.textContent = ''; openSk(pic); e.target.value = ''; return; }
         if (cad) {
           res = await readWithFixtures(cad);
           orderFacesOf(res.plan); res.plan.order = 2;
         } else res = await importDrawing(files);
-        if (!res.plan || !res.plan.faces.length) { const msg = res.message || '部屋の区画が見つかりませんでした'; if (st) st.textContent = msg; toast(msg, { bad: true }); return; }
+        if (!res.plan || !res.plan.faces.length) { const msg = res.message || '部屋の区画が見つかりませんでした'; if (st) st.textContent = msg;
+          const img = !cad && files.find(f => /\.(pdf|png|jpe?g|heic|webp|gif)$/i.test(f.name) || /^image\/|pdf/.test(f.type));
+          if (img && await ask('区画が見つかりませんでした', 'この図を下に敷いて、部屋の角をなぞって拾いますか？（写真・スキャンのPDFは、なぞって拾えます）', { ok: 'なぞって拾う' })) { openSk(img); return; }
+          toast(msg, { bad: true }); return; }
         p.rooms.forEach(r => { if (r.src === 'plan') { r.src = 'plan-old'; delete r.faces; } });
         p.drawing = { fileName: (cad ? [cad] : files).map(f => f.name).join('、'), at: Date.now(), plan: res.plan, fixtures: cad ? res.fixtures : null, open: cad ? res.open : null, doors: cad ? (res.doorList || []) : [], fixG: cad ? res.fixG : '', fixGd: cad ? res.fixGd : '' };
         sel.clear(); touch(p); draw();
@@ -876,26 +900,9 @@ function stepRooms(ctx) {
         if (a === 'pDelOne') { d.places = d.places.filter(z => z !== q); psel = null; redo(); undo('1個消しました'); return; }
       }
       if (a === 'wallClear') { wsel.clear(); wpts.length = 0; paintSel(); return; }
-      if (a === 'sketch') {
-        openSketch(p, { onSave: () => touch(p), onApply: async sk => {
-          const had = p.rooms.some(r => r.src === 'plan');
-          if (had && !(await ask('間取りを入れ替えますか？', '今の図面と、図面から作った部屋を、この間取りに入れ替えます。手で足した部屋はそのままです。', { ok: '入れ替える' }))) return false;
-          const keep = p.drawing && p.drawing.sketch ? p.drawing : null;
-          const plan = sketchPlan(sk.rooms); orderFacesOf(plan); plan.order = 2;
-          p.drawing = { fileName: '寸法で作った間取り', at: Date.now(), plan, fixtures: [], open: {}, doors: [], fixG: '', fixGd: '', sketch: true,
-            lights: [], walls: [], hatsu: [], panel: null, wireExtra: keep ? keep.wireExtra : undefined };
-          const old = new Map(p.rooms.filter(r => r.src === 'plan' && r.sk).map(r => [r.sk, r]));
-          p.rooms = p.rooms.filter(r => r.src !== 'plan');
-          plan.faces.slice().sort((a, b) => a.no - b.no).forEach((f, k) => {
-            const o = old.get(f.sk);
-            p.rooms.push({ ...(o || { id: uid('r'), qty: 1, doors: 0, winCount: 0, windows: [], h: '' }), name: f.name || `区画 ${f.no}`, shape: 'free', area: f.area, perim: f.peri, faces: [f.i], src: 'plan', sk: f.sk, color: o ? o.color : k, openRuns: [] });
-          });
-          syncDemoLines(p); touch(p); draw(); toast(`${plan.faces.length} 部屋の間取りを図面にしました`);
-          return true;
-        } });
-        return;
-      }
+      if (a === 'sketch') { openSk(); return; }
       if (a === 'cadOut') { cadExport(p); return; }
+
       if (a === 'open3d') { flush(); toast('3Dを用意しています…'); open3D(p, { onClose: wins => {
         if (!wins || JSON.stringify(wins) === JSON.stringify(p.drawing.win3d || [])) return;
         const n = applyWin3d(p, wins); touch(p); draw(); if (wins.length) toast(`3Dの窓 ${wins.length} か所を、面している部屋の窓に入れました（${n} 部屋）`, { ms: 4000 });
