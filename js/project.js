@@ -487,7 +487,7 @@ function stepRooms(ctx) {
         const lightItems = masterItems().filter(i => /^e-(dl|clight|bl|base)/.test(i.id));
         const W = lightWires(p), n = (p.drawing.lights || []).length;
         const res = pr.map(r => { const k = (p.drawing.lights || []).filter(x => x.room === r.id).length; if (!k) return ''; const u = r.lightUse || ''; const F = (r.faces || []).map(i => p.drawing.plan.faces.find(f => f.i === i)).filter(Boolean); const lx = u && F[0] ? Math.round(luxOf(F[0].poly, Number(r.h) || planCH(p.drawing.plan) || opts().ceilH, u, r.lightLm || 800, k) / 10) * 10 : 0; const tgt = (USES.find(x => x[0] === u) || [])[2]; return `<span class="pill ${lx && tgt && lx < tgt * 0.95 ? 'warn' : 'info'}">${esc(r.name)} ${k}台${lx ? `・約${lx}lx（目標${tgt}）` : ''}</span>`; }).join('');
-        bar.innerHTML = !pr.length ? `<span class="small muted">先に「部屋を作る」で部屋を作ってください。照明は部屋ごとに並べます。</span>` : `
+        bar.innerHTML = !pr.length ? `<span class="small">照明は部屋ごとに並べます。まだ部屋がありません。</span><button class="btn sm primary" data-act="lMakeAll">${icon('plus')}全部の区画を1つずつ部屋にする</button><span class="small muted" style="width:100%">まとめたい区画がある時は、先に「部屋を作る」で区画をタップして部屋にしてください。</span>` : `
           <div class="grid g4" style="width:100%;align-items:end">
             <label class="f">部屋<select class="in" id="lRoom"><option value="all">部屋にした所 全部</option>${pr.map(r => `<option value="${esc(r.id)}" ${lset.room === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select></label>
             <label class="f">部屋の用途<select class="in" id="lUse">${USES.map(u => `<option value="${u[0]}" ${lset.use === u[0] ? 'selected' : ''}>${u[1]}${u[2] ? `（${u[2]}lx）` : ''}</option>`).join('')}</select></label>
@@ -801,6 +801,7 @@ function stepRooms(ctx) {
       if (a === 'mkOne') return makeRooms(false);
       if (a === 'mkEach') return makeRooms(true);
       if (a === 'selClear') { sel.clear(); paintSel(); return; }
+      if (a === 'lMakeAll') { const own = owner(); p.drawing.plan.faces.forEach(f => { if (!own.has(f.i)) sel.add(f.i); }); return makeRooms(true); }
       if (a === 'selRest') { const own = owner(); p.drawing.plan.faces.forEach(f => { if (!own.has(f.i)) sel.add(f.i); }); paintSel(); return; }
       if (a === 'dwgClear') {
         if (!(await ask('図面を消しますか？', '図面から作った部屋は残ります（図面とのつながりだけ外れます）。', { ok: '消す', danger: true }))) return;

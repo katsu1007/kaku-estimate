@@ -393,3 +393,12 @@ details.more[open] > summary::before { content: "－ "; }
   .sksheet .skbody { grid-template-columns: 1fr; grid-template-rows: 46vh 1fr; }
   .sksheet .skpanel { border-left: 0; border-top: 1px solid var(--line); }
 }
+
+/* 図面の道具の切り替え：はみ出して隠れないように、スマホは3つずつ折り返す */
+#dwgMode { display: grid; grid-template-columns: repeat(6, 1fr); width: 100%; }
+#dwgMode button, #lTool button { padding: 8px 6px; white-space: normal; line-height: 1.25; }
+#lTool { display: grid; grid-template-columns: repeat(5, 1fr); }
+@media (max-width: 760px) {
+  #dwgMode { grid-template-columns: repeat(3, 1fr); }
+  #lTool { grid-template-columns: repeat(3, 1fr); }
+}
