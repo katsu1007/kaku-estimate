@@ -91,6 +91,7 @@ export function floorBreakdown(p, o) {
       tp.drawing.lights = (d.lights || []).filter(x => floorAt(x.x, x.y) === f).map(clone);
       tp.drawing.outlets = (d.outlets || []).filter(x => floorAt(x.x, x.y) === f).map(clone);
       tp.drawing.switches = (d.switches || []).filter(x => floorAt(x.x, x.y) === f).map(clone);
+      tp.drawing.places = (d.places || []).map(x => { const c = clone(x); if (c.where === 'pt') return c.p && floorAt(c.p[0], c.p[1]) === f ? c : null; c.pts = (c.pts || []).filter(q => floorAt(q[0], q[1]) === f); return c.pts.length ? c : null; }).filter(Boolean);
       if (d.panel && floorAt(d.panel[0], d.panel[1]) !== f) tp.drawing.panel = null;
       syncDemoLines(tp);
     }

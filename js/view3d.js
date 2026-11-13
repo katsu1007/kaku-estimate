@@ -34,6 +34,7 @@ export function toOld(p) {
   const places = (d.lights || []).map(x => ({ id: x.id, item: x.item, where: 'pt', p: [x.x, x.y], count: 1 }));
   if (d.panel) places.push({ id: 'panel', item: 'e-panel', where: 'pt', p: d.panel, count: 1 });
   (d.outlets || []).forEach(x => places.push({ id: x.id, item: x.item || 'e-cone', where: 'pt', p: [x.x, x.y], count: 1 }));
+  (d.places || []).forEach(x => (x.where === 'pt' ? [x.p] : (x.pts || [])).forEach((q, k) => q && places.push({ id: x.id + '_' + k, item: x.item, where: 'pt', p: q, rot: x.rot || 0, count: 1 })));
   /* スイッチ：新しい画面で決めた位置（自動の物も）を置いた物として渡し、照明をそのスイッチにつなぐ（ブースの照明も外の部屋のスイッチへ） */
   const W = lightWires(p), link = {};
   W.sws.forEach(s0 => places.push({ id: 'sw_' + s0.key, item: 'e-sw1', where: 'pt', p: s0.l, count: 1 }));

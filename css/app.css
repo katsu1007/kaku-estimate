@@ -395,11 +395,11 @@ details.more[open] > summary::before { content: "－ "; }
 }
 
 /* 図面の道具の切り替え：はみ出して隠れないように、スマホは3つずつ折り返す */
-#dwgMode { display: grid; grid-template-columns: repeat(6, 1fr); width: 100%; }
+#dwgMode { display: grid; grid-template-columns: repeat(7, 1fr); width: 100%; }
 #dwgMode button, #lTool button { padding: 8px 6px; white-space: normal; line-height: 1.25; }
 #lTool { display: grid; grid-template-columns: repeat(5, 1fr); }
 @media (max-width: 760px) {
-  #dwgMode { grid-template-columns: repeat(3, 1fr); }
+  #dwgMode { grid-template-columns: repeat(4, 1fr); }
   #lTool { grid-template-columns: repeat(3, 1fr); }
 }
 
