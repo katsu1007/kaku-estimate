@@ -103,7 +103,7 @@ export function netQty(line, rooms, opt, lines) {
   if (b && b.measure === 'link') return linkQty(line, rooms, opt, lines);
   if (!b || !b.measure || b.measure === 'manual') return Math.max(0, num(line.qty));
   const ids = b.rooms === 'all' || !Array.isArray(b.rooms) ? null : new Set(b.rooms);
-  const g = b.measure === 'wall' ? wallGroup(line.cat) : null;
+  const g0 = b.measure === 'wall' ? wallGroup(line.cat) : null, g = g0 && (line.layer || 1) > 1 ? g0 + line.layer : g0;   // 下の層の解体は demo2, demo3…
   return round3((rooms || []).filter(r => !ids || ids.has(r.id)).reduce((s, r) => {
     let v = roomGeom(r, opt)[b.measure] || 0;
     /* 図面で壁ごとに同じ種類（解体・下地・仕上げ）を入れた分は、その部屋の壁から引く（二重にしない） */

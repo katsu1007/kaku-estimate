@@ -10,13 +10,14 @@ export const SLOTS = [
   { k: 'fB', part: '床', role: '下地', measure: 'floor', cats: ['fbase', 'insul'] },
   { k: 'fF', part: '床', role: '仕上げ', measure: 'floor', cats: ['floor'] },
   { k: 'wD', part: '壁', role: '解体', measure: 'wall', cats: ['demoW'] },
+  { k: 'wD2', part: '壁', role: '下の層も解体', measure: 'wall', cats: ['demoW'], layer: 2 },
   { k: 'wB', part: '壁', role: '下地', measure: 'wall', cats: ['board'] },
   { k: 'wF', part: '壁', role: '仕上げ', measure: 'wall', cats: ['wall'] },
   { k: 'cD', part: '天井', role: '解体', measure: 'ceil', cats: ['demoC'] },
   { k: 'cF', part: '天井', role: '仕上げ', measure: 'ceil', cats: ['ceil'] },
   { k: 'bF', part: '巾木', role: '', measure: 'base', cats: ['trim'] }
 ];
-const inSlot = (l, s) => l.basis && l.basis.measure === s.measure && s.cats.includes(l.cat);
+const inSlot = (l, s) => l.basis && l.basis.measure === s.measure && s.cats.includes(l.cat) && (l.layer || 1) === (s.layer || 1);
 const hasRoom = (l, id) => l.basis.rooms === 'all' || (Array.isArray(l.basis.rooms) && l.basis.rooms.includes(id));
 
 /* 今その部屋に入っている品目（枠ごと） */
@@ -41,7 +42,7 @@ export function applyFin(p, rooms, fin) {
       if (l) { if (l.basis.rooms !== 'all') l.basis.rooms = [...new Set([...l.basis.rooms, ...rooms])]; }
       else {
         const it = M.find(i => i.id === want); if (!it) return;
-        p.lines.push({ id: uid('l'), itemId: it.id, name: it.name, spec: it.spec || '', unit: it.unit, kind: it.kind || 'mat', price: it.price || '', cost: '', loss: '', sheet: it.sheet || 0, cat: it.cat, qty: '', basis: { measure: s.measure, rooms: [...rooms] } });
+        p.lines.push({ id: uid('l'), itemId: it.id, name: it.name, spec: [it.spec, s.layer > 1 ? '（下の層）' : ''].filter(Boolean).join(' '), unit: it.unit, kind: it.kind || 'mat', price: it.price || '', cost: '', loss: '', sheet: it.sheet || 0, cat: it.cat, qty: '', basis: { measure: s.measure, rooms: [...rooms] }, ...(s.layer > 1 ? { layer: s.layer } : {}) });
       }
     }
   });
@@ -53,7 +54,7 @@ let lastFin = null;
 export function openRoomFin(p, rooms, { title, onDone } = {}) {
   const M = masterItems(), first = currentFin(p, rooms[0]);
   const opts = s => M.filter(i => s.cats.includes(i.cat) && i.measure === s.measure);
-  const row = s => `<label class="f">${s.role || '品目'}<select class="in" data-slot="${s.k}"><option value="">${s.role === '解体' ? '解体しない' : 'なし'}</option>${opts(s).map(i => `<option value="${esc(i.id)}" ${first[s.k] === i.id ? 'selected' : ''}>${esc(i.name)}${i.spec ? ' ' + esc(i.spec) : ''}（${yen(i.price)}/${esc(i.unit)}）</option>`).join('')}</select></label>`;
+  const row = s => `<label class="f">${s.role || '品目'}<select class="in" data-slot="${s.k}"><option value="">${/解体/.test(s.role) ? '解体しない' : 'なし'}</option>${opts(s).map(i => `<option value="${esc(i.id)}" ${first[s.k] === i.id ? 'selected' : ''}>${esc(i.name)}${i.spec ? ' ' + esc(i.spec) : ''}（${yen(i.price)}/${esc(i.unit)}）</option>`).join('')}</select></label>`;
   const parts = ['床', '壁', '天井', '巾木'];
   const names = rooms.map(id => (p.rooms.find(r => r.id === id) || {}).name).filter(Boolean);
   const m = modal({

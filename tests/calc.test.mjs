@@ -218,3 +218,12 @@ test('壁ごとに入れた分は、その部屋の同じ種類の壁の行か�
   assert.equal(wallGroup('paint'), 'fin'); assert.equal(wallGroup('floor'), null);
   r.wallOff.fin = 50; assert.equal(netQty(L('wall'), [r]), 0);   // 部屋の壁より多い時は0
 });
+
+test('壁の下の層の解体は、下の層の行からだけ引く', async () => {
+  const { netQty } = await import('../js/calc.js');
+  const r = { id: 'a', shape: 'rect', w: 4, d: 3, h: 2.4, qty: 1, doors: 0, winCount: 0, windows: [], wallOff: { demo: 10, demo2: 4 } };
+  const L = (layer) => ({ cat: 'demoW', basis: { measure: 'wall', rooms: 'all' }, ...(layer ? { layer } : {}) });
+  assert.equal(netQty(L(), [r]), 23.6);     // 1層目：33.6−10
+  assert.equal(netQty(L(2), [r]), 29.6);    // 2層目：33.6−4
+  assert.equal(netQty(L(3), [r]), 33.6);    // 3層目は入れていない
+});

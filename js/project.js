@@ -319,12 +319,14 @@ export function syncDemoLines(p) {
     const r = w.room && p.rooms.find(x => x.id === w.room); if (!r) return;
     const a = Math.max(0, w.len * w.h - (Number(w.open) || 0)), o = r.wallOff || (r.wallOff = {});
     if (w.itemId) o.demo = r3((o.demo || 0) + a);
+    (w.more || []).filter(Boolean).forEach((id, k) => { const key = 'demo' + (k + 2); o[key] = r3((o[key] || 0) + a); });
     if (w.baseId) o.base = r3((o.base || 0) + a);
     if (w.finId) o.fin = r3((o.fin || 0) + a);
   });
   (d.walls || []).forEach(w => {
     const a = Math.max(0, w.len * w.h - (Number(w.open) || 0)), note = `長さ${r3(w.len)}m×高さ${r3(w.h)}m${Number(w.open) > 0 ? `−開口${r3(w.open)}㎡` : ''}${w.name ? '（' + w.name + '）' : ''}`;
     if (w.itemId) add('w|' + w.id, w.itemId, a, note);
+    (w.more || []).filter(Boolean).forEach((id, k) => add(`wm|${w.id}|${k}`, id, a, note + `・下の層${k + 1}`));
     if (w.baseId) add('wb|' + w.id, w.baseId, a, note, { loss: true });
     if (w.finId) add('wf|' + w.id, w.finId, a, note, { loss: true });
   });
@@ -449,10 +451,11 @@ function stepRooms(ctx) {
     const it = id => masterItems().find(i => i.id === id);
     return `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);display:grid;gap:8px">
       ${W.map(w => `<div class="card" style="padding:10px" data-wall="${w.id}"><div class="row small">
-        ${w.itemId ? `<span class="pill bad">解体 ${esc((it(w.itemId) || {}).name || '')}</span>` : ''}${w.baseId ? `<span class="pill info">下地 ${esc((it(w.baseId) || {}).name || '')}</span>` : ''}${w.finId ? `<span class="pill acc">仕上げ ${esc((it(w.finId) || {}).name || '')}</span>` : ''}${w.name ? `<b>${esc(w.name)}</b>` : ''}
+        ${w.itemId ? `<span class="pill bad">解体 ${esc((it(w.itemId) || {}).name || '')}</span>` : ''}${w.baseId ? `<span class="pill info">下地 ${esc((it(w.baseId) || {}).name || '')}</span>` : ''}${(w.more || []).map((id, k) => `<span class="pill bad">下の層${k + 1} ${esc((it(id) || {}).name || '')} <button class="linkbtn" data-act="wMoreDel" data-k="${k}" aria-label="消す">×</button></span>`).join('')}${w.finId ? `<span class="pill acc">仕上げ ${esc((it(w.finId) || {}).name || '')}</span>` : ''}${w.name ? `<b>${esc(w.name)}</b>` : ''}
         <span class="spacer"></span><button class="iconbtn" data-act="wallDel" aria-label="この壁を消す">${icon('trash')}</button></div>
         <div class="row small" style="margin-top:6px"><span>長さ ${r3(w.len)}m × 高さ</span><div class="unitwrap" style="width:120px"><input class="in num" data-wk="h" type="number" inputmode="decimal" step="0.01" value="${w.h}" style="min-height:36px"><span>m</span></div>
         <span>− 開口</span><div class="unitwrap" style="width:120px"><input class="in num" data-wk="open" type="number" inputmode="decimal" step="0.01" value="${w.open || 0}" style="min-height:36px"><span>㎡</span></div><b>＝ ${r3(Math.max(0, w.len * w.h - (Number(w.open) || 0)))}㎡</b></div>
+        <div class="row small" style="margin-top:6px"><span class="muted">下の層も解体</span><select class="in" data-wk="more" style="min-height:36px;width:auto"><option value="">＋ 層を足す</option>${masterItems().filter(i => i.cat === 'demoW' && i.unit === '㎡').map(i => `<option value="${esc(i.id)}">${esc(i.name)}</option>`).join('')}</select></div>
         <div class="row small" style="margin-top:6px"><span class="muted">部屋の壁から引く</span><div style="min-width:220px">${wallRoomSel('', w.room || '', wallRooms(p, w))}</div></div></div>`).join('')}
       ${H.map(h => { const c = hatsuCalc(h); return `<div class="card" style="padding:10px" data-hatsu="${h.id}"><div class="row small"><span class="pill acc">カッター</span><b>幅 ${r3(h.w)}m × 長さ ${r3(h.l)}m</b>
         <label class="row muted" style="gap:4px">厚み<div class="unitwrap" style="width:130px"><input class="in num" data-hk="t" type="number" inputmode="numeric" value="${h.t}" style="min-height:36px"><span>mm</span></div></label>
@@ -486,6 +489,7 @@ function stepRooms(ctx) {
             <label class="f" style="grid-column:span 4">メモ（どの壁か）<input class="in" id="wName" placeholder="例：LDK 北の壁"></label></div>
           <div class="grid g3" style="width:100%">
             <label class="f">解体${sel('wItem', M.filter(i => i.cat === 'demoW'), ls.demo, '解体しない')}</label>
+            <label class="f">下の層も解体<span class="hint">タイルの下のブロックなど</span>${sel('wMore', M.filter(i => i.cat === 'demoW' && i.unit === '㎡'), '', 'なし')}</label>
             <label class="f">下地${sel('wBase', M.filter(i => i.cat === 'board'), ls.base, '下地なし')}</label>
             <label class="f">仕上げ${sel('wFin', M.filter(i => i.cat === 'wall' || i.cat === 'paint'), ls.fin, '仕上げなし')}</label></div>
           <button class="btn sm primary" data-act="wallAdd">${icon('plus')}この壁を明細に入れる</button><button class="btn sm ghost" data-act="wallClear">選び直す</button>
@@ -756,7 +760,7 @@ function stepRooms(ctx) {
     if (e.target.id === 'lPitch') { lset.pitch = Math.max(0.9, Math.min(6, Number(e.target.value) || 2)); return; }
     if (e.target.id === 'lItem') { lset.item = e.target.value; lset.lm = DEF_LM[lset.item] || 800; const i = $('#lLm', body); if (i) i.value = lset.lm; return; }
     const wr = e.target.closest('[data-wall]'), hr = e.target.closest('[data-hatsu]');
-    if (wr && e.target.dataset.wk) { const w = (p.drawing.walls || []).find(x => x.id === wr.dataset.wall); if (w) { const k = e.target.dataset.wk; if (k === 'room') w.room = e.target.value; else w[k === 'open' ? 'open' : 'h'] = Math.max(0, Number(e.target.value) || 0); syncDemoLines(p); touch(p); paintSel(); } return; }
+    if (wr && e.target.dataset.wk) { const w = (p.drawing.walls || []).find(x => x.id === wr.dataset.wall); if (w) { const k = e.target.dataset.wk; if (k === 'more') { if (e.target.value) (w.more = w.more || []).push(e.target.value); } else if (k === 'room') w.room = e.target.value; else w[k === 'open' ? 'open' : 'h'] = Math.max(0, Number(e.target.value) || 0); syncDemoLines(p); touch(p); paintSel(); } return; }
     if (hr && e.target.dataset.hk) { const h = (p.drawing.hatsu || []).find(x => x.id === hr.dataset.hatsu); if (h) { const k = e.target.dataset.hk; h[k] = e.target.type === 'checkbox' ? e.target.checked : Math.max(0, Number(e.target.value) || 0); syncDemoLines(p); touch(p); paintSel(); } return; }
     const k = e.target.dataset.fx;
     if (k && fsel >= 0) { const x = fxList()[fsel]; if (!x) return; x[k] = e.target.value; x.edited = true; if (k === 'back' || k === 't') x.out = null; touch(p); paintSel(); }
@@ -836,16 +840,17 @@ function stepRooms(ctx) {
         const len = segs ? segs.reduce((s2, i) => s2 + segLen(p.drawing.plan.segs[i]), 0) : pts.reduce((s2, q, i) => i ? s2 + Math.hypot(q[0] - pts[i - 1][0], q[1] - pts[i - 1][1]) : 0, 0);
         if (!(len > 0)) return;
         const h = Number($('#wH', body).value) || opts().ceilH, open = Math.max(0, Number($('#wOpen', body).value) || 0);
-        const itemId = $('#wItem', body).value, baseId = $('#wBase', body).value, finId = $('#wFin', body).value, name = $('#wName', body).value.trim(), room = $('#wRoom', body).value;
+        const itemId = $('#wItem', body).value, baseId = $('#wBase', body).value, finId = $('#wFin', body).value, name = $('#wName', body).value.trim(), room = $('#wRoom', body).value, more = $('#wMore', body).value;
         if (!itemId && !baseId && !finId) { toast('解体・下地・仕上げのどれかを選んでください', { bad: true }); return; }
         state.wallSet = { demo: itemId, base: baseId, fin: finId };
         p.drawing.walls = p.drawing.walls || [];
-        p.drawing.walls.push({ id: uid('w'), ...(segs ? { segs } : { pts }), len: r3(len), h, open, itemId, baseId, finId, name, room });
+        p.drawing.walls.push({ id: uid('w'), ...(segs ? { segs } : { pts }), len: r3(len), h, open, itemId, baseId, finId, name, room, more: more ? [more] : [] });
         wsel.clear(); wpts.length = 0; syncDemoLines(p); touch(p); paintSel();
         const rn = room && p.rooms.find(x => x.id === room);
         toast(`壁を明細に入れました（${r3(len)}m × ${h}m${open ? ` − ${open}㎡` : ''}）${rn ? `。「${rn.name}」の壁の行から同じ分を引きます` : ''}`, { ms: 4000 });
         return;
       }
+      if (a === 'wMoreDel') { const el = da.closest('[data-wall]'), w = el && (p.drawing.walls || []).find(x => x.id === el.dataset.wall); if (w && w.more) { w.more.splice(+da.dataset.k, 1); syncDemoLines(p); touch(p); paintSel(); } return; }
       if (a === 'wallDel' || a === 'hatsuDel') {
         const key = a === 'wallDel' ? 'walls' : 'hatsu', el = da.closest(a === 'wallDel' ? '[data-wall]' : '[data-hatsu]');
         const id = el && (el.dataset.wall || el.dataset.hatsu);
