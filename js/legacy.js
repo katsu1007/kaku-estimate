@@ -46,7 +46,7 @@ export async function readWithFixtures(file) {
     if (!ok) throw new Error('図面を読めませんでした（時間切れ）');
     await wait(() => G('KAKU_fix'), 8000);
     const R = G(`(()=>{const P=KAKU_plan,F=KAKU_fix,q=v=>Math.round(v*1000)/1000;
-      const plan={segs:P.segs.map(s=>s.map(q)),dsegs:(P.dsegs||[]).map(s=>s.map(q)),
+      const plan={segs:P.segs.map(s=>s.map(q)),dsegs:(P.dsegs||[]).map(s=>s.map(q)),gsegs:(P.gsegs||[]).map(s=>s.map(q)),
         faces:P.faces.map(f=>({i:f.i,name:f.name||'',area:f.area,peri:f.peri,ch:f.ch||0,poly:f.poly.map(p=>[q(p[0]),q(p[1])])})),titles:(P.titles||[]).slice(0,40)};
       let fixtures=[],open={};
       if(F&&F.fx){fixtures=F.fx.map(x=>{let o=null;try{o=KF_OUT[x.t]?KF_outPt(x):null}catch(e){}return{t:x.t,b:KF_gbox(x.b).map(q),back:KF_gback(x.back)||'',out:o?o.map(q):null}});

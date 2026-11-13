@@ -36,6 +36,8 @@ function fixBox(x, lw, on) {
   return `<rect x="${x0 - pad}" y="${-y1 - pad}" width="${x1 - x0 + pad * 2}" height="${y1 - y0 + pad * 2}" rx="${lw * 3}" fill="${c}" fill-opacity="${on ? '.35' : '.1'}" stroke="${on ? 'var(--accent)' : c}" stroke-width="${lw * (on ? 3.5 : 1.6)}" ${on ? '' : `stroke-dasharray="${lw * 4} ${lw * 2.5}"`}><title>${FIX_LABEL[x.t] || ''}</title></rect>`;
 }
 
+/* 通り芯を出すか（端末に覚える。前のKAKUと同じ） */
+const gridOn = () => { try { return localStorage.getItem('kaku-grid') === '1'; } catch (e) { return false; } };
 export function planView(box, plan, opt = {}) {
   const xs = [], ys = [];
   plan.segs.forEach(s => { xs.push(s[0], s[2]); ys.push(s[1], s[3]); });
@@ -52,13 +54,14 @@ export function planView(box, plan, opt = {}) {
       <g class="faces"></g>
       <path d="${pathOf(plan.dsegs || [])}" fill="none" stroke="var(--faint)" stroke-width="${lw}" stroke-dasharray="${lw * 4} ${lw * 3}"/>
       <path d="${pathOf(plan.segs)}" fill="none" stroke="var(--text)" stroke-width="${lw}" stroke-linecap="round" opacity=".85"/>
+      ${(plan.gsegs || []).length ? `<path class="pv-grid" d="${pathOf(plan.gsegs)}" fill="none" stroke="#e5534b" stroke-width="${lw}" stroke-dasharray="${lw * 14} ${lw * 3} ${lw * 2} ${lw * 3}" opacity=".75" pointer-events="none" ${gridOn() ? '' : 'display="none"'}/>` : ''}
       ${opt.fixG ? `<path d="${opt.fixG}" transform="scale(0.001,0.001)" fill="none" stroke="var(--text)" stroke-width="${lw * 1000}" opacity=".8" pointer-events="none"/>` : ''}
       ${opt.fixGd ? `<path d="${opt.fixGd}" transform="scale(0.001,0.001)" fill="none" stroke="var(--faint)" stroke-width="${lw * 1000}" stroke-dasharray="${lw * 4000} ${lw * 3000}" pointer-events="none"/>` : ''}
       <g class="fixes" pointer-events="none"></g>
       <g class="overlay" pointer-events="none"></g>
       <g class="labels" font-size="${fs}" text-anchor="middle"></g></g></svg>
     <div class="pv-loupe" hidden><svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"><use href="#${gid}"/><g class="lp-mark"></g></svg></div>
-    <div class="pv-tools"><button class="iconbtn" data-z="in" aria-label="拡大">＋</button><button class="iconbtn" data-z="out" aria-label="縮小">－</button><button class="iconbtn" data-z="fit" aria-label="全体を表示">⤢</button></div></div>`;
+    <div class="pv-tools">${(plan.gsegs || []).length ? `<button class="iconbtn pv-gridbtn ${gridOn() ? 'on' : ''}" data-z="grid" aria-pressed="${gridOn()}" title="通り芯を出す・隠す">芯</button>` : ''}<button class="iconbtn" data-z="in" aria-label="拡大">＋</button><button class="iconbtn" data-z="out" aria-label="縮小">－</button><button class="iconbtn" data-z="fit" aria-label="全体を表示">⤢</button></div></div>`;
   const svg = box.querySelector('svg');
   const set = () => svg.setAttribute('viewBox', vb.join(' '));
   set();
@@ -180,6 +183,9 @@ export function planView(box, plan, opt = {}) {
   box.querySelector('.pv-tools').addEventListener('click', e => {
     const z = e.target.closest('[data-z]'); if (!z) return;
     const r = svg.getBoundingClientRect();
+    if (z.dataset.z === 'grid') { const on = !gridOn(); try { localStorage.setItem('kaku-grid', on ? '1' : '0'); } catch (e2) { /* 覚えられなくても表示は切り替える */ }
+      const g = svg.querySelector('.pv-grid'); if (g) { if (on) g.removeAttribute('display'); else g.setAttribute('display', 'none'); }
+      z.classList.toggle('on', on); z.setAttribute('aria-pressed', on); return; }
     if (z.dataset.z === 'fit') { vb = base.slice(); set(); } else zoomAt(r.left + r.width / 2, r.top + r.height / 2, z.dataset.z === 'in' ? 1.4 : 1 / 1.4);
   });
   return { paint, overlay, scale, lw };
