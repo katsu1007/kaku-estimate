@@ -374,7 +374,17 @@ function snapPt(plan, x, y, tol) {
   let best = null, bd = tol;
   const segs = plan.segs;
   for (const s of segs) for (const q of [[s[0], s[1]], [s[2], s[3]]]) { const d = Math.hypot(q[0] - x, q[1] - y); if (d < bd) { bd = d; best = q; } }
-  if (best) return [best[0], best[1]];
+  /* 線と線の交わる所（交点）にも吸い付く：近くの線どうしだけ調べる */
+  const near = segs.filter(s => { const dx = s[2] - s[0], dy = s[3] - s[1], L2 = dx * dx + dy * dy; if (!L2) return false; const t = Math.max(0, Math.min(1, ((x - s[0]) * dx + (y - s[1]) * dy) / L2)); return Math.hypot(s[0] + t * dx - x, s[1] + t * dy - y) < tol; }).slice(0, 60);
+  for (let i = 0; i < near.length; i++) for (let j = i + 1; j < near.length; j++) {
+    const a = near[i], b = near[j], d1x = a[2] - a[0], d1y = a[3] - a[1], d2x = b[2] - b[0], d2y = b[3] - b[1], den = d1x * d2y - d1y * d2x;
+    if (Math.abs(den) < 1e-12) continue;
+    const t = ((b[0] - a[0]) * d2y - (b[1] - a[1]) * d2x) / den, u = ((b[0] - a[0]) * d1y - (b[1] - a[1]) * d1x) / den;
+    if (t < -1e-9 || t > 1 + 1e-9 || u < -1e-9 || u > 1 + 1e-9) continue;
+    const q = [a[0] + t * d1x, a[1] + t * d1y], d = Math.hypot(q[0] - x, q[1] - y);
+    if (d < bd) { bd = d; best = q; }
+  }
+  if (best) return [Math.round(best[0] * 1e4) / 1e4, Math.round(best[1] * 1e4) / 1e4];
   bd = tol * 0.7;
   for (const s of segs) {
     const dx = s[2] - s[0], dy = s[3] - s[1], L2 = dx * dx + dy * dy; if (!L2) continue;
@@ -512,7 +522,7 @@ function stepRooms(ctx) {
       if (mode === 'meas') {
         const P = meas.pts; let last = 0, total = 0;
         for (let k = 1; k < P.length; k++) { const d = Math.hypot(P[k][0] - P[k - 1][0], P[k][1] - P[k - 1][1]); total += d; last = d; }
-        bar.innerHTML = `<span class="small muted">${P.length ? '' : '測りたい所を2点タップしてください。線の端や線の上にくっつきます。'}</span>
+        bar.innerHTML = `<span class="small muted">${P.length ? '' : '測りたい所を2点タップしてください。線の端・交点・線の上にくっつきます。長押しすると虫めがねで大きく見えます（指を動かして、離した所に決まります）。'}</span>
           ${P.length > 1 ? `<span class="pill acc" style="font-size:15px">長さ ${last.toFixed(3)} m</span>${meas.cont && P.length > 2 ? `<span class="pill info" style="font-size:15px">合計 ${total.toFixed(3)} m</span>` : ''}` : ''}
           <span class="spacer"></span><label class="row small muted" style="gap:6px"><input type="checkbox" data-meas-cont ${meas.cont ? 'checked' : ''} style="width:20px;height:20px">続けて測る（合計を出す）</label>
           <button class="btn sm" data-act="measClear">やり直す</button>`;
@@ -528,7 +538,8 @@ function stepRooms(ctx) {
           : addAt ? `<b class="small">ここに器具を足す</b>
             <select class="in" id="fxNewT" style="width:auto;min-height:40px">${types.filter(([k]) => FIX_SIZE[k]).map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select>
             <label class="row small muted" style="gap:6px">壁側<select class="in" id="fxNewB" style="width:auto;min-height:40px">${BACKS.map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select></label>
-            <button class="btn sm primary" data-act="fxAdd">${icon('plus')}足す</button><button class="btn sm ghost" data-act="fxDone">やめる</button>`
+            <button class="btn sm primary" data-act="fxAdd">${icon('plus')}足す</button>${p.drawing.plan.faces.some(f => pip(addAt[0], addAt[1], f.poly)) ? `<button class="btn sm" data-act="fxVirtual">この区画をトイレにする</button>` : ''}<button class="btn sm ghost" data-act="fxDone">やめる</button>
+            <span class="small muted" style="width:100%">「この区画をトイレにする」：便器が描いていないトイレに、扉の反対側の壁へ便器を置きます。</span>`
           : `<span class="small muted">器具をタップすると、種類を変えたり消したりできます。何も無い所をタップすると、そこに器具を足せます。</span>`;
       }
       return;
@@ -538,7 +549,7 @@ function stepRooms(ctx) {
     if (fl) fl.innerHTML = [...p.drawing.plan.faces].sort((a, b) => a.no - b.no).map(f => `<button data-face="${f.i}" class="${sel.has(f.i) ? 'on' : ''} ${own.has(f.i) && !sel.has(f.i) ? 'used' : ''}">区画${f.no}${f.name ? ' ' + esc(f.name) : ''} ${Math.round(f.area * 100) / 100}㎡</button>`).join('');
     const bar = body.querySelector('#dwgBar');
     if (bar) bar.innerHTML = sel.size
-      ? `<span class="small"><b>${sel.size} 区画</b>を選んでいます。続けてタップで足す・もう一度で外す。</span><span class="spacer"></span><button class="btn primary" data-act="mkOne">${icon('check')}終了：1部屋にする</button>${sel.size > 1 ? `<button class="btn" data-act="mkEach">1区画ずつ部屋にする</button>` : ''}<button class="btn ghost" data-act="selClear">選ぶのをやめる</button>`
+      ? `<span class="small"><b>${sel.size} 区画</b>を選んでいます。続けてタップで足す・もう一度で外す。</span><span class="spacer"></span><button class="btn primary" data-act="mkOne">${icon('check')}終了：1部屋にする</button>${sel.size > 1 ? `<button class="btn" data-act="mkEach">1区画ずつ部屋にする</button>` : ''}${[...sel].some(i => own.has(i)) ? `<button class="btn" data-act="unassign">部屋から外す</button>` : ''}<button class="btn ghost" data-act="selClear">選ぶのをやめる</button>`
       : `<span class="small muted">部屋にする区画を順番にタップして、選び終わったら「終了」。そのまま床・壁・天井の仕上げを決められます。</span><span class="spacer"></span><button class="btn sm" data-act="selRest">まだ部屋にしていない区画を全部選ぶ</button>`;
   };
   /* コンセントを器具に合わせて置く（自分で置いた物は残す）。「反対側へ」にした器具は器具の真ん中で反対側 */
@@ -637,7 +648,10 @@ function stepRooms(ctx) {
         selected: () => sel, owner, fixtures: fxList, fixSel: () => (mode === 'fix' ? fsel : -1), mode: () => mode, fixG: p.drawing.fixG || '', fixGd: p.drawing.fixGd || '',
         onTap: i => { if (sel.has(i)) sel.delete(i); else sel.add(i); paintSel(); },
         onDragStart: (x, y, sc) => dragStart(x, y, sc),
-        onPoint: (x, y, sc) => {
+        /* 虫めがねの吸い付き：測る・カッター・壁の範囲・照明の置き場所で、線の端や線の上に吸い付く */
+        snap: (x, y, sc) => (mode === 'meas' || mode === 'cut' || (mode === 'wall' && wway === 'range')) ? snapPt(p.drawing.plan, x, y, sc * 16) : [x, y],
+        onPoint: (x, y, sc, lp) => {
+          const snapAt = (t) => lp ? [x, y] : snapPt(p.drawing.plan, x, y, t);
           if (mode === 'fix') {
             const k = fxList().findIndex(f => x >= f.b[0] - 0.03 && x <= f.b[2] + 0.03 && y >= f.b[1] - 0.03 && y <= f.b[3] + 0.03);
             if (k >= 0) { fsel = fsel === k ? -1 : k; addAt = null; } else { fsel = -1; addAt = [x, y]; }
@@ -674,14 +688,14 @@ function stepRooms(ctx) {
             d.lights.push({ id: uid('L'), x: Math.round(x * 20) / 20, y: Math.round(y * 20) / 20, item: lset.item, room: r ? r.id : null, face: fc ? fc.i : undefined });
             redo(); return;
           }
-          if (mode === 'wall' && wway === 'range') { wpts.push(snapPt(p.drawing.plan, x, y, sc * 16)); paintSel(); return; }
+          if (mode === 'wall' && wway === 'range') { wpts.push(snapAt(sc * 16)); paintSel(); return; }
           if (mode === 'wall') {
             const i = nearestSeg(p.drawing.plan, x, y, sc * 18);
             if (i >= 0) { if (wsel.has(i)) wsel.delete(i); else wsel.add(i); paintSel(); }
             return;
           }
           if (mode === 'cut') {
-            const q = snapPt(p.drawing.plan, x, y, sc * 14);
+            const q = snapAt(sc * 14);
             if (!cutA) { cutA = q; paintSel(); return; }
             const rect = [Math.min(cutA[0], q[0]), Math.min(cutA[1], q[1]), Math.max(cutA[0], q[0]), Math.max(cutA[1], q[1])].map(r3);
             cutA = null;
@@ -692,7 +706,7 @@ function stepRooms(ctx) {
             return;
           }
           if (mode === 'meas') {
-            const q = snapPt(p.drawing.plan, x, y, sc * 16);
+            const q = snapAt(sc * 16);
             if (!meas.cont && meas.pts.length >= 2) meas.pts = [];
             meas.pts.push(q); paintSel();
           }
@@ -841,6 +855,33 @@ function stepRooms(ctx) {
         return;
       }
       if (a === 'fxDone') { fsel = -1; addAt = null; paintSel(); return; }
+      if (a === 'unassign') {
+        const plan = p.drawing.plan, ids = new Set([...sel]);
+        p.rooms.forEach(r => { if (!r.faces || !r.faces.some(i => ids.has(i))) return; r.faces = r.faces.filter(i => !ids.has(i));
+          if (r.faces.length) { const g = groupGeom(r.faces.map(i => plan.faces.find(f => f.i === i)).filter(Boolean)); r.area = g.area; r.perim = g.perim; if (p.drawing.open) r.openRuns = roomOpenRuns(r.faces, plan, p.drawing.open);
+            if (/^区画 [\d・]+$/.test(r.name || '')) r.name = `区画 ${r.faces.map(i => (plan.faces.find(f => f.i === i) || {}).no).sort((x, y) => x - y).join('・')}`; } });
+        const empty = p.rooms.filter(r => r.src === 'plan' && r.faces && !r.faces.length).map(r => r.id);
+        p.rooms = p.rooms.filter(r => !empty.includes(r.id));
+        p.lines.forEach(l => { if (l.basis && Array.isArray(l.basis.rooms)) l.basis.rooms = l.basis.rooms.filter(id => !empty.includes(id)); });
+        sel.clear(); syncDemoLines(p); touch(p); draw(); toast(`${ids.size} 区画を部屋から外しました${empty.length ? `（区画が無くなった ${empty.length} 部屋は消しました）` : ''}`); return;
+      }
+      if (a === 'fxVirtual') {
+        /* 前のKAKUと同じ：扉が区画の近く（25cm以内）にあれば、扉に一番近い辺の反対側の壁に便器（幅46・奥行80cm）。無ければ長い方の向きの壁 */
+        const f = p.drawing.plan.faces.find(z => pip(addAt[0], addAt[1], z.poly)); if (!f) return;
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; f.poly.forEach(q => { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); });
+        const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2; let door = null, bd = Infinity;
+        (p.drawing.doors || []).forEach(d => { const dx = Math.max(x0 - d.c[0], 0, d.c[0] - x1), dy = Math.max(y0 - d.c[1], 0, d.c[1] - y1), dist = Math.hypot(dx, dy); if (dist < 0.25 && dist < bd) { bd = dist; door = d; } });
+        let back;
+        if (door) { const q = door.c, dd = { W: q[0] - x0, E: x1 - q[0], S: q[1] - y0, N: y1 - q[1] }; back = { N: 'S', S: 'N', E: 'W', W: 'E' }[Object.entries(dd).sort((a2, b2) => a2[1] - b2[1])[0][0]]; }
+        else back = (x1 - x0) > (y1 - y0) ? 'E' : 'N';
+        const hor = back === 'N' || back === 'S', W = 0.46, D = 0.8;
+        const bx = hor ? (back === 'N' ? [cx - W / 2, y1 - D - 0.02, cx + W / 2, y1 - 0.02] : [cx - W / 2, y0 + 0.02, cx + W / 2, y0 + D + 0.02])
+          : (back === 'E' ? [x1 - D - 0.02, cy - W / 2, x1 - 0.02, cy + W / 2] : [x0 + 0.02, cy - W / 2, x0 + D + 0.02, cy + W / 2]);
+        const L = p.drawing.fixtures = p.drawing.fixtures || [];
+        for (let k = L.length - 1; k >= 0; k--) if (L[k].v && pip((L[k].b[0] + L[k].b[2]) / 2, (L[k].b[1] + L[k].b[3]) / 2, f.poly)) L.splice(k, 1);
+        L.push({ t: 'toilet', b: bx.map(r3), back, v: true, edited: true });
+        addAt = null; touch(p); paintSel(); toast(`区画${f.no}に便器を置きました（${door ? '扉の反対側の壁' : '扉が見つからないので長い方の壁'}）。種類と向きはタップで直せます`, { ms: 4000 }); return;
+      }
       if (a === 'fxFlip') {
         const x = fxList()[fsel]; if (!x) return;
         x.flip = !x.flip; x.edited = true;

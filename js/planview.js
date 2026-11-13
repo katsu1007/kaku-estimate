@@ -47,7 +47,8 @@ export function planView(box, plan, opt = {}) {
   const lw = Math.max(W, H) / 900;
   const pathOf = S => S.map(s => `M${s[0]} ${-s[1]}L${s[2]} ${-s[3]}`).join('');
   const fs = Math.max(W, H) / 60;
-  box.innerHTML = `<div class="pv-wrap"><svg class="pv" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+  const gid = 'pvAll' + Math.random().toString(36).slice(2, 8);
+  box.innerHTML = `<div class="pv-wrap"><svg class="pv" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"><g id="${gid}">
       <g class="faces"></g>
       <path d="${pathOf(plan.dsegs || [])}" fill="none" stroke="var(--faint)" stroke-width="${lw}" stroke-dasharray="${lw * 4} ${lw * 3}"/>
       <path d="${pathOf(plan.segs)}" fill="none" stroke="var(--text)" stroke-width="${lw}" stroke-linecap="round" opacity=".85"/>
@@ -55,7 +56,8 @@ export function planView(box, plan, opt = {}) {
       ${opt.fixGd ? `<path d="${opt.fixGd}" transform="scale(0.001,0.001)" fill="none" stroke="var(--faint)" stroke-width="${lw * 1000}" stroke-dasharray="${lw * 4000} ${lw * 3000}" pointer-events="none"/>` : ''}
       <g class="fixes" pointer-events="none"></g>
       <g class="overlay" pointer-events="none"></g>
-      <g class="labels" font-size="${fs}" text-anchor="middle"></g></svg>
+      <g class="labels" font-size="${fs}" text-anchor="middle"></g></g></svg>
+    <div class="pv-loupe" hidden><svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"><use href="#${gid}"/><g class="lp-mark"></g></svg></div>
     <div class="pv-tools"><button class="iconbtn" data-z="in" aria-label="拡大">＋</button><button class="iconbtn" data-z="out" aria-label="縮小">－</button><button class="iconbtn" data-z="fit" aria-label="全体を表示">⤢</button></div></div>`;
   const svg = box.querySelector('svg');
   const set = () => svg.setAttribute('viewBox', vb.join(' '));
@@ -102,7 +104,26 @@ export function planView(box, plan, opt = {}) {
     vb = [ux - (ux - vb[0]) * f, uy - (uy - vb[1]) * f, vb[2] * f, vb[3] * f]; set();
   };
   /* 物をつかんで動かす（opt.onDragStart が物を返した時だけ。図はずらさない）。0.45秒押したままなら long（1個だけ動かす合図） */
-  let drag = null, dragStart = null, longT = null;
+  let drag = null, dragStart = null, longT = null, loupe = false, lpStart = null, lpMovedFar = false, lpAt = null;
+  const lpEl = box.querySelector('.pv-loupe'), lpSvg = lpEl.querySelector('svg'), wrap = box.querySelector('.pv-wrap');
+  const LP = 150, ZOOM = 3.2;
+  function showLoupe(cx, cy) {
+    const [ux, uy, sc] = toUser(cx, cy);
+    let x = ux, y = -uy, snapped = false;
+    if (opt.snap) { const q = opt.snap(x, y, sc / ZOOM); if (q && (Math.abs(q[0] - x) > 1e-9 || Math.abs(q[1] - y) > 1e-9)) snapped = true; if (q) { x = q[0]; y = q[1]; } }
+    lpAt = [x, y];
+    const r = LP / 2 * sc / ZOOM;
+    lpSvg.setAttribute('viewBox', `${ux - r} ${uy - r} ${2 * r} ${2 * r}`);
+    const k = r / 12;
+    lpSvg.querySelector('.lp-mark').innerHTML = `<line x1="${ux - r}" y1="${uy}" x2="${ux + r}" y2="${uy}" stroke="var(--accent)" stroke-width="${k * 0.15}" opacity=".5"/><line x1="${ux}" y1="${uy - r}" x2="${ux}" y2="${uy + r}" stroke="var(--accent)" stroke-width="${k * 0.15}" opacity=".5"/>
+      <circle cx="${x}" cy="${-y}" r="${k * (snapped ? 0.9 : 0.5)}" fill="${snapped ? 'var(--ok)' : 'var(--accent)'}" stroke="#fff" stroke-width="${k * 0.15}"/>`;
+    const b = wrap.getBoundingClientRect();
+    let lx = cx - b.left - LP / 2, ly = cy - b.top - LP - 40;
+    if (ly < 4) ly = cy - b.top + 40;
+    lx = Math.max(4, Math.min(b.width - LP - 4, lx));
+    lpEl.style.left = lx + 'px'; lpEl.style.top = ly + 'px'; lpEl.hidden = false;
+  }
+  const hideLoupe = () => { loupe = false; lpEl.hidden = true; };
   svg.addEventListener('pointerdown', e => { svg.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]); moved = false;
     drag = null; clearTimeout(longT);
     if (pts.size === 1 && opt.onDragStart) {
@@ -110,10 +131,14 @@ export function planView(box, plan, opt = {}) {
       drag = opt.onDragStart(ux, -uy, sc) || null;
       if (drag) { dragStart = [e.clientX, e.clientY]; longT = setTimeout(() => { if (drag && !moved) { drag.long = true; if (navigator.vibrate) navigator.vibrate(15); drag.onLong && drag.onLong(); } }, 450); }
     }
-    if (pts.size === 2) { drag = null; clearTimeout(longT); const [a, b] = [...pts.values()]; startDist = Math.hypot(a[0] - b[0], a[1] - b[1]); startVb = vb.slice(); startMid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; } });
+    /* 虫めがね：何もつかんでいない所を0.45秒押したままにすると、指の所を大きく見せる。線の端・線の上に吸い付き、離した所に決める */
+    if (pts.size === 1 && !drag) { lpStart = [e.clientX, e.clientY]; longT = setTimeout(() => { if (pts.size === 1 && !lpMovedFar) { loupe = true; if (navigator.vibrate) navigator.vibrate(15); showLoupe(e.clientX, e.clientY); } }, 450); lpMovedFar = false; }
+    if (pts.size === 2) { drag = null; clearTimeout(longT); hideLoupe(); const [a, b] = [...pts.values()]; startDist = Math.hypot(a[0] - b[0], a[1] - b[1]); startVb = vb.slice(); startMid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; } });
   svg.addEventListener('pointermove', e => {
     if (!pts.has(e.pointerId)) return;
     const prev = pts.get(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]);
+    if (pts.size === 1 && loupe) { showLoupe(e.clientX, e.clientY); return; }
+    if (pts.size === 1 && lpStart && Math.hypot(e.clientX - lpStart[0], e.clientY - lpStart[1]) > 8) { lpMovedFar = true; clearTimeout(longT); }
     if (pts.size === 1 && drag) {
       const tx = e.clientX - dragStart[0], ty = e.clientY - dragStart[1];
       if (!moved && Math.hypot(tx, ty) < 6) return;
@@ -132,6 +157,13 @@ export function planView(box, plan, opt = {}) {
   });
   const up = e => {
     const was = pts.size; pts.delete(e.pointerId); clearTimeout(longT);
+    if (loupe) {
+      const at = lpAt; hideLoupe(); if (e.type !== 'pointerup' || !at) return;
+      const mode = opt.mode ? opt.mode() : 'room';
+      if (mode === 'room' && opt.onTap) { const f = plan.faces.find(z => { let c = false; const P = z.poly; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { if (((P[i][1] > at[1]) !== (P[j][1] > at[1])) && at[0] < (P[j][0] - P[i][0]) * (at[1] - P[i][1]) / (P[j][1] - P[i][1]) + P[i][0]) c = !c; } return c; }); if (f) opt.onTap(f.i); }
+      else if (opt.onPoint) opt.onPoint(at[0], at[1], toUser(0, 0)[2], true);
+      return;
+    }
     if (drag && moved) { const d = drag; drag = null; d.end(e.type !== 'pointerup'); return; }
     drag = null;
     if (was === 1 && !moved && e.type === 'pointerup') {
