@@ -3348,10 +3348,10 @@ window.KakuEngine={
     let segs=[];RG.segs.forEach((s,i)=>{if(!on.has(gkey(s)))return;if(RG.autoHatch&&RG.hatch&&RG.hatch.has(i))return;const a=KAKU_rerot([s[1]*M,s[2]*M],M),b=KAKU_rerot([s[3]*M,s[4]*M],M);segs.push([a[0],a[1],b[0],b[1]])});
     if(segs.length>9000){const st=Math.ceil(segs.length/9000);segs=segs.filter((_,i)=>i%st===0)}
     /* 点線の線（部屋の区画には使わない）は、表示用に点線のまま渡す。通り芯（基準線）は描かない */
-    let dsegs=[];RG.segs.forEach(s=>{if(on.has(gkey(s))||!/\(点線\)/.test(s[0])||/基準線|通り?芯|GRID/i.test(s[0]))return;const a=KAKU_rerot([s[1]*M,s[2]*M],M),b=KAKU_rerot([s[3]*M,s[4]*M],M);dsegs.push([a[0],a[1],b[0],b[1]])});
+    let dsegs=[];RG.segs.forEach(s=>{if(on.has(gkey(s))||!/\(点線\)/.test(s[0])||/基準線|通り?[芯心]|GRID/i.test(s[0]))return;const a=KAKU_rerot([s[1]*M,s[2]*M],M),b=KAKU_rerot([s[3]*M,s[4]*M],M);dsegs.push([a[0],a[1],b[0],b[1]])});
     if(dsegs.length>4000){const st=Math.ceil(dsegs.length/4000);dsegs=dsegs.filter((_,i)=>i%st===0)}
     /* 通り芯（基準線）は別にして渡す。ふだんは描かず、ボタンで出す（部屋の区画には使わない） */
-    let gsegs=[];RG.segs.forEach(s=>{if(!/基準線|通り?芯|GRID/i.test(s[0])||s[7]!=null)return;const a=KAKU_rerot([s[1]*M,s[2]*M],M),b=KAKU_rerot([s[3]*M,s[4]*M],M);gsegs.push([a[0],a[1],b[0],b[1]])});
+    let gsegs=[];RG.segs.forEach(s=>{if(!/基準線|通り?[芯心]|GRID/i.test(s[0])||s[7]!=null)return;const a=KAKU_rerot([s[1]*M,s[2]*M],M),b=KAKU_rerot([s[3]*M,s[4]*M],M);gsegs.push([a[0],a[1],b[0],b[1]])});
     if(gsegs.length>2000)gsegs=gsegs.slice(0,2000);
     const faces=RG.faces.map((f,i)=>{let pts=null;try{pts=rgFacePoly(f)}catch(e){}if(pts)pts=pts.map(p=>KAKU_rerot(p,M));let peri=0;if(pts)for(let k=0;k<pts.length;k++){const a=pts[k],b=pts[(k+1)%pts.length];peri+=Math.hypot(b[0]-a[0],b[1]-a[1])}
       return{i,name:f.name||"",area:+f.area||0,peri:+peri.toFixed(3),ch:+f.h>0?+f.h:0,poly:pts}}).filter(f=>f.poly);
