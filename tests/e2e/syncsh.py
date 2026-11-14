@@ -2,7 +2,7 @@ from playwright.sync_api import sync_playwright
 import glob
 import os
 REAL_TOILET = os.environ.get('KAKU_REAL_TOILET', '.real/toilet.jww')  # 実図面（お客さんの図面）。リポジトリには入れない
-KAKU_TESTS = os.environ.get('KAKU_TESTS', '../kaku-tests')
+KAKU_TESTS = os.environ.get('KAKU_TESTS', '../gaisan/kaku-tests')
 os.makedirs('tests/e2e/shots', exist_ok=True); os.makedirs('tests/e2e/out', exist_ok=True)
 INIT="delete window.showDirectoryPicker;window.showDirectoryPicker=undefined;Object.defineProperty(window,'showDirectoryPicker',{value:undefined});"
 with sync_playwright() as p:

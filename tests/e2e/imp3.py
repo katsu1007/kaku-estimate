@@ -2,7 +2,7 @@ import time,sys,json
 from playwright.sync_api import sync_playwright
 import os
 REAL_TOILET = os.environ.get('KAKU_REAL_TOILET', '.real/toilet.jww')  # 実図面（お客さんの図面）。リポジトリには入れない
-KAKU_TESTS = os.environ.get('KAKU_TESTS', '../kaku-tests')
+KAKU_TESTS = os.environ.get('KAKU_TESTS', '../gaisan/kaku-tests')
 os.makedirs('tests/e2e/shots', exist_ok=True); os.makedirs('tests/e2e/out', exist_ok=True)
 f=sys.argv[1];tag=sys.argv[2]
 with sync_playwright() as p:

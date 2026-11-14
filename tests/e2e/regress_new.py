@@ -1,6 +1,6 @@
 import os
 REAL_TOILET = os.environ.get('KAKU_REAL_TOILET', '.real/toilet.jww')  # 実図面（お客さんの図面）。リポジトリには入れない
-KAKU_TESTS = os.environ.get('KAKU_TESTS', '../kaku-tests')
+KAKU_TESTS = os.environ.get('KAKU_TESTS', '../gaisan/kaku-tests')
 os.makedirs('tests/e2e/shots', exist_ok=True); os.makedirs('tests/e2e/out', exist_ok=True)
 """新しいKAKUの「②部屋 → 図面を選ぶ」で全部のテスト図面を読み、区画の数と部屋の面積を、正解と前のKAKUの点数（baseline.json）と比べる"""
 import os,sys,json,glob

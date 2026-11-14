@@ -16,7 +16,7 @@ python3 tests/e2e/place.py             # 例：器具を置く
 `.real/`（git に入れない）に置いて使う。場所を変える時は環境変数で指定する。
 
 - `KAKU_REAL_TOILET`：現場のトイレの図面（既定 `.real/toilet.jww`）
-- `KAKU_TESTS`：読み取りテストのリポジトリ kaku-tests（既定 `../kaku-tests`）
+- `KAKU_TESTS`：読み取りテストの図面と正解（katsu1007/gaisan リポジトリの `kaku-tests/`。既定 `../gaisan/kaku-tests`）
 
 実図面が要る物：br bundle bundle2 ctr d3 demo edit f3 fin fl fxsize l2 lall lcmp light lp modes ui ui2 ui3 uv view2 view3
 
