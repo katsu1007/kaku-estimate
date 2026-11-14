@@ -1,0 +1,4 @@
+.real/
+tests/e2e/shots/
+tests/e2e/out/
+__pycache__/
