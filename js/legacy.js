@@ -4,7 +4,7 @@
  * 前のKAKUの保存場所には、作業用の案件と図面を残さない（読み終わったら消す）。 */
 
 let readerPromise = null;
-function getReader() {
+export function getReader() {
   if (readerPromise) return readerPromise;
   readerPromise = new Promise((resolve, reject) => {
     const f = document.createElement('iframe');

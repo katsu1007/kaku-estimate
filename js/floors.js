@@ -60,11 +60,12 @@ export function floorBreakdown(p, o) {
 
   const build = f => {
     const tp = clone(p), mine = r => (String(r.lv || '').trim() || null) === f;
+    if (f !== null) delete tp.elec;
     tp.rooms = p.rooms.filter(mine);
     const ids = new Set(tp.rooms.map(r => r.id));
     const kept = [];
     p.lines.forEach(l => {
-      if (l.fromDemo) { kept.push(clone(l)); return; }   // 下でその階の物だけで作り直す（単価は引き継ぐ）
+      if (l.fromDemo) { if (f !== null && /^el\|/.test(l.fromDemo)) return; kept.push(clone(l)); return; }   // 電気の図面から数えた物は場所が無いので「共通」に   // 下でその階の物だけで作り直す（単価は引き継ぐ）
       if (isRoomLine(l)) {
         const rs = l.basis.rooms === 'all' || !Array.isArray(l.basis.rooms) ? null : l.basis.rooms.filter(id => ids.has(id));
         if (rs && !rs.length) return;

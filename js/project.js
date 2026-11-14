@@ -7,6 +7,7 @@ import { readWithFixtures, oldFaceLights, roomOpenRuns, FIX_NAMES, FIX_ITEMS, FI
 import { planView, roomColor } from './planview.js';
 import { USES, DEF_LM, needCount, pitchFor, luxOf, wirePlan, cableQty, pip } from './lighting.js';
 import { uid } from './store.js';
+import { openElec, elecLines } from './elec.js';
 import { groupsOf, LABOR, COLORS, areaPts, linePts, placePts, placeCounts, symText } from './place.js';
 import { open3D, applyWin3d } from './view3d.js';
 import { openRoomFin, currentFin, SLOTS } from './roomfin.js';
@@ -209,6 +210,13 @@ function roomCard(r, i, p) {
   </div>`;
 }
 
+/* 電気の図面を数える（JWW・DXF の電気図から器具の数と配線の長さ） */
+function elecRow(p) {
+  const E = p.elec;
+  return `<div class="row small" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line);gap:8px"><button class="btn sm" data-act="elec">${icon('spark')}電気の図面を数える</button>
+    <span class="muted" style="flex:1;min-width:200px">${E && E.summary ? `${esc(E.file)} から ${esc(E.summary)} を入れています。` : '電気屋さんが書き込んだ JWW・DXF から、照明・コンセント・スイッチなどの数と配線の長さを出します。'}</span>
+    ${E && E.summary ? '<button class="btn sm ghost danger" data-act="elecOff">入れた分を外す</button>' : ''}</div>`;
+}
 function drawingCard(p) {
   const d = p.drawing;
   if (!d || !d.plan) return `<div class="card" style="margin-bottom:14px"><div class="row"><div style="flex:1;min-width:220px"><h2>図面から部屋を作る</h2>
@@ -216,7 +224,7 @@ function drawingCard(p) {
       <label class="btn primary" style="cursor:pointer">${icon('up')}図面を選ぶ<input type="file" id="dwgFile" accept=".jww,.jwc,.dxf,.pdf,application/pdf,image/*" hidden></label>
       <button class="btn" data-act="sketch">${icon('grid')}寸法・なぞって間取りを作る</button></div>
       <div class="small muted" style="margin-top:6px">図面ファイルが無い時は「寸法・なぞって間取りを作る」：四角の寸法・向きと長さ・PDFや写真の角をなぞって、間取りを作れます。</div>
-      <div class="small muted" id="dwgStatus" style="margin-top:8px"></div></div>`;
+      <div class="small muted" id="dwgStatus" style="margin-top:8px"></div>${elecRow(p)}</div>`;
   return `<div class="card" style="margin-bottom:14px">
     <div class="row" style="margin-bottom:10px"><div style="flex:1;min-width:200px"><h2>${icon('layers').replace('<svg', '<svg style="width:18px;height:18px;vertical-align:-3px"')} ${esc(d.fileName || '図面')}</h2>
       <div class="sub" style="margin:0">区画 ${d.plan.faces.length} 個${planCH(d.plan) ? `・図面の天井高 ${planCH(d.plan)}m` : ''}。区画をタップして選び、下のボタンで部屋にしてください。</div></div>
@@ -229,7 +237,7 @@ function drawingCard(p) {
     <div id="dwgView"></div>
     <div class="addbar" style="margin-top:10px" id="dwgBar"></div>
     <div id="dwgDemo"></div>
-    <div id="dwgFix">${fixSummary(d)}</div>
+    <div id="dwgFix">${fixSummary(d)}</div>${elecRow(p)}
     <details class="more"><summary>区画の一覧から選ぶ（図面で押しにくい小さい区画など）</summary><div class="facelist" id="dwgFaces"></div></details>
     <div class="small muted" id="dwgStatus" style="margin-top:6px"></div></div>`;
 }
@@ -349,6 +357,8 @@ export function syncDemoLines(p) {
     add('h|zando', 'w-zando', sum.zando, `掘った量×${ZANDO_F}`);
     add('h|back', 'w-ume', sum.back, '掘った所を埋め戻す量');
   }
+  /* 電気の図面から数えた物 */
+  elecLines(p, add, it);
   /* 図面に置いた器具（1個ずつ・並べた物）：品目の数と取付手間 */
   const PC = placeCounts(d.places);
   Object.keys(PC).sort().forEach(k => { add('pl|' + k, k, PC[k], '図面に置いた物'); const lb = LABOR[k], m = lb && it(lb); if (m && m.kind === 'labor') add('pl|on|' + k, lb, PC[k], '図面に置いた物の取付'); });
@@ -901,6 +911,8 @@ function stepRooms(ctx) {
       }
       if (a === 'wallClear') { wsel.clear(); wpts.length = 0; paintSel(); return; }
       if (a === 'sketch') { openSk(); return; }
+      if (a === 'elec') { openElec(p, { onApply: () => { syncDemoLines(p); touch(p); draw(); } }); return; }
+      if (a === 'elecOff') { const was = p.elec; delete p.elec; syncDemoLines(p); touch(p); draw(); toast('電気の図面から入れた分を外しました', { action: '元に戻す', onAction: () => { p.elec = was; syncDemoLines(p); touch(p); draw(); } }); return; }
       if (a === 'cadOut') { cadExport(p); return; }
 
       if (a === 'open3d') { flush(); toast('3Dを用意しています…'); open3D(p, { onClose: wins => {

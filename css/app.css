@@ -414,3 +414,22 @@ tr.click, tr.click * { -webkit-touch-callout: none; -webkit-user-select: none; u
 .partrow { display: grid; grid-template-columns: 1.6fr 1fr 1fr 40px; gap: 8px; align-items: end; }
 @media (max-width: 760px) { .partrow { grid-template-columns: 1fr 1fr 40px; } .partrow select { grid-column: 1 / -1; } }
 .pv-gridbtn { font-weight: 800; font-size: 14px; } .pv-gridbtn.on { background: #e5534b; color: #fff; border-color: #e5534b; }
+
+/* 電気の図面を数える */
+.kesheet .kebody { flex: 1; min-height: 0; overflow: auto; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(320px, 1fr); gap: 14px; padding: 12px; align-items: start; }
+.kesheet .kemain { position: sticky; top: 0; }
+.kesheet .keside { display: grid; gap: 10px; min-width: 0; }
+.kesheet .keplan { background: #fff; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.kesheet .keplan svg { display: block; width: 100%; height: auto; max-height: 70vh; }
+.kearch { fill: none; stroke: #b9b7ae; stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.kewires { fill: none; stroke: #3d6fb6; stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+.kemk { fill: none; stroke-width: 2px; vector-effect: non-scaling-stroke; }
+.kemk.hl { stroke-width: 5px; fill: #ffd60055; }
+.keleg { fill: none; stroke: #999; stroke-dasharray: 3 3; stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+.kesheet .ketype { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.kesheet .keshow { width: 56px; height: 56px; border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 4px; cursor: pointer; }
+.kesheet .keshow.on { outline: 3px solid var(--accent); }
+.keicon { width: 100%; height: 100%; fill: none; stroke: #20221f; stroke-width: 1.6px; vector-effect: non-scaling-stroke; }
+.keicon .fill { fill: #20221f; }
+.kesheet .kecount { font-size: 20px; min-width: 2ch; text-align: right; }
+@media (max-width: 760px) { .kesheet .kebody { grid-template-columns: 1fr; } .kesheet .kemain { position: static; } }
