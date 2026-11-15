@@ -37,17 +37,29 @@ test('大きい四角い部屋（体育館など）は、表題欄の文字が�
   assert.deepEqual(A.marks, {});
 });
 
-test('表：図枠の中に同じ幅の罫線が6本以上そろっていれば表。中の区画は除外、部屋らしい言葉が直にある区画は保留', () => {
+test('表：罫線が6本以上そろい、図枠の辺に付いた表は強い根拠。中の文字が「洗面器」でも表の項目と見て除外。建物の部屋には触らない', () => {
   const d = sheet();
-  for (let k = 0; k <= 8; k++) d.segs.push([34, 10 + k * 2, 42, 10 + k * 2]);          // 横の罫線9本（幅8m）
-  d.segs.push([34, 10, 34, 26], [42, 10, 42, 26]);
-  d.faces.push(face(10, 34, 10, 42, 12), face(11, 34, 12, 42, 14), face(12, 34, 14, 42, 16));
+  for (let k = 0; k <= 9; k++) d.segs.push([34, 10 + k * 2, 42, 10 + k * 2]);          // 横の罫線10本（幅8m。右の辺が図枠に付く。上の端は y=28）
+  d.segs.push([34, 10, 34, 28], [42, 10, 42, 28]);
+  d.faces.push(face(10, 34, 10, 42, 12), face(11, 34, 12, 42, 14), face(12, 34, 14, 42, 16), face(13, 34, 28.2, 42, 29.5));
   d.texts.push({ t: '洗面器', x: 38, y: 13 });
   const A = analyze(d);
   assert.equal(A.stats.tables, 1);
   assert.equal(A.marks[10].s, 'out'); assert.equal(A.marks[12].s, 'out');
+  assert.equal(A.marks[11].s, 'out'); assert.match(A.marks[11].why, /洗面器.*表の項目/);
+  assert.equal(A.marks[13].s, 'out');                                                // 表の上の見出しの段（図枠の辺まで広げる）
+  assert.equal(A.marks[1], undefined);
+});
+
+test('表：図枠の辺に付いていない表（根拠が1つ少ない）は、部屋らしい言葉が直にある区画を保留にとどめる', () => {
+  const d = sheet();
+  for (let k = 0; k <= 8; k++) d.segs.push([24, 10 + k * 2, 32, 10 + k * 2]);
+  d.segs.push([24, 10, 24, 26], [32, 10, 32, 26]);
+  d.faces.push(face(10, 24, 10, 32, 12), face(11, 24, 12, 32, 14));
+  d.texts.push({ t: '洗面器', x: 28, y: 13 });
+  const A = analyze(d);
+  assert.equal(A.marks[10].s, 'out');
   assert.equal(A.marks[11].s, 'hold'); assert.match(A.marks[11].why, /洗面器/);
-  assert.equal(A.marks[1], undefined);                                               // 建物の部屋には触らない
 });
 
 test('同じ幅で並んでいても、器具やドアがある並び（トイレのブースなど）は表と見ない', () => {

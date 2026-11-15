@@ -140,9 +140,20 @@ export function analyze({ segs = [], faces = [], texts = [], fixtures = [], door
         if (T.filter(t => inBox(t.x, t.y, box) && TITLE_RE.test(t.t)).length >= 2) { score += 1; why.push('表題欄の文字がある'); }
         if (regions.some(q => q.type.startsWith('table') && q.box[0] <= box[0] + 0.05 && q.box[1] <= box[1] + 0.05 && q.box[2] >= box[2] - 0.05 && q.box[3] >= box[3] - 0.05)) return;
         const ok = score >= 3;
+        /* 表の端が図枠の辺のすぐそば（枠の大きさの8%以内）で、その間に器具・ドアが無ければ、表を図枠の辺まで広げる
+         * （表の見出しの段は、罫線の幅が違うので上の「同じ幅」に入らない） */
+        if (ok) [[0, -1, fr.w], [1, -1, fr.h], [2, 1, fr.w], [3, 1, fr.h]].forEach(([k, sg, size]) => {
+          const gap = (fr.box[k] - box[k]) * sg; if (!(gap > 0.02) || gap > size * 0.08) return;
+          const strip = box.slice(); strip[k] = fr.box[k]; strip[k < 2 ? k + 2 : k - 2] = box[k];
+          if (!FX.some(q => inBox(q[0], q[1], strip)) && !DR.some(q => inBox(q[0], q[1], strip, 0.1))) box[k] = fr.box[k];
+        });
+        /* 根拠が4点以上（罫線6本以上・器具とドアが無い・図枠の辺に付く）の表は、中の文字が「洗面器」「ブース」でも表の項目と見る
+         * （仕様表・器具表の行の見出し。実図面の仕様表で確かめた） */
+        const strong = score >= 4;
         regions.push({ type: ok ? 'table' : 'table?', box: box.map(r3), conf: score, why });
         F.forEach(a => {
           if (!inBox(a.cx, a.cy, box) || a.box[0] < box[0] - 0.1 || a.box[2] > box[2] + 0.1 || a.box[1] < box[1] - 0.1 || a.box[3] > box[3] + 0.1) return;
+          if (strong && !a.fx && !a.dr) { mark(a, 'out', 'table', `表（罫線）の中の区画です（${why.join('／')}）${a.roomish.length ? `。中の文字（${[...new Set(a.roomish.map(t => t.t))].slice(0, 3).join('・')}）は表の項目と見ています` : ''}`); return; }
           if (stop(a)) { if (ok) mark(a, 'hold', 'table', `表（罫線）の中にありますが、${stopWhy(a)} が直にあるので、除外にはしていません（${why[0]}）`); return; }
           if (ok) mark(a, 'out', 'table', `表（罫線）の中の区画です（${why.join('／')}）`);
           else mark(a, 'hold', 'table', `表（罫線）の中かもしれません（${why.join('／')}）。根拠が足りないので、除外にはしていません`);
