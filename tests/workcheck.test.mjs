@@ -118,6 +118,17 @@ test('ステンレス流し：図面にあるのに行が無ければ知らせ�
   assert.ok(!keys(p).includes('fx:trough'));
 });
 
+test('仕上げの行に入っていない部屋（一部だけ抜けている部屋を知らせる）', () => {
+  const p = base();
+  p.rooms.push({ id: 'r2', name: '倉庫', w: 2, d: 2, h: 2.4 });
+  p.lines[0].basis.rooms = ['r1']; p.lines[1].basis.rooms = ['r1'];
+  p.lines.push({ id: 'f1', name: '長尺シート', cat: 'floor', kind: 'mat', price: 2000, basis: { measure: 'floor', rooms: ['r1', 'r2'] } }, { id: 'f2', name: '長尺シート貼り手間', cat: 'work', kind: 'labor', price: 1800, basis: { measure: 'floor', rooms: ['r1', 'r2'] } });
+  const c = openChecks(p).find(x => x.key === 'finMiss');
+  assert.match(c.msg, /「倉庫」（壁）/); assert.equal(c.roomId, 'r2');
+  p.lines[0].basis.rooms = 'all';
+  assert.ok(!keys(p).includes('finMiss'));
+});
+
 test('空の案件でも落ちない', () => {
   assert.deepEqual(workChecks({}).map(x => x.key), ['customer', 'pname']);
 });

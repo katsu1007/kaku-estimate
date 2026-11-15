@@ -92,6 +92,12 @@ with sync_playwright() as p:
     pg.click('[data-wfix=waste]');pg.wait_for_timeout(600)
     ok('ボタンで入れ直せる', pg.evaluate(f"async()=>{{const p={P};return p.lines.filter(l=>l.basis&&l.basis.measure==='waste').length}}")==1 and '廃材の処分の行がありません' not in pg.inner_text('#workChk'))
     step(2)
+    # 現場調査のチェックリスト：部屋・天井高の「要実測」・気になっている所が載る。金額は載せない
+    h=pg.evaluate(f"async()=>{{const p={P};const d=await import('./js/docs.js');return d.surveyHtml(p)}}")
+    ok('現場調査の紙に部屋と要実測が載る', '現場調査チェックリスト' in h and '部屋 01' in h and '標準のまま・要実測' in h and '天井高が入っていません' in h and '諸経費' not in h)
+    ok('現場調査の紙に金額は載せない', '¥' not in h and '円' not in h)
+    step(5);ok('書類にボタンがある', pg.locator('[data-doc=survey]').count()==1)
+    step(2)
     # 読み込み直しても保存されている
     pg.reload();pg.wait_for_timeout(900)
     ok('読み込み直しても部屋2つ・印も残る', pg.evaluate(f"async()=>{{const p={P};return p.rooms.length===2&&!!p.lines.find(l=>l.cat==='wall').ok}}"))

@@ -37,6 +37,19 @@ export function workChecks(project, opt = DEFAULTS) {
     const un = rooms.filter(r => !used.has(r.id));
     if (un.length) add('roomUnused', 'warn', `${names(un)}は、どの工事の行にも入っていません。工事をしない部屋なら、このままで構いません。`, { step: 2, roomId: un[0].id });
   }
+  /* 床・壁・天井の仕上げの行があるのに、その行に入っていない部屋（ほかの部屋は仕上げを決めたのに、決め忘れた部屋） */
+  {
+    const miss = [];
+    [['floor', '床'], ['wall', '壁'], ['ceil', '天井']].forEach(([c, label]) => {
+      const fin = lines.filter(l => l.cat === c && isRoomBased(l));
+      if (!fin.length || fin.some(l => l.basis.rooms === 'all' || !Array.isArray(l.basis.rooms))) return;
+      const used = new Set(fin.flatMap(l => l.basis.rooms));
+      rooms.filter(r => !used.has(r.id)).forEach(r => { let m = miss.find(x => x.r === r); if (!m) miss.push(m = { r, parts: [] }); m.parts.push(label); });
+    });
+    /* どの行にも入っていない部屋は、上の「どの工事の行にも入っていません」で知らせるので、ここでは一部だけ抜けている部屋 */
+    const part = miss.filter(m => based.some(l => Array.isArray(l.basis.rooms) && l.basis.rooms.includes(m.r.id)));
+    if (part.length) add('finMiss', 'tip', `仕上げの行に入っていない部屋があります：${part.slice(0, 4).map(m => `「${m.r.name || '名前なし'}」（${m.parts.join('・')}）`).join('')}${part.length > 4 ? ` ほか${part.length - 4}部屋` : ''}。仕上げを変えない部屋なら、このままで構いません。`, { step: 2, roomId: part[0].r.id });
+  }
   /* 図面：名前の付いた区画が部屋になっていない */
   if (d.plan && Array.isArray(d.plan.faces)) {
     const own = new Set(rooms.flatMap(r => (r.src === 'plan' && r.faces) || []));

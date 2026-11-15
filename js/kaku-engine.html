@@ -1405,7 +1405,7 @@ function norm(s){
 function dxfTextPos(str){return dxfRead(str).texts.map(t=>({t:t.t,x:t.x,y:t.y}))}
 const ROOM_RE=/(厨房|調理場|洗い場|洗場|客席|客室|食堂|ホール|カウンター|パントリー|食品庫|冷蔵室|冷凍室|冷蔵庫|冷凍庫|プレハブ|仕込|下処理|ストック|バックヤード|ゴミ置|ごみ置|機械室|電気室|ロッカー|休憩|更衣|更衣室|休憩室|事務室|控室|通路|LDK|L・?D・?K|DK|LD|リビング|ダイニング|キッチン|台所|洋室|和室|寝室|主寝室|子供室|子ども室|書斎|納戸|WIC|W\.?I\.?C|ウォークイン|ｸﾛｰｾﾞｯﾄ|クローゼット|玄関|ホール|廊下|トイレ|便所|WC|洗面|脱衣|浴室|ユニットバス|居間|応接|事務所|店舗|倉庫|物入|押入|納戸|和洋室|個室|^K$)/i;
 const JO_RE=/(\d+(?:\.\d+)?)\s*(帖|畳|[Jj](?![A-Za-z]))/;
-const CH_RE=/CH\s*[=＝:]?\s*(\d+(?:\.\d+)?)/i;
+const CH_RE=/CH\s*[=＝:：]?\s*[≒≈]?\s*(\d+(?:\.\d+)?)/i; /* 「CH≒2400」「CH：2400」も読む。天井高は 1.5〜5m の時だけ使う（違う数字を天井高にしない） */
 const WIN_RE=/(AW|SW|WW|FIX|窓|引違|すべり出し|縦すべり|上げ下げ)/i;
 const DOOR_RE=/(WD|SD|AD|ドア|扉|開き戸|引戸|引き戸|片開|親子)/i;
 const SKIP_LAYER=/(寸法|文字|注記|DIM|TEXT|TXT|図枠|枠|ハッチ|HATCH|家具|設備|通り芯|中心|補助|植栽|タイル|土間|目地|床仕上|基準線|点線|^Defpoints$)/i;
@@ -1440,7 +1440,7 @@ function findRooms(texts,geo,unitHint){
   const seen=new Set();const uniq=rooms.filter(r=>{if(!r.face)return true;const k=r.face.length+"|"+r.area;if(seen.has(k))return false;seen.add(k);return true});
   // 天井高・窓・ドアを、近い部屋に割り当てる
   const owner=pt=>{let b=null,bd=Infinity;uniq.forEach(r=>{if(r.face&&pip(pt,r.face)){b=r;bd=-1}else if(bd>=0){const d=Math.hypot(pt[0]-r.pt[0],pt[1]-r.pt[1]);if(d<bd){bd=d;b=r}}});return bd>=0&&bd*f>1.5?null:b};
-  tx.forEach(t=>{const m=t.n.match(CH_RE);if(m){const r=owner([t.x,t.y]);if(r){let v=+m[1];v=v>100?v/1000:v;r.h=r2n(v)}}
+  tx.forEach(t=>{const m=t.n.match(CH_RE);if(m){const r=owner([t.x,t.y]);if(r){let v=+m[1];v=v>100?v/1000:v;if(v>=1.5&&v<=5)r.h=r2n(v)}}
     if(t.n.length<=14&&!ROOM_RE.test(t.n)){if(WIN_RE.test(t.n)){const r=owner([t.x,t.y]);if(r)r.win++}else if(DOOR_RE.test(t.n)){const r=owner([t.x,t.y]);if(r)r.door++}}});
   return {rooms:uniq,unit};
 }
@@ -1806,9 +1806,9 @@ function rgCompute0(X){
         if(Math.min(da,db)>1.2)return;const far=da<db?b:a;const f2=owner(far[0],far[1]);if(f2)o=f2})}
     if(!o)return;
     if(n.length<=14&&ROOM_RE.test(n)){  /* つながった区画に部屋名が2つ以上あれば「客席・通路」のように並べる */
-      const nm=t.t.normalize("NFKC").replace(/[ｦ-ﾟ]/g,"").replace(JO_RE,"").replace(/CH\s*[=＝:]?\s*\d+(?:\.\d+)?/i,"").replace(/[（(][^）)]*[）)]/g,"").replace(/\s+/g," ").trim();
+      const nm=t.t.normalize("NFKC").replace(/[ｦ-ﾟ]/g,"").replace(JO_RE,"").replace(/CH\s*[=＝:：]?\s*[≒≈]?\s*\d+(?:\.\d+)?/i,"").replace(/[（(][^）)]*[）)]/g,"").replace(/\s+/g," ").trim();
       if(!o.name)o.name=nm;else if(!o.touched&&!o.name.split("・").includes(nm)&&o.name.split("・").length<3)o.name+="・"+nm}
-    const m=n.match(CH_RE);if(m&&o.h===""){let v=+m[1];o.h=r2n(v>100?v/1000:v)}
+    const m=n.match(CH_RE);if(m&&o.h===""){let v=+m[1];if(v>100)v=v/1000;if(v>=1.5&&v<=5)o.h=r2n(v)}
     if(!o.touched&&n.length<=14&&!ROOM_RE.test(n)){if(WIN_RE.test(n))o.win++;else if(DOOR_RE.test(n))o.door++}});
   /* 図枠の内側（建物の外）を区画にしない：名前がなく、図面の端まで広がり、ほかの区画を2つ以上かこんでいる所 */
   if(faces.length>2){const bb=new Map(faces.map(f=>[f.lab,[Infinity,Infinity,-Infinity,-Infinity]]));

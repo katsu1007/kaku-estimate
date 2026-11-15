@@ -643,7 +643,7 @@ function stepRooms(ctx) {
     if (fl) fl.innerHTML = [...p.drawing.plan.faces].sort((a, b) => a.no - b.no).map(f => `<button data-face="${f.i}" class="${sel.has(f.i) ? 'on' : ''} ${own.has(f.i) && !sel.has(f.i) ? 'used' : ''}">区画${f.no}${f.name ? ' ' + esc(f.name) : ''} ${Math.round(f.area * 100) / 100}㎡</button>`).join('');
     const bar = body.querySelector('#dwgBar');
     if (bar) bar.innerHTML = sel.size
-      ? `<span class="small"><b>${sel.size} 区画</b>を選んでいます。続けてタップで足す・もう一度で外す。</span><span class="spacer"></span><button class="btn primary" data-act="mkOne">${icon('check')}終了：1部屋にする</button>${sel.size > 1 ? `<button class="btn" data-act="mkEach">1区画ずつ部屋にする</button>` : ''}${[...sel].some(i => own.has(i)) ? `<button class="btn" data-act="unassign">部屋から外す</button>` : ''}<button class="btn ghost" data-act="selClear">選ぶのをやめる</button>`
+      ? `<span class="small"><b>${sel.size} 区画</b>を選んでいます。続けてタップで足す・もう一度で外す。</span><span class="spacer"></span><button class="btn primary" data-act="mkOne">${icon('check')}終了：1部屋にする</button>${sel.size > 1 ? `<button class="btn" data-act="mkEach">1区画ずつ部屋にする</button>` : ''}<button class="btn" data-act="selSame" title="選んだ区画と同じ広さ・同じ周りの長さの区画（トイレのブースなど）を、まとめて選びます">同じ大きさの区画も選ぶ</button>${[...sel].some(i => own.has(i)) ? `<button class="btn" data-act="unassign">部屋から外す</button>` : ''}<button class="btn ghost" data-act="selClear">選ぶのをやめる</button>`
       : `<span class="small muted">部屋にする区画を順番にタップして、選び終わったら「終了」。そのまま床・壁・天井の仕上げを決められます。</span><span class="spacer"></span><button class="btn sm" data-act="selRest">まだ部屋にしていない区画を全部選ぶ</button>`;
   };
   /* コンセントを器具に合わせて置く（自分で置いた物は残す）。「反対側へ」にした器具は器具の真ん中で反対側 */
@@ -1057,6 +1057,13 @@ function stepRooms(ctx) {
       if (a === 'mkEach') return makeRooms(true);
       if (a === 'selClear') { sel.clear(); paintSel(); return; }
       if (a === 'lMakeAll') { const own = owner(); p.drawing.plan.faces.forEach(f => { if (!own.has(f.i)) sel.add(f.i); }); return makeRooms(true); }
+      if (a === 'selSame') {
+        /* 選んだ区画と同じ大きさ（面積も周りの長さも 2% 以内か 0.02 以内）の、まだ部屋にしていない区画を足す。トイレのブースなどをまとめて選ぶ */
+        const own = owner(), F = p.drawing.plan.faces, base = [...sel].map(i => F.find(f => f.i === i)).filter(Boolean);
+        const near = (x, y) => Math.abs(x - y) <= Math.max(0.02, Math.abs(y) * 0.02);
+        let k = 0; F.forEach(f => { if (sel.has(f.i) || own.has(f.i)) return; if (base.some(b => near(f.area, b.area) && near(f.peri, b.peri))) { sel.add(f.i); k++; } });
+        paintSel(); toast(k ? `同じ大きさの区画を ${k} 個足しました（全部で ${sel.size} 区画）` : '同じ大きさで、まだ部屋にしていない区画はありませんでした'); return;
+      }
       if (a === 'selRest') { const own = owner(); p.drawing.plan.faces.forEach(f => { if (!own.has(f.i)) sel.add(f.i); }); paintSel(); return; }
       if (a === 'dwgClear') {
         if (!(await ask('図面を消しますか？', '図面から作った部屋は残ります（図面とのつながりだけ外れます）。', { ok: '消す', danger: true }))) return;
@@ -1291,6 +1298,7 @@ export function openPicker(p, after) {
 function basisDialog(p, l, after) {
   const o = opts(), B = lineBasis(l, p.rooms, o, p.lines), u = esc(l.unit || ''), price = Math.max(0, Number(l.price) || 0);
   const mu = B.unit || '';
+  const src = l.itemId ? masterItems().find(i => i.id === l.itemId && i.src) : null;   // 単価の出どころ（分かっている品目だけ）
   const hasOff = B.rows.some(r => r.off > 0);
   let how;
   if (B.type === 'room') {
@@ -1319,7 +1327,7 @@ function basisDialog(p, l, after) {
       <p class="small muted" style="margin:10px 0 0">${lossTxt}</p>
       <table class="sum" style="margin-top:10px">
         <tr><td>見積もりの数量</td><td>${fmt(B.qty, 3)} ${u}</td></tr>
-        <tr><td>単価</td><td>${yen(price)}</td></tr>
+        <tr><td>単価${src ? `<br><span class="small muted">出どころ：${esc(src.src)}${src.asOf ? `（${esc(src.asOf)} 時点）` : ''}${src.changed ? '。単価マスターの値段は自分で変えてあります' : ''}${Number(src.price) !== price ? `。この行の単価は、一覧の ${yen(src.price)} から変えてあります` : ''}</span>` : ''}</td><td>${yen(price)}</td></tr>
         <tr class="tot"><td>金額</td><td>${yen(Math.round(B.qty * price))}</td></tr></table>
       ${st === 'changed' ? `<div class="chk warn" style="margin-top:12px">${icon('alert')}<span>前に確認した時は ${fmt(l.ok.qty, 3)}${u} × ${yen(l.ok.price)} でした。その後で数量か単価が変わっています。</span></div>` : ''}
       ${st === 'ok' ? `<div class="chk" style="margin-top:12px;border-color:var(--ok)">${icon('checkc')}<span>確認済みです。数量か単価が変わると、印は「変わりました」になります。</span></div>` : ''}`,

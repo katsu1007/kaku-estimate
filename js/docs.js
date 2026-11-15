@@ -4,6 +4,8 @@ import { totals, check, compare, roomGeom, KINDS, specOf } from './calc.js';
 import { projectXlsx, projectCsv } from './export.js';
 import { floorsOf, autoFloors, floorBreakdown } from './floors.js';
 import { icon, esc, yen, fmt, today, toast, modal, ask, share, $ } from './ui.js';
+import { workChecks } from './workcheck.js';
+import { FIX_NAMES } from './legacy.js';
 
 const fileBase = p => (p.name || '見積').replace(/[\\/:*?"<>|]/g, '_');
 
@@ -18,6 +20,7 @@ export function docsStep({ p, body, refresh }) {
         <button class="docbtn" data-doc="estimate">${icon('doc')}<div><b>見積書を出す</b><span>印刷・PDFで保存。第${(p.history || []).length + 1}版として記録します</span></div></button>
         <button class="docbtn" data-doc="invoice">${icon('print')}<div><b>請求書</b><span>振込先は設定の会社情報から</span></div></button>
         <button class="docbtn" data-doc="breakdown">${icon('grid')}<div><b>内訳書</b><span>工事の種類ごと・部屋ごとの数量</span></div></button>
+        <button class="docbtn" data-doc="survey">${icon('checkc')}<div><b>現場調査のチェックリスト</b><span>印刷して現場に持って行く紙。部屋ごとの確かめる欄つき</span></div></button>
         <button class="docbtn" data-doc="xlsx">${icon('excel')}<div><b>Excel で書き出す</b><span>金額は Excel の式なので、Excel でも検算できます</span></div></button>
         <button class="docbtn" data-doc="csv">${icon('down')}<div><b>CSV で書き出す</b><span>ほかのソフトに取り込む時に</span></div></button>
         <a class="docbtn" href="#/settings">${icon('user')}<div><b>会社情報・振込先</b><span>${state.company.name ? esc(state.company.name) : 'まだ入っていません'}</span></div></a>
@@ -47,6 +50,7 @@ export function docsStep({ p, body, refresh }) {
       if (k === 'estimate') return issueEstimate(p, draw);
       if (k === 'invoice') return printDoc(invoiceHtml(p));
       if (k === 'breakdown') return printDoc(breakdownHtml(p));
+      if (k === 'survey') return printDoc(surveyHtml(p));
       if (k === 'xlsx') { await share(projectXlsx(p, opts()), fileBase(p) + '.xlsx'); toast('Excel を書き出しました'); return; }
       if (k === 'csv') { await share(projectCsv(p, opts()), fileBase(p) + '.csv'); toast('CSV を書き出しました'); return; }
     }
@@ -161,6 +165,35 @@ function invoiceHtml(p) {
     <div class="bank"><b>お振込先</b>：${esc(c.bank || '（設定 → 会社情報で入れてください）')}${c.payNote ? '<br>' + esc(c.payNote) : ''}</div>
     <div class="note">備考：${esc(p.note || '')}</div></div>`;
 }
+/* 現場調査のチェックリスト：現場に行く前に印刷する紙。見積もりの数字のもとになっている所（寸法・天井高・ドアと窓・器具の数）を
+ * 現場で確かめて書き込めるようにする。金額は載せない（お客様の前で広げても困らないように） */
+export function surveyHtml(p, o = opts()) {
+  const d = p.drawing || {}, fx = d.fixtures || [], cnt = {};
+  fx.forEach(x => { if (x.t !== 'other') cnt[x.t] = (cnt[x.t] || 0) + 1; });
+  const box = '<span style="display:inline-block;width:11pt;height:11pt;border:1px solid #333;vertical-align:-2pt;margin-right:5pt"></span>';
+  const common = ['車を停める場所・材料を運び入れる通り道', '養生が要る所（床・壁・エレベーター・共用の廊下）', '残す設備・家具（動かす物・動かせない物）', '水道の元栓・止水栓の場所', '分電盤の場所と空きの回路', '作業できる曜日と時間・音を出せる時間', '廃材を出す通り道と置き場', '近所へのあいさつが要るか', '写真を撮る（全体・壁ごと・天井・床・設備の品番）'];
+  /* 現場で確かめられる物だけ（天井高・器具の種類と数・工事に入っていない部屋・部屋にしていない区画） */
+  const todo = workChecks(p, o).filter(x => !x.off && /^(ceilH|fxUnknown|fxN:|roomUnused|faceRest)/.test(x.key));
+  return `<div class="doc"><h1 style="letter-spacing:.2em">現場調査チェックリスト</h1>
+    <table class="meta"><tr><td>件名</td><td>${esc(p.name || '')}</td></tr><tr><td>お客様</td><td>${esc(p.customer || '')}${p.customer ? ' 様' : ''}</td></tr><tr><td>現場</td><td>${esc(p.address || '')}</td></tr><tr><td>調査した日</td><td>　　　　年　　月　　日　　　調査した人：</td></tr></table>
+    <h2>全体で確かめること</h2>
+    <table class="items"><tbody>${common.map(c => `<tr><td style="width:55%">${box}${c}</td><td></td></tr>`).join('')}</tbody></table>
+    <h2>部屋ごとに確かめること</h2>
+    <p style="font-size:9pt;margin:2px 0 6px">見積もりは下の寸法で計算しています。現場で測った数字が違う時は、右の欄に書いてください。</p>
+    <table class="items"><thead><tr><th>部屋</th><th style="width:12%">床 ㎡</th><th style="width:13%">天井高 m</th><th style="width:13%">ドア・窓</th><th style="width:15%">実際の天井高</th><th style="width:27%">今の仕上げ（床／壁／天井）・気づいたこと</th></tr></thead><tbody>
+      ${(p.rooms || []).map(r => { const g = roomGeom(r, o); const noH = !(Number(r.h) > 0);
+        const dw = g.openAuto ? `図面のドア${g.openAuto.doors}・開口${g.openAuto.gaps}` : `ドア${Math.round(Number(r.doors) || 0)}・窓${(r.windows || []).some(w => Number(w.w) > 0 && Number(w.h) > 0) ? (r.windows || []).reduce((s, w) => s + (Math.round(Number(w.n)) || 0), 0) + '（寸法）' : Math.round(Number(r.winCount) || 0)}`;
+        return `<tr><td>${esc(r.name || '')}${g.qty > 1 ? ` ×${g.qty}` : ''}</td><td class="r">${fmt(g.floor)}</td><td class="r">${fmt(g.h)}${noH ? '<br><span style="font-size:8pt">標準のまま・要実測</span>' : ''}</td><td style="font-size:9pt">${dw}</td><td></td><td style="height:30pt"></td></tr>`; }).join('') || '<tr><td colspan="6">部屋がまだありません</td></tr>'}
+    </tbody></table>
+    ${Object.keys(cnt).length ? `<h2>設備の器具（図面で数えた数）</h2>
+    <table class="items"><thead><tr><th>器具</th><th style="width:16%">図面の数</th><th style="width:16%">実際の数</th><th style="width:40%">メーカー・品番・状態</th></tr></thead><tbody>
+      ${Object.keys(cnt).map(t => `<tr><td>${esc(FIX_NAMES[t] || t)}</td><td class="r">${cnt[t]}</td><td></td><td style="height:24pt"></td></tr>`).join('')}</tbody></table>` : ''}
+    ${todo.length ? `<h2>見積もりで気になっている所（現場で確かめる）</h2>
+    <table class="items"><tbody>${todo.map(x => `<tr><td>${box}${esc(x.msg)}</td></tr>`).join('')}</tbody></table>` : ''}
+    <h2>メモ</h2><div style="border:1px solid #999;height:90pt"></div>
+    <p style="font-size:8.5pt;margin-top:8px">${esc(p.name || '')}　${today()} に KAKU で作成</p></div>`;
+}
+
 function breakdownHtml(p) {
   const o = opts(); const t = totals(p, o);
   const groups = {};
