@@ -2,6 +2,7 @@
 import { state, registerView, setTop, go, touch, opts, findProject, masterItems, categories, removeProject, restoreProject, newProject, flush, trackUndo, paintUndo, stepUndo } from './app.js';
 import { roomGeom, lineQty, netQty, totals, check, MEASURES, KINDS, isRoomBased, hatsuCalc, hatsuItem, cutItem, ZANDO_F, wallGroup, lineBasis, okState, okMark, hasCode } from './calc.js';
 import { workChecks } from './workcheck.js';
+import { makerLinks } from './makers.js';
 import { SYS, MANY, sysOptions, rebuild, PIPE_LOSS } from './piping.js';
 import { importDrawing, groupGeom, planCH, orderFaces as orderFacesOf } from './drawing.js';
 import { readWithFixtures, oldFaceLights, roomOpenRuns, FIX_NAMES, FIX_ITEMS, FIX_WORDS } from './legacy.js';
@@ -104,9 +105,11 @@ function refresh(p, step) {
     set('room:' + r.id, (g.openAuto ? `<span class="chip" style="border-color:var(--info)">図面のドア ${g.openAuto.doors}・開口 ${g.openAuto.gaps} <b>−${fmt(g.openAuto.area)}</b>㎡</span>` : '') + `<span class="chip">床 <b>${fmt(g.floor)}</b>㎡</span><span class="chip">壁 <b>${fmt(g.wall)}</b>㎡</span><span class="chip">天井 <b>${fmt(g.ceil)}</b>㎡</span><span class="chip">周り <b>${fmt(g.perim)}</b>m</span><span class="chip">巾木 <b>${fmt(g.base)}</b>m</span>${Number(r.h) > 0 ? `<span class="chip">天井高 <b>${fmt(g.h)}</b>m</span>` : `<span class="chip" style="border-color:var(--warn);color:var(--warn)" title="天井高を入れていないので、標準の高さで壁の面積を計算しています">天井高 <b>${fmt(g.h)}</b>m（標準のまま・未入力）</span>`}`);
   });
   /* 明細の金額 */
+  let mItems = null;
   p.lines.forEach((l, i) => {
     const q = t.lines[i].qty;
     set('amt:' + l.id, `<b>${yen(t.lines[i].amount)}</b><small>${fmt(q, 3)} ${esc(l.unit || '')} × ${yen(l.price)}</small>`);
+    if (hasCode(l)) set('mk:' + l.id, makerLinks(l, l.itemId ? (mItems || (mItems = new Map(masterItems().map(x => [x.id, x])))).get(l.itemId) : null).map(x => `<a class="btn sm" target="_blank" rel="noopener" href="${esc(x.url)}">${icon('up')}${esc(x.label)}</a>`).join(''));
     const ok = okState(l, p.rooms, o, p.lines);
     set('ok:' + l.id, ok === 'ok' ? `<span class="pill ok">${icon('check')}確認済み</span>` : ok === 'changed' ? `<span class="pill warn">${icon('alert')}確認の後で変わりました</span>` : '');
     if (l.basis && l.basis.measure === 'link') {
@@ -1115,7 +1118,7 @@ function lineCard(l, rooms, lines = []) {
     <button class="iconbtn del" data-act="delLine" title="この行を消す" aria-label="この行を消す">${icon('trash')}</button>
     ${auto || l.applyLoss ? `<div class="qtyinfo" data-out="qinfo:${l.id}"></div>` : ''}
     ${l.pipe ? pipePanel(l, lines) : ''}
-    <div class="basisrow"><button class="btn sm" data-act="basis">${icon('search')}数量の根拠・確認</button><span data-out="ok:${l.id}"></span></div>
+    <div class="basisrow"><button class="btn sm" data-act="basis">${icon('search')}数量の根拠・確認</button><span data-out="ok:${l.id}"></span>${hasCode(l) ? `<span class="mk" data-out="mk:${l.id}"></span>` : ''}</div>
     <details class="more" style="grid-column:1/-1"><summary>くわしく（区分・ロス率・原価・コピー）</summary>
       <div class="opts" style="margin-top:10px">
         <label class="f">区分<select class="in" data-lk="kind">${Object.entries(KINDS).map(([k, n]) => `<option value="${k}" ${(l.kind || 'other') === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>

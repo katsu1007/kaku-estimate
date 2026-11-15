@@ -34,6 +34,16 @@ with sync_playwright() as p:
     pg.fill('[data-lk=code]','SP-2801');pg.wait_for_timeout(700)
     r=pg.evaluate(f"async()=>{{const p={P};const a=await import('./js/app.js');const d=await import('./js/docs.js');const x=await import('./js/export.js');return [p.lines[1].code,d.estimateHtml(p,1,'2026年1月1日').includes('品番 SP-2801'),(await x.projectCsv(p,a.opts()).text()).includes('品番 SP-2801')]}}")
     ok('品番が保存され、見積書とCSVに載る', r==['SP-2801',True,True])
+    # メーカーのサイトを開くボタン：品番を打つと品番のページに変わる（サンゲツの行）
+    hrefs=pg.evaluate("[...document.querySelectorAll('.basisrow a.btn')].map(a=>[a.textContent.trim(),a.href,a.target])")
+    ok('サンゲツの品番のページへのボタン', hrefs==[['サンゲツで品番を見る','https://www.sangetsu.co.jp/product/detail/SP2801/','_blank']])
+    pg.fill('[data-lk=code]','');pg.wait_for_timeout(300)
+    ok('品番が無い時はカタログ', pg.evaluate("document.querySelector('.basisrow a.btn').href")=='https://www.sangetsu.co.jp/digital_book/wall.html')
+    pg.fill('[data-lk=code]','SP-2801');pg.wait_for_timeout(700)
+    # 東リのシリーズが一覧から選べる
+    pg.click('[data-act=pick]');pg.wait_for_timeout(400);pg.fill('#pq','ホスピリューム');pg.wait_for_timeout(300)
+    ok('東リのシリーズが一覧に出る', '東リ 定価 4,200円/㎡' in pg.inner_text('.modal'))
+    pg.locator('.modal [data-close]').first.click();pg.wait_for_timeout(300)
     # 根拠を開く
     pg.locator('[data-act=basis]').last.click();pg.wait_for_timeout(300)
     t=pg.inner_text('.modal');print(t[:400].replace('\n',' / '))
