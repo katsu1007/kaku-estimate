@@ -77,14 +77,18 @@ export function planView(box, plan, opt = {}) {
     svg.querySelector('.fixes').innerHTML = (opt.fixtures ? opt.fixtures() : []).map((x, k) => x.t === 'other' && k !== fsel ? '' : fixBox(x, lw, k === fsel)).join('');
     const sel = opt.selected ? opt.selected() : new Set();
     const owner = opt.owner ? opt.owner() : new Map();
+    /* 新しい読み取りの印（図枠・表）：除外は灰色、保留は点線の枠。選んだ時・部屋にした時は、いつもの色が先 */
+    const marks = (opt.marks && opt.marks()) || null, mk = f => (marks && (marks[f.i] || marks[String(f.i)])) || null;
     svg.querySelector('.faces').innerHTML = plan.faces.map(f => {
-      const o = owner.get(f.i), s = sel.has(f.i);
-      const fill = s ? 'var(--accent)' : o != null ? roomColor(o) : 'transparent';
-      const op = s ? 0.45 : o != null ? 0.22 : 0;
-      return `<polygon data-i="${f.i}" points="${f.poly.map(p => p[0] + ',' + -p[1]).join(' ')}" fill="${fill}" fill-opacity="${op}" stroke="${s ? 'var(--accent)' : 'none'}" stroke-width="${lw * 2.5}" style="cursor:pointer"/>`;
+      const o = owner.get(f.i), s = sel.has(f.i), m = !s && o == null ? mk(f) : null;
+      const fill = s ? 'var(--accent)' : o != null ? roomColor(o) : m && m.s === 'out' ? '#8a93a0' : 'transparent';
+      const op = s ? 0.45 : o != null ? 0.22 : m && m.s === 'out' ? 0.32 : 0;
+      return `<polygon data-i="${f.i}" points="${f.poly.map(p => p[0] + ',' + -p[1]).join(' ')}" fill="${fill}" fill-opacity="${op}" stroke="${s ? 'var(--accent)' : m && m.s === 'hold' ? 'var(--warn)' : 'none'}" ${m && m.s === 'hold' ? `stroke-dasharray="${lw * 6} ${lw * 4}"` : ''} stroke-width="${lw * 2.5}" style="cursor:pointer"/>`;
     }).join('');
     svg.querySelector('.labels').innerHTML = plan.faces.map(f => {
       const o = owner.get(f.i), s = sel.has(f.i);
+      const m = !s && o == null ? mk(f) : null;
+      if (m) return `<text x="${f.cx}" y="${-f.cy}" fill="${m.s === 'out' ? 'var(--faint)' : 'var(--warn)'}" font-weight="700" pointer-events="none">${m.s === 'out' ? (m.type === 'frame' ? '図枠' : '表') : '？'}<tspan x="${f.cx}" dy="1.15em" font-weight="400" font-size="${fs * 0.8}">区画${f.no}</tspan></text>`;
       return `<text x="${f.cx}" y="${-f.cy}" fill="${s ? 'var(--accent)' : o != null ? roomColor(o) : 'var(--muted)'}" font-weight="700" pointer-events="none">区画${f.no}<tspan x="${f.cx}" dy="1.15em" font-weight="400" font-size="${fs * 0.8}">${(Math.round(f.area * 100) / 100)}㎡</tspan></text>`;
     }).join('');
   }

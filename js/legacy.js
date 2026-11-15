@@ -53,7 +53,18 @@ export async function readWithFixtures(file) {
         const O=(typeof KX_openScan==='function'&&KX_openScan())||{};
         Object.keys(O).forEach(k=>{open[k]=O[k].map(r=>({ty:r.ty,len:Math.round(r.len*100)/100,a:r.a.map(q),b:r.b.map(q),n:r.n.map(q)}))})}
       return JSON.stringify({plan,fixtures,open,doors:F&&F.doors?F.doors.length:0,doorList:(F&&F.doors||[]).filter(d=>d&&d.c).map(d=>({c:d.c.map(q),m:(d.m||d.c).map(q),r:+d.r||0.8})),fixG:F&&F.g||'',fixGd:F&&F.gd||''})})()`);
-    return JSON.parse(R);
+    const out = JSON.parse(R);
+    /* 図面の文字（新しい読み取り js/reader2 が使う）。読み取りの部品の中身を「読むだけ」で、今の読み取りの結果は変えない。取れなくても読み込みは続ける */
+    try {
+      const E = W.document.getElementById('engineFrame').contentWindow;
+      out.texts = JSON.parse(E.eval(`JSON.stringify((RG.texts||[]).map(t=>{const M=rgM(),p=KAKU_rerot([t.x*M,t.y*M],M);return{t:String(t.t||'').trim(),x:Math.round(p[0]*1000)/1000,y:Math.round(p[1]*1000)/1000}}).filter(t=>t.t).slice(0,4000))`));
+    } catch (e) { out.texts = []; }
+    /* 図面の長い縦・横の線（1m以上。図枠を探すのに使う）。画面に出す線（plan.segs）は数が多い図面では間引いてあるので、間引く前の線から取る */
+    try {
+      const E = W.document.getElementById('engineFrame').contentWindow;
+      out.longSegs = JSON.parse(E.eval(`(()=>{const M=rgM(),o=[];RG.segs.forEach(s=>{const a=KAKU_rerot([s[1]*M,s[2]*M],M),b=KAKU_rerot([s[3]*M,s[4]*M],M),dx=Math.abs(b[0]-a[0]),dy=Math.abs(b[1]-a[1]);if(Math.max(dx,dy)<1||Math.min(dx,dy)>0.01)return;o.push([a[0],a[1],b[0],b[1]].map(v=>Math.round(v*1000)/1000))});return JSON.stringify(o.slice(0,60000))})()`));
+    } catch (e) { out.longSegs = []; }
+    return out;
   } finally {
     /* 作業用の案件と、その図面の保存を消す（前のKAKUの案件一覧に残さない） */
     try {
