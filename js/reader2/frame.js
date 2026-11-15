@@ -41,8 +41,8 @@ function longSpans(segs, axis, minLen, tol = 0.01) {
 }
 
 /* 長い横線2本と縦線2本でできた長方形（図枠の候補） */
-function rectangles(segs, minLen) {
-  const H = longSpans(segs, 0, minLen), V = longSpans(segs, 1, minLen), tol = 0.05, out = [];
+function rectangles(H, V, minLen) {
+  const tol = 0.05, out = [];
   for (let i = 0; i < H.length; i++) for (let j = i + 1; j < H.length; j++) {
     const h1 = H[i], h2 = H[j];
     if (h2.c - h1.c < minLen || Math.abs(h1.a - h2.a) > tol || Math.abs(h1.b - h2.b) > tol) continue;
@@ -77,7 +77,8 @@ export function analyze({ segs = [], faces = [], texts = [], fixtures = [], door
   /* ---- 図枠：長い線でできた長方形に、根拠を数える ---- */
   const all = boxOf(F.flatMap(a => [[a.box[0], a.box[1]], [a.box[2], a.box[3]]]));
   const minLen = Math.max(3, Math.min(all[2] - all[0], all[3] - all[1]) * 0.25);
-  const R = rectangles(segs, minLen).map(box => ({ box, w: box[2] - box[0], h: box[3] - box[1] }));
+  const HL = longSpans(segs, 0, minLen), VL = longSpans(segs, 1, minLen);   // 長い横線・縦線（c＝位置、a〜b＝範囲）
+  const R = rectangles(HL, VL, minLen).map(box => ({ box, w: box[2] - box[0], h: box[3] - box[1] }));
   R.forEach(r => {
     r.why = []; r.score = 0;
     const tin = T.filter(t => inBox(t.x, t.y, r.box) && TITLE_RE.test(t.t));
@@ -143,9 +144,13 @@ export function analyze({ segs = [], faces = [], texts = [], fixtures = [], door
         /* 表の端が図枠の辺のすぐそば（枠の大きさの8%以内）で、その間に器具・ドアが無ければ、表を図枠の辺まで広げる
          * （表の見出しの段は、罫線の幅が違うので上の「同じ幅」に入らない） */
         if (ok) [[0, -1, fr.w], [1, -1, fr.h], [2, 1, fr.w], [3, 1, fr.h]].forEach(([k, sg, size]) => {
-          const gap = (fr.box[k] - box[k]) * sg; if (!(gap > 0.02) || gap > size * 0.08) return;
-          const strip = box.slice(); strip[k] = fr.box[k]; strip[k < 2 ? k + 2 : k - 2] = box[k];
-          if (!FX.some(q => inBox(q[0], q[1], strip)) && !DR.some(q => inBox(q[0], q[1], strip, 0.1))) box[k] = fr.box[k];
+          const open = to => { const strip = box.slice(); strip[k] = to; strip[k < 2 ? k + 2 : k - 2] = box[k]; return !FX.some(q => inBox(q[0], q[1], strip)) && !DR.some(q => inBox(q[0], q[1], strip, 0.1)); };
+          const gap = (fr.box[k] - box[k]) * sg;
+          if (gap > 0.02 && gap <= size * 0.08 && open(fr.box[k])) { box[k] = fr.box[k]; return; }
+          /* 図枠の辺までは遠い時：すぐ外（枠の大きさの4%以内）に、表の幅をまたぐ長い線があれば、そこまでを表にする（表の最後の段。その線は表題欄などとの境目） */
+          const L = k % 2 === 0 ? VL : HL, o0 = k % 2 === 0 ? box[1] : box[0], o1 = k % 2 === 0 ? box[3] : box[2];
+          const near = L.filter(l => (l.c - box[k]) * sg > 0.02 && (l.c - box[k]) * sg <= size * 0.04 && l.a <= o0 + 0.05 && l.b >= o1 - 0.05).sort((p, q) => (p.c - q.c) * sg)[0];
+          if (near && open(near.c)) box[k] = near.c;
         });
         /* 根拠が4点以上（罫線6本以上・器具とドアが無い・図枠の辺に付く）の表は、中の文字が「洗面器」「ブース」でも表の項目と見る
          * （仕様表・器具表の行の見出し。実図面の仕様表で確かめた） */
@@ -158,6 +163,30 @@ export function analyze({ segs = [], faces = [], texts = [], fixtures = [], door
           if (ok) mark(a, 'out', 'table', `表（罫線）の中の区画です（${why.join('／')}）`);
           else mark(a, 'hold', 'table', `表（罫線）の中かもしれません（${why.join('／')}）。根拠が足りないので、除外にはしていません`);
         });
+      });
+    });
+  });
+
+  /* ---- 表題欄：図枠の辺に付いた細い帯（長い線2本の間）に、表題欄の文字が2種類以上ある所 ---- */
+  frames.forEach(fr => {
+    [[HL, 1, fr.h, 0, fr.w], [VL, 0, fr.w, 1, fr.h]].forEach(([L, k, size, o, osize]) => {       // 横の帯（上・下の辺）／縦の帯（左・右の辺）
+      const cs = [...new Set(L.filter(l => l.c > fr.box[k] - 0.02 && l.c < fr.box[k + 2] + 0.02 && Math.min(l.b, fr.box[o + 2]) - Math.max(l.a, fr.box[o]) >= osize * 0.5).map(l => Math.round(l.c * 100) / 100))].sort((p, q) => p - q);
+      [[fr.box[k], 1], [fr.box[k + 2], -1]].forEach(([edge, sg]) => {
+        /* 辺から内へ、帯の厚みが枠の 15% 以内の線を、遠い方から試す */
+        const lines = cs.filter(c => (c - edge) * sg > 0.3 && (c - edge) * sg <= size * 0.15).sort((p, q) => (q - p) * sg);
+        for (const c of lines) {
+          const box = fr.box.slice(); box[k] = Math.min(edge, c); box[k + 2] = Math.max(edge, c);
+          const kinds = new Set(T.filter(t => inBox(t.x, t.y, box) && TITLE_RE.test(t.t)).map(t => (t.t.match(TITLE_RE) || [''])[0].replace(/\s/g, '').toUpperCase()));
+          if (kinds.size < 2) continue;
+          /* 表題欄の文字が3種類以上ある帯は、中に「ドア」があっても表題欄と見る（会社のマークの曲線を、今の読み取りがドアや器具と見ることがある。実図面で、マークが「洗面台」と拾われていた） */
+          const drs = DR.filter(q => inBox(q[0], q[1], box, 0.1)).length, strong = kinds.size >= 3;
+          const fxs = FX.filter(q => inBox(q[0], q[1], box)).length;
+          if ((fxs || drs) && !strong) continue;
+          const why = [`表題欄の文字がある（${[...kinds].slice(0, 4).join('・')}）`, '図枠の辺に付いた細い帯', fxs || drs ? `今の読み取りが器具 ${fxs}・ドア ${drs} と見た物は、会社のマークなどの見間違いと見る` : '中に器具・ドアが無い'];
+          regions.push({ type: 'title', box: box.map(r3), conf: 3, why });
+          F.forEach(a => { if (inBox(a.cx, a.cy, box) && a.box[k] >= box[k] - 0.1 && a.box[k + 2] <= box[k + 2] + 0.1 && (strong || (!a.fx && !a.dr))) mark(a, 'out', 'title', `表題欄の中の区画です（${why.join('／')}）`); });
+          break;
+        }
       });
     });
   });
@@ -194,5 +223,5 @@ export function analyze({ segs = [], faces = [], texts = [], fixtures = [], door
   });
 
   const vals = Object.values(marks);
-  return { ver: VER, regions, marks, stats: { faces: F.length, frames: frames.length, tables: regions.filter(r => r.type === 'table').length, out: vals.filter(m => m.s === 'out').length, hold: vals.filter(m => m.s === 'hold').length, candidates: R.length, notTable: tries.slice(0, 8) } };
+  return { ver: VER, regions, marks, stats: { faces: F.length, frames: frames.length, tables: regions.filter(r => r.type === 'table').length, titles: regions.filter(r => r.type === 'title').length, out: vals.filter(m => m.s === 'out').length, hold: vals.filter(m => m.s === 'hold').length, candidates: R.length, notTable: tries.slice(0, 8) } };
 }

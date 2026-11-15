@@ -73,6 +73,18 @@ test('同じ幅で並んでいても、器具やドアがある並び（トイ�
   assert.equal(A.stats.notTable.length, 1);                                          // 表と見なかった理由を残す
 });
 
+test('表題欄：図枠の下の辺に付いた細い帯に、表題欄の文字が3種類以上あれば、その中の区画を除外にする（建物の部屋には触らない）', () => {
+  const d = sheet();
+  d.segs.push([0, 3, 42, 3]);                                                        // 帯の上の線（下の辺から 3m ＝ 枠の高さの 10%）
+  d.faces.push(face(20, 30, 0.2, 42, 2.8), face(21, 0.5, 0.2, 10, 2.8));
+  d.doors.push({ c: [5, 1.5] });                                                     // 会社のマークの曲線がドアと見られた、という想定
+  const A = analyze(d);
+  assert.equal(A.stats.titles, 1);
+  assert.equal(A.marks[20].s, 'out'); assert.equal(A.marks[20].type, 'title');
+  assert.equal(A.marks[21].s, 'out');
+  assert.equal(A.marks[1], undefined); assert.equal(A.marks[2], undefined);
+});
+
 test('図枠が無い図面（壁の線だけ）では、何も印を付けない', () => {
   const A = analyze({ segs: [...rect(0, 0, 8, 6), [4, 0, 4, 6]], texts: [{ t: '事務室', x: 2, y: 3 }], faces: [face(0, 0, 0, 4, 6), face(1, 4, 0, 8, 6)], fixtures: [], doors: [] });
   assert.deepEqual(A.marks, {}); assert.equal(A.stats.frames, 0);

@@ -88,7 +88,7 @@ export function planView(box, plan, opt = {}) {
     svg.querySelector('.labels').innerHTML = plan.faces.map(f => {
       const o = owner.get(f.i), s = sel.has(f.i);
       const m = !s && o == null ? mk(f) : null;
-      if (m) return `<text x="${f.cx}" y="${-f.cy}" fill="${m.s === 'out' ? 'var(--faint)' : 'var(--warn)'}" font-weight="700" pointer-events="none">${m.s === 'out' ? (m.type === 'frame' ? '図枠' : '表') : '？'}<tspan x="${f.cx}" dy="1.15em" font-weight="400" font-size="${fs * 0.8}">区画${f.no}</tspan></text>`;
+      if (m) return `<text x="${f.cx}" y="${-f.cy}" fill="${m.s === 'out' ? 'var(--faint)' : 'var(--warn)'}" font-weight="700" pointer-events="none">${m.s === 'out' ? (m.type === 'frame' ? '図枠' : m.type === 'title' ? '表題欄' : '表') : '？'}<tspan x="${f.cx}" dy="1.15em" font-weight="400" font-size="${fs * 0.8}">区画${f.no}</tspan></text>`;
       return `<text x="${f.cx}" y="${-f.cy}" fill="${s ? 'var(--accent)' : o != null ? roomColor(o) : 'var(--muted)'}" font-weight="700" pointer-events="none">区画${f.no}<tspan x="${f.cx}" dy="1.15em" font-weight="400" font-size="${fs * 0.8}">${(Math.round(f.area * 100) / 100)}㎡</tspan></text>`;
     }).join('');
   }
