@@ -208,6 +208,7 @@ function roomCard(r, i, p) {
         <button class="iconbtn" data-act="delPart" data-pi="${pi}" aria-label="この寸法を消す">${icon('x')}</button></div>`).join('')}
       <button class="btn sm ghost" data-act="addPart">${icon('plus')}寸法を足す・引く（L字・出っ張り・柱など）</button></div>`}
     <details class="more" ${(r.windows || []).length ? 'open' : ''}><summary>窓を寸法で入れる（mm）</summary>
+      <p class="small muted" style="margin:6px 0">寸法を入れた窓がある部屋は、その面積を壁から引きます。上の「窓（数だけ）」の数は使いません。</p>
       <div class="wins">${(r.windows || []).map((w, wi) => `<div class="winrow">
         <label class="f">幅<div class="unitwrap"><input class="in num" type="number" inputmode="numeric" data-wk="w" data-wi="${wi}" value="${esc(w.w)}"><span>mm</span></div></label>
         <label class="f">高さ<div class="unitwrap"><input class="in num" type="number" inputmode="numeric" data-wk="h" data-wi="${wi}" value="${esc(w.h)}"><span>mm</span></div></label>
@@ -861,7 +862,7 @@ function stepRooms(ctx) {
       }
     };
     $('#addRoom').onclick = () => {
-      p.rooms.push({ id: uid('r'), name: `部屋 ${String(p.rooms.length + 1).padStart(2, '0')}`, shape: 'rect', w: '', d: '', h: '', qty: 1, doors: 0, winCount: 0, windows: [] });
+      p.rooms.push({ id: uid('r'), name: `部屋 ${String(p.rooms.length + 1).padStart(2, '0')}`, shape: 'rect', w: '', d: '', h: '', qty: 1, doors: 1, winCount: 1, windows: [] });   // 前のKAKUと同じ：手で作る部屋はドア1・窓1から（壁から 3.2㎡ 引く）。無い部屋は 0 に直す
       touch(p); draw(); refresh();
       const last = body.querySelector('.roomc:last-child [data-rk="w"]'); if (last) last.focus();
     };

@@ -73,7 +73,8 @@ export function roomGeom(room, opt = DEFAULTS) {
   const dh = Math.min(2, h - 0.05);
   const runA = runs ? runs.reduce((s, r) => s + Math.max(0, num(r.len)) * (r.ty === 'd' ? dh : h), 0) : 0;
   const runW = runs ? runs.reduce((s, r) => s + Math.max(0, num(r.len)), 0) : 0;
-  const openings = (runs ? runA : doors * o.doorArea) + winSized + winCount * o.winArea;
+  /* 窓：寸法を入れた窓がある部屋は、その面積だけ引いて「窓（か所）」の数は使わない（前のKAKUと同じ。両方引くと引きすぎる） */
+  const openings = (runs ? runA : doors * o.doorArea) + (winSized > 0 ? winSized : winCount * o.winArea);
   const wall1 = Math.max(0, perim * h - openings);
   const base1 = Math.max(0, perim - (runs ? runW : doors * o.doorW));
   return {

@@ -298,3 +298,10 @@ test('品番・色：仕上げの材料だけ欄を出す。書類には規格�
   assert.equal(specOf({ code: 'FS3001' }), '品番 FS3001');
   assert.equal(totals({ lines: [l], rooms: [] }).grand, before);
 });
+
+test('窓：寸法を入れた窓がある部屋は「窓（か所）」の数を使わない（前のKAKUと同じ）', () => {
+  // 14×2.5=35 − 1.69×1.8 = 31.958（か所の 3×1.6 は引かない）。寸法が無ければ か所×1.6
+  assert.equal(roomGeom({ w: 4, d: 3, h: 2.5, winCount: 3, windows: [{ w: 1690, h: 1800, n: 1 }] }).wall, 31.958);
+  assert.equal(roomGeom({ w: 4, d: 3, h: 2.5, winCount: 3, windows: [] }).wall, 30.2);
+  assert.equal(roomGeom({ w: 4, d: 3, h: 2.5, winCount: 3, windows: [{ w: '', h: '', n: 1 }] }).wall, 30.2);   // 寸法が空の行は無い物として
+});

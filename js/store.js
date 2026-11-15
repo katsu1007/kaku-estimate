@@ -94,13 +94,26 @@ export function convertOld(list) {
   return list.map(p => {
     const rooms = (p.rooms || []).map(r => {
       const free = !!(r.plan || n(r.area) > 0);
+      /* 前のKAKUと同じ数え方になるように移す（落とすと壁・床の㎡が変わる）：
+       *  ・ドア・窓を入れていない部屋：手で作った部屋は 1か所ずつ、図面の部屋は 0（前のKAKUの決まり）
+       *  ・寸法を入れた窓（幅mm×高さmm×枚数）と、3Dで足した窓の面積
+       *  ・図面から見つけて引いていたドア・開口（openL：[種類, 幅m, 面積㎡]）。案件で「引かない」にしていたら引かない
+       *  ・寸法を足す・引く（L字・柱） */
+      const unset = v => v === undefined || v === null || v === '';
+      const def = r.plan ? 0 : 1;
+      const windows = (Array.isArray(r.wins) ? r.wins : []).filter(w => n(w.w) > 0 && n(w.h) > 0 && n(w.n) > 0).map(w => ({ w: n(w.w), h: n(w.h), n: Math.max(1, Math.round(n(w.n))) }));
+      if (n(r.win3A) > 0) windows.push({ w: 1000, h: Math.round(n(r.win3A) * 1000), n: 1 });
+      const runs = (Array.isArray(r.openL) ? r.openL : []).filter(x => Array.isArray(x) && n(x[1]) > 0).map(x => ({ ty: x[0] === 'd' ? 'd' : 'g', len: n(x[1]) }));
+      const parts = !free && Array.isArray(r.parts) ? r.parts.filter(x => x && n(x.w) > 0 && n(x.h) > 0).map(x => ({ s: n(x.s) < 0 ? -1 : 1, w: n(x.w), h: n(x.h), ...(x.k ? { k: x.k } : {}) })) : [];
       return {
         id: uid('r'), name: r.name || '部屋',
         shape: free ? 'free' : 'rect',
         w: free ? '' : n(r.w), d: free ? '' : n(r.h),
         area: free ? n(r.area) : '', perim: free ? n(r.peri) : '',
         h: n(r.ch) > 0 ? n(r.ch) : '', qty: Math.max(1, Math.round(n(r.qty) || 1)),
-        doors: Math.max(0, Math.round(n(r.door))), winCount: Math.max(0, Math.round(n(r.win))), windows: []
+        doors: unset(r.door) ? def : Math.max(0, Math.round(n(r.door))), winCount: unset(r.win) ? def : Math.max(0, Math.round(n(r.win))), windows,
+        ...(runs.length ? { openRuns: runs, ...(p.openAuto === false ? { openOff: true } : {}) } : {}),
+        ...(parts.length ? { parts } : {})
       };
     });
     const lines = (p.items || []).map(it => ({
