@@ -933,7 +933,7 @@ function stepRooms(ctx) {
       } }).catch(e => showError(e)); return; }
       if (a === 'linkClear') { const was = p.drawing.link; p.drawing.link = {}; syncDemoLines(p); touch(p); paintSel(); toast('つなぎ替えを元に戻しました', { action: '取り消す', onAction: () => { p.drawing.link = was; syncDemoLines(p); touch(p); paintSel(); } }); return; }
       if (a === 'oClear') { const was = p.drawing.outlets; p.drawing.outlets = []; syncDemoLines(p); touch(p); paintSel(); toast('コンセントを全部消しました', { action: '元に戻す', onAction: () => { p.drawing.outlets = was; syncDemoLines(p); touch(p); paintSel(); } }); return; }
-      if (a === 'oAuto') { const k = placeOutlets(); syncDemoLines(p); touch(p); paintSel(); toast(`コンセントを ${k} 個置きました（便器の横・洗面カウンターの背面）`); return; }
+      if (a === 'oAuto') { const k = placeOutlets(); syncDemoLines(p); touch(p); paintSel(); toast(`コンセントを ${k} 個置きました（便器の横・洗面台の背面）`); return; }
       if (a === 'lClear') { const before = p.drawing.lights; p.drawing.lights = []; syncDemoLines(p); touch(p); paintSel(); toast('照明を全部消しました', { action: '元に戻す', onAction: () => { p.drawing.lights = before; syncDemoLines(p); touch(p); paintSel(); } }); return; }
       if (a === 'lAuto') {
         lset.room = $('#lRoom', body).value; lset.use = $('#lUse', body).value; lset.item = $('#lItem', body).value; lset.lm = Number($('#lLm', body).value) || DEF_LM[lset.item] || 800;

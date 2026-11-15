@@ -7,7 +7,7 @@
 import { DEFAULTS, isRoomBased, lineQty, hasCode } from './calc.js';
 
 const FIX = {
-  toilet: ['便器', ['便器', 'トイレ']], urinal: ['小便器', ['小便器']], counter: ['洗面カウンター', ['洗面']], sink: ['手洗器・流し', ['手洗', '流し']],
+  toilet: ['便器', ['便器', 'トイレ']], urinal: ['小便器', ['小便器']], counter: ['洗面台', ['洗面']], sink: ['手洗器・流し', ['手洗', '流し']],
   slop: ['SK（掃除流し）', ['SK', '掃除流し']], trough: ['ステンレス流し', ['ステンレス流し']], bath: ['浴槽', ['ユニットバス', '浴']], kitchen: ['キッチン', ['キッチン']]
 };
 const num = v => { const n = Number(v); return Number.isFinite(n) ? n : 0; };

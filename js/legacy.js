@@ -68,7 +68,7 @@ export async function readWithFixtures(file) {
 
 /* 前のKAKUに渡す時の種類：前のKAKUに無い種類（ステンレス流し）は、形が同じ洗面カウンターとして渡す */
 export const oldType = t => t === 'trough' ? 'counter' : t;
-export const FIX_NAMES = { toilet: '便器', urinal: '小便器', counter: '洗面カウンター', sink: '手洗器・流し', slop: 'SK（掃除流し）', trough: 'ステンレス流し（長い手洗い）', bath: '浴槽', kitchen: 'キッチン', unknown: '判定保留', other: '器具ではない' };
+export const FIX_NAMES = { toilet: '便器', urinal: '小便器', counter: '洗面台', sink: '手洗器・流し', slop: 'SK（掃除流し）', trough: 'ステンレス流し（長い手洗い）', bath: '浴槽', kitchen: 'キッチン', unknown: '判定保留', other: '器具ではない' };
 /* 器具の種類ごとの、明細に入れる品目の初め（本体・取付手間）。画面で変えられる */
 export const FIX_ITEMS = {
   toilet: ['s-b-wc1', 's-l-wc-on'], urinal: ['s-b-ur', 's-l-ur-on'], counter: ['s-b-wb600', 's-l-wb-on'], sink: ['s-b-hw', 's-l-hw-on'],
