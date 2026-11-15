@@ -1,6 +1,6 @@
 /* 案件の画面：① 現場 → ② 部屋 → ③ 工事 → ④ 確認 → ⑤ 書類 */
 import { state, registerView, setTop, go, touch, opts, findProject, masterItems, categories, removeProject, restoreProject, newProject, flush, trackUndo, paintUndo, stepUndo } from './app.js';
-import { roomGeom, lineQty, netQty, totals, check, MEASURES, KINDS, isRoomBased, hatsuCalc, hatsuItem, cutItem, ZANDO_F, wallGroup, lineBasis, okState, okMark, hasCode } from './calc.js';
+import { roomGeom, lineQty, netQty, totals, check, MEASURES, KINDS, isRoomBased, hatsuCalc, hatsuItem, cutItem, ZANDO_F, wallGroup, lineBasis, okState, okMark, hasCode, missingWaste, isDemoArea, wasteRows } from './calc.js';
 import { workChecks } from './workcheck.js';
 import { makerLinks } from './makers.js';
 import { SYS, MANY, sysOptions, rebuild, PIPE_LOSS } from './piping.js';
@@ -112,6 +112,12 @@ function refresh(p, step) {
     if (hasCode(l)) set('mk:' + l.id, makerLinks(l, l.itemId ? (mItems || (mItems = new Map(masterItems().map(x => [x.id, x])))).get(l.itemId) : null).map(x => `<a class="btn sm" target="_blank" rel="noopener" href="${esc(x.url)}">${icon('up')}${esc(x.label)}</a>`).join(''));
     const ok = okState(l, p.rooms, o, p.lines);
     set('ok:' + l.id, ok === 'ok' ? `<span class="pill ok">${icon('check')}確認済み</span>` : ok === 'changed' ? `<span class="pill warn">${icon('alert')}確認の後で変わりました</span>` : '');
+    if (l.basis && l.basis.measure === 'waste') {
+      const R = wasteRows(l, p.rooms, o, p.lines);
+      set('qinfo:' + l.id, R.length ? '解体の量から：' + R.slice(0, 3).map(x => `${esc(x.name)} ${fmt(x.area, 2)}㎡×${fmt(x.t, 3)}m`).join(' ＋ ') + (R.length > 3 ? ` ほか${R.length - 3}行` : '') + ` → ${fmt(q, 2)}m³` : 'もとになる解体の行がありません（解体を入れると数量が入ります）');
+      set('qty:' + l.id, fmt(q, 3));
+      return;
+    }
     if (l.basis && l.basis.measure === 'link') {
       const par = p.lines.find(x => x.id === l.basis.line);
       set('qinfo:' + l.id, par ? `${esc(l.why || '')}：${esc(par.name)} ${esc(par.spec || '')} の長さ ${fmt(netQty(par, p.rooms, o, p.lines), 3)}m → ${fmt(q, 3)}${esc(l.unit || '')}` : '元の配管の行がありません');
@@ -330,6 +336,13 @@ export function wallRooms(p, w) {
 }
 const r3 = v => Math.round(v * 1000) / 1000;
 
+/* 解体の行があれば、廃材処分の行を足す（前のKAKUと同じ：解体の面積×厚みから m³ を数える行。数量は解体が変わると付いて変わる）。足した行の数を返す */
+export function syncWaste(p) {
+  const add = missingWaste(p, masterItems());
+  add.forEach(l => p.lines.push({ id: uid('l'), ...l }));
+  return add.length;
+}
+
 /* 図面の壁の解体・カッターから、明細の行を作り直す（単価を変えていた行は単価を引き継ぐ） */
 export function syncDemoLines(p) {
   const items = masterItems(), it = id => items.find(i => i.id === id);
@@ -392,6 +405,7 @@ export function syncDemoLines(p) {
     if (d.panel) { add('l|panel', 'e-panel', 1, '図面で置いた分電盤'); add('l|panelOn', 'w-ePanel', 1, ''); }
     add('l|wire', 'w-eWire', W.mL + W.mH, 'ケーブルの合計');
   }
+  syncWaste(p);
 }
 
 /* 配線：前のKAKUと同じ計算（js/lighting.js wirePlan）。区画ごとにスイッチを入口のそばに置き、縦横にたどった長さを出す */
@@ -741,7 +755,7 @@ function stepRooms(ctx) {
     const od = made.reduce((s, r) => s + (r.openRuns || []).filter(x => x.ty === 'd').length, 0), og = made.reduce((s, r) => s + (r.openRuns || []).filter(x => x.ty !== 'd').length, 0);
     sel.clear(); touch(p); draw();
     toast(od + og ? `${n} 部屋を作りました。図面のドア ${od} か所・開口 ${og} か所を壁の面積から引きました` : `${n} 部屋を作りました`, { ms: 5000 });
-    openRoomFin(p, made.map(r => r.id), { title: n > 1 ? `${n} 部屋の仕上げ（同じにする）` : `「${made[0].name}」の仕上げ`, onDone: () => { touch(p); draw(); } });
+    openRoomFin(p, made.map(r => r.id), { title: n > 1 ? `${n} 部屋の仕上げ（同じにする）` : `「${made[0].name}」の仕上げ`, onDone: () => { syncWaste(p); touch(p); draw(); } });
   };
   const draw = () => {
     body.innerHTML = drawingCard(p) + `<div class="rooms">${p.rooms.map((r, i) => roomCard(r, i, p)).join('') || `<div class="card empty"><b>まだ部屋がありません</b>下のボタンで部屋を足してください。</div>`}</div>
@@ -1065,7 +1079,7 @@ function stepRooms(ctx) {
     if (a.dataset.act === 'delWin') r.windows.splice(+a.dataset.wi, 1);
     if (a.dataset.act === 'addPart') { (r.parts = r.parts || []).push({ s: 1, w: '', h: '' }); touch(p); draw(); return; }
     if (a.dataset.act === 'delPart') { r.parts.splice(+a.dataset.pi, 1); touch(p); draw(); return; }
-    if (a.dataset.act === 'roomFin') { openRoomFin(p, [r.id], { title: `「${r.name}」の仕上げ`, onDone: () => { touch(p); draw(); } }); return; }
+    if (a.dataset.act === 'roomFin') { openRoomFin(p, [r.id], { title: `「${r.name}」の仕上げ`, onDone: () => { syncWaste(p); touch(p); draw(); } }); return; }
     if (a.dataset.act === 'dupRoom') { const c = JSON.parse(JSON.stringify(r)); c.id = uid('r'); c.name = r.name + '（コピー）'; p.rooms.splice(p.rooms.indexOf(r) + 1, 0, c); }
     if (a.dataset.act === 'delRoom') {
       const used = p.lines.filter(l => l.basis && Array.isArray(l.basis.rooms) && l.basis.rooms.includes(r.id));
@@ -1104,15 +1118,16 @@ function pipePanel(l, lines) {
 }
 function lineCard(l, rooms, lines = []) {
   const link = l.basis && l.basis.measure === 'link';
-  const auto = isRoomBased(l) || link;
+  const waste = !!(l.basis && l.basis.measure === 'waste');
+  const auto = isRoomBased(l) || link || waste;
   const catName = (categories().find(c => c[0] === l.cat) || [])[1] || '';
   return `<div class="linec ${l.parent ? 'child' : ''} ${l.pipe ? 'pipe' : ''}" data-line="${l.id}">
     <div class="name"><span class="cat">${l.sys || (l.pipeSet && l.pipeSet.sys) ? `<span class="pill info" style="padding:1px 7px">${SYS[l.sys || l.pipeSet.sys]}</span> ` : ''}${l.parent ? '↳ 配管に付く行・' : ''}${esc(catName)}${catName ? '・' : ''}${KINDS[l.kind] || 'その他'}</span>
       <input class="in" data-lk="name" value="${esc(l.name)}" placeholder="工事項目" aria-label="工事項目">
       <input class="in" data-lk="spec" value="${esc(l.spec || '')}" placeholder="規格・仕様（なくても可）" aria-label="規格・仕様" style="min-height:40px;font-size:14px">
       ${hasCode(l) ? `<input class="in" data-lk="code" value="${esc(l.code || '')}" placeholder="品番・色（例：SP-2801）" aria-label="品番・色" autocapitalize="characters" autocomplete="off" style="min-height:44px">` : ''}</div>
-    <label class="f">数え方<select class="in" data-lk="measure">${Object.entries(MEASURES).filter(([k]) => k !== 'link' || link).map(([k, m]) => `<option value="${k}" ${(auto ? l.basis.measure : 'manual') === k ? 'selected' : ''}>${k === 'manual' && l.pipe ? '長さを手で入れる' : m.label}</option>`).join('')}</select>
-      ${auto && !link ? roomSel(l, rooms) : ''}</label>
+    <label class="f">数え方<select class="in" data-lk="measure">${Object.entries(MEASURES).filter(([k]) => (k !== 'link' || link) && (k !== 'waste' || waste)).map(([k, m]) => `<option value="${k}" ${(auto ? l.basis.measure : 'manual') === k ? 'selected' : ''}>${k === 'manual' && l.pipe ? '長さを手で入れる' : m.label}</option>`).join('')}</select>
+      ${auto && !link && !waste ? roomSel(l, rooms) : ''}</label>
     <label class="f">${l.pipe ? '長さ（m）・単位' : '数量・単位'}<div class="qtybox">
       ${auto ? `<div class="in num" style="display:flex;align-items:center;justify-content:flex-end;background:var(--panel2)" data-out="qty:${l.id}"></div>` : `<input class="in num" type="number" inputmode="decimal" step="any" min="0" data-lk="qty" value="${esc(l.qty)}">`}
       <input class="in" data-lk="unit" value="${esc(l.unit || '')}" style="width:62px;padding:10px 6px;text-align:center" aria-label="単位"></div></label>
@@ -1199,8 +1214,10 @@ function stepLines(ctx) {
       const before = [...p.lines];
       const kids = p.lines.filter(x => x.parent === l.id);
       p.lines = p.lines.filter(x => x !== l && x.parent !== l.id);
+      const wk = l.basis && l.basis.measure === 'waste' ? (l.basis.kind || 'w-waste') : null;   // 自分で消した廃材の行は、勝手に入れ直さない
+      if (wk) (p.noWaste = p.noWaste || {})[wk] = true;
       touch(p); draw();
-      toast(kids.length ? `「${l.name}」と付いていた ${kids.length} 行を消しました` : `「${l.name || '行'}」を消しました`, { action: '元に戻す', onAction: () => { p.lines = before; touch(p); draw(); } });
+      toast(kids.length ? `「${l.name}」と付いていた ${kids.length} 行を消しました` : `「${l.name || '行'}」を消しました`, { action: '元に戻す', onAction: () => { p.lines = before; if (wk && p.noWaste) delete p.noWaste[wk]; touch(p); draw(); } });
     }
     if (a.dataset.act === 'basis') return basisDialog(p, l, refresh);
     if (a.dataset.act === 'pipeKids') {
@@ -1261,6 +1278,7 @@ export function openPicker(p, after) {
       Object.assign(line, { pipe: { ...it.pipe }, applyLoss: true, loss: PIPE_LOSS, qty: '', pipeSet: { sys, many: 1, hoon: sys === 'h' } });
     }
     p.lines.push(line);
+    if (isDemoArea(line)) added += syncWaste(p);
     added++; touch(p);
     $('#padded', m.el).textContent = `${added} 件 足しました`;
     draw();
@@ -1280,6 +1298,11 @@ function basisDialog(p, l, after) {
       ${B.rows.length ? `<div style="overflow-x:auto"><table class="sum basis"><tr><th>部屋</th>${hasOff ? '<th>部屋の数量</th><th>図面で壁ごとに入れた分</th>' : ''}<th>この行に入る分</th></tr>
       ${B.rows.map(r => `<tr><td>${esc(r.name || '名前なし')}</td>${hasOff ? `<td>${fmt(r.raw, 3)}${mu}</td><td>${r.off > 0 ? '−' + fmt(r.off, 3) + mu : '—'}</td>` : ''}<td>${fmt(r.v, 3)}${mu}</td></tr>`).join('')}
       <tr class="tot"><td>正味の合計（${B.rows.length} 部屋）</td>${hasOff ? '<td></td><td></td>' : ''}<td>${fmt(B.net, 3)}${mu}</td></tr></table></div>` : '<p class="muted">この行に入る部屋がありません。</p>'}`;
+  } else if (B.type === 'waste') {
+    how = `<p class="small muted" style="margin:0 0 8px">解体した面積に、廃材の厚み（品目の名前の「厚○」mm、無ければ 1㎡あたり ${fmt(o.waste, 3)}m³）を掛けています。</p>
+      ${B.waste.length ? `<div style="overflow-x:auto"><table class="sum basis"><tr><th>解体の行</th><th>面積</th><th>厚み</th><th>廃材</th></tr>
+      ${B.waste.map(x => `<tr><td>${esc(x.name)}</td><td>${fmt(x.area, 2)}㎡</td><td>${fmt(x.t, 3)}m</td><td>${fmt(x.v, 3)}m³</td></tr>`).join('')}
+      <tr class="tot"><td>合計（0.01 単位）</td><td></td><td></td><td>${fmt(B.net, 2)}m³</td></tr></table></div>` : '<p class="muted">もとになる解体の行がありません。</p>'}`;
   } else if (B.type === 'link') {
     how = B.parent ? `<p style="margin:0">元の配管「${esc(B.parent.name)}」の長さ ${fmt(B.parent.len, 3)}m × 1mあたり ${fmt(B.rate, 3)} ＝ ${fmt(B.net, 3)}${u}${l.why ? `（${esc(l.why)}）` : ''}</p>` : '<p class="muted" style="margin:0">元の配管の行がありません。</p>';
   } else {
@@ -1315,7 +1338,7 @@ function stepCheck({ p, body, refresh }) {
     const W = workChecks(p, o), wOn = W.filter(x => !x.off), wOff = W.filter(x => x.off);
     const oks = p.lines.map(l => okState(l, p.rooms, o, p.lines)), nOk = oks.filter(x => x === 'ok').length, chg = p.lines.filter((l, i) => oks[i] === 'changed');
     const wRow = x => `<div class="chk ${x.off ? '' : x.level === 'warn' ? 'warn' : 'tip'}" ${x.off ? 'style="opacity:.6"' : ''}>${icon(x.level === 'warn' ? 'alert' : 'info')}<span style="flex:1">${esc(x.msg)}</span>
-      ${x.off ? `<button class="btn sm" data-won="${esc(x.key)}">戻す</button>` : `<button class="btn sm" data-wgo="${x.step}" data-wid="${esc(x.lineId || x.roomId || '')}">見る</button><button class="btn sm" data-woff="${esc(x.key)}" title="この案件では要らない（一覧から外す）">要らない</button>`}</div>`;
+      ${x.off ? `<button class="btn sm" data-won="${esc(x.key)}">戻す</button>` : `${x.key === 'waste' ? '<button class="btn sm primary" data-wfix="waste">処分の行を入れる</button>' : ''}<button class="btn sm" data-wgo="${x.step}" data-wid="${esc(x.lineId || x.roomId || '')}">見る</button><button class="btn sm" data-woff="${esc(x.key)}" title="この案件では要らない（一覧から外す）">要らない</button>`}</div>`;
     const mx = Math.max(1, ...Object.values(t.byKind).map(k => k.amount));
     const inp = (k, unit, w = 120) => `<div class="unitwrap" style="width:${w}px;display:inline-block"><input class="in num" style="min-height:40px" type="number" inputmode="decimal" data-k="${k}" value="${esc(p[k] ?? '')}" ${k === 'taxRate' ? `placeholder="${o.taxRate}"` : ''}><span>${unit}</span></div>`;
     body.innerHTML = `
@@ -1356,6 +1379,7 @@ function stepCheck({ p, body, refresh }) {
   });
   body.addEventListener('click', e => {
     const wo = e.target.closest('[data-woff]'), wn = e.target.closest('[data-won]'), wg = e.target.closest('[data-wgo]');
+    if (e.target.closest('[data-wfix=waste]')) { p.noWaste = {}; const k = syncWaste(p); touch(p); draw(); toast(k ? `廃材処分の行を ${k} 行入れました（解体の量から数えます）` : '入れられる行がありませんでした'); return; }
     if (wo) { (p.checksOff = p.checksOff || {})[wo.dataset.woff] = true; touch(p); draw(); return; }
     if (wn) { delete p.checksOff[wn.dataset.won]; touch(p); draw(); return; }
     if (wg) { if (+wg.dataset.wgo === 4) { const k = $('[data-k="overheadPct"]', body); if (k) { k.scrollIntoView({ block: 'center' }); k.focus(); } return; } lastFocus.id = wg.dataset.wid || null; go('#/p/' + encodeURIComponent(p.id) + '/' + wg.dataset.wgo); return; }

@@ -32,7 +32,7 @@ with sync_playwright() as p:
     # 品番・色：仕上げの材料の行だけ欄が出る。打つと見積書と Excel に載る
     ok('品番の欄は仕上げ材だけ', pg.locator('[data-lk=code]').count()==1)
     pg.fill('[data-lk=code]','SP-2801');pg.wait_for_timeout(700)
-    r=pg.evaluate(f"async()=>{{const p={P};const a=await import('./js/app.js');const d=await import('./js/docs.js');const x=await import('./js/export.js');return [p.lines[1].code,d.estimateHtml(p,1,'2026年1月1日').includes('品番 SP-2801'),(await x.projectCsv(p,a.opts()).text()).includes('品番 SP-2801')]}}")
+    r=pg.evaluate(f"async()=>{{const p={P};const a=await import('./js/app.js');const d=await import('./js/docs.js');const x=await import('./js/export.js');return [p.lines.find(l=>l.cat==='wall').code,d.estimateHtml(p,1,'2026年1月1日').includes('品番 SP-2801'),(await x.projectCsv(p,a.opts()).text()).includes('品番 SP-2801')]}}")
     ok('品番が保存され、見積書とCSVに載る', r==['SP-2801',True,True])
     # メーカーのサイトを開くボタン：品番を打つと品番のページに変わる（サンゲツの行）
     hrefs=pg.evaluate("[...document.querySelectorAll('.basisrow a.btn')].map(a=>[a.textContent.trim(),a.href,a.target])")
@@ -56,8 +56,8 @@ with sync_playwright() as p:
     t=pg.inner_text('#workChk');print(t.replace('\n',' / ')[:600])
     ok('お客様の名前', 'お客様の名前が入っていません' in t)
     ok('天井高', '天井高が入っていません。標準の 2.4m' in t)
-    ok('廃材の処分', '廃材の処分の行がありません' in t)
-    s=' '.join(pg.inner_text('#okSum').split());ok('確認済み 1／2', '確認済み 1 ／ 2 行' in s)
+    ok('解体を入れると廃材処分の行が付く（壁 46.4㎡×0.05=2.32m³）', pg.evaluate(f"async()=>{{const p={P};const a=await import('./js/app.js');const c=await import('./js/calc.js');const w=p.lines.find(l=>l.basis&&l.basis.measure==='waste');return !!w&&c.lineQty(w,p.rooms,a.opts(),p.lines)===2.32}}") and '廃材の処分の行がありません' not in t)
+    s=' '.join(pg.inner_text('#okSum').split());ok('確認済み 1／2', '確認済み 1 ／ 3 行' in s)
     pg.evaluate("document.querySelector('#workChk').scrollIntoView()");pg.screenshot(path='tests/e2e/shots/checks_work.png')
     small=pg.evaluate("[...document.querySelectorAll('#workChk button')].filter(b=>b.getBoundingClientRect().height<44).length")
     ok('ボタンの高さ44px以上', small==0)
@@ -85,9 +85,16 @@ with sync_playwright() as p:
     pg.click('#redoBtn');pg.wait_for_timeout(700);pg.click('#redoBtn');pg.wait_for_timeout(700)
     ok('やり直すと部屋が1つ', pg.locator('.roomc').count()==1)
     pg.click('#undoBtn');pg.wait_for_timeout(700)
+    # 廃材の行を自分で消すと入れ直さない。④のチェックに出て、ボタンで入れられる
+    step(3);pg.locator('.linec:has(input[value="廃材処分"]) [data-act=delLine]').click();pg.wait_for_timeout(700)
+    step(4);t=pg.inner_text('#workChk')
+    ok('消すと「処分の行がありません」と出る', '廃材の処分の行がありません' in t)
+    pg.click('[data-wfix=waste]');pg.wait_for_timeout(600)
+    ok('ボタンで入れ直せる', pg.evaluate(f"async()=>{{const p={P};return p.lines.filter(l=>l.basis&&l.basis.measure==='waste').length}}")==1 and '廃材の処分の行がありません' not in pg.inner_text('#workChk'))
+    step(2)
     # 読み込み直しても保存されている
     pg.reload();pg.wait_for_timeout(900)
-    ok('読み込み直しても部屋2つ・印も残る', pg.evaluate(f"async()=>{{const p={P};return p.rooms.length===2&&!!p.lines[1].ok}}"))
+    ok('読み込み直しても部屋2つ・印も残る', pg.evaluate(f"async()=>{{const p={P};return p.rooms.length===2&&!!p.lines.find(l=>l.cat==='wall').ok}}"))
     ok('読み込み直すと戻すは空', pg.locator('#undoBtn').is_disabled())
     pg.screenshot(path='tests/e2e/shots/checks_top.png')
     print(errs or 'no errors');b.close()

@@ -14,7 +14,8 @@ export const DEFAULTS = Object.freeze({
   loss: 10,        // 材料のロス率（%）
   taxRate: 10,     // 消費税（%）
   matRate: 60,     // 材料の掛け率（定価の%）
-  laborRate: 70    // 手間の原価率（%）
+  laborRate: 70,   // 手間の原価率（%）
+  waste: 0.05      // 解体の廃材の量（解体1㎡あたりの m³。品目の名前に「厚○」がある物はその厚み）
 });
 
 export const MEASURES = Object.freeze({
@@ -25,7 +26,8 @@ export const MEASURES = Object.freeze({
   base: { label: '巾木の長さ', unit: 'm' },
   count: { label: '部屋の数', unit: '室' },
   manual: { label: '数量を手で入れる', unit: '' },
-  link: { label: '配管の長さから', unit: '' }
+  link: { label: '配管の長さから', unit: '' },
+  waste: { label: '解体の量から（廃材）', unit: 'm³' }
 });
 
 const num = (v, d = 0) => {
@@ -91,7 +93,42 @@ export function roomGeom(room, opt = DEFAULTS) {
 }
 
 /* 部屋から数える行か（手入力・配管から数える行は違う） */
-export const isRoomBased = l => !!(l.basis && l.basis.measure && l.basis.measure !== 'manual' && l.basis.measure !== 'link');
+export const isRoomBased = l => !!(l.basis && l.basis.measure && l.basis.measure !== 'manual' && l.basis.measure !== 'link' && l.basis.measure !== 'waste');
+
+/* 解体の廃材（前のKAKUと同じ決まり）：解体した面積 ×（品目の名前の「厚○」mm、無ければ 1㎡あたり 0.05m³）。
+ * 廃材の種類は解体の品目で決まる：コンクリート・ブロック・RC・モルタル・ALC＝ガラ、タイル・塗り壁・レンガ＝がれき混合、
+ * ボード＝石膏ボード、フローリング・板・下地合板・根太・畳＝木くず、ほか＝混載 */
+export function wasteKind(id) {
+  const s = String(id || '');
+  if (/-(co|cb|rc|mo)\d|alc|w-dF-co/.test(s)) return 'w-gara';
+  if (/tile|nuri|lath|brick/.test(s)) return 'w-wGaraMix';
+  if (/board|gyp/.test(s)) return 'w-wGyp';
+  if (/-fl$|wood|-base$|joist|tatami/.test(s)) return 'w-wWood';
+  return 'w-waste';
+}
+export const WASTE_ORDER = ['w-waste', 'w-gara', 'w-wGaraMix', 'w-wGyp', 'w-wWood'];
+/* 廃材のもとになる行：床・壁・天井の解体（㎡）。カッター・はつりは自分でガラの行を作るので入れない */
+export const isDemoArea = l => !!l && /^demo[FWC]$/.test(l.cat || '') && (l.unit || '').replace('m2', '㎡') === '㎡' && !(l.fromDemo && /^h\|/.test(l.fromDemo)) && !(l.basis && l.basis.measure === 'waste');
+export const wasteThick = (l, opt = DEFAULTS) => { const m = String(l.name || '').match(/厚(\d+)/); return m ? +m[1] / 1000 : Math.max(0, num({ ...DEFAULTS, ...opt }.waste, 0.05)); };
+/* 廃材の行の内訳 [{ id, name, area, t, v }] と合計（m³、0.01 単位） */
+export function wasteRows(line, rooms, opt, lines) {
+  const kind = (line.basis && line.basis.kind) || 'w-waste';
+  return (lines || []).filter(l => l !== line && isDemoArea(l) && wasteKind(l.itemId) === kind).map(l => {
+    const area = netQty(l, rooms, opt, lines), t = wasteThick(l, opt);
+    return { id: l.id, name: l.name || '', area, t, v: area * t };
+  }).filter(x => x.area > 0);
+}
+/* 解体の行があるのに廃材の行が無い種類の、足す行（id は呼ぶ側で付ける）。
+ * 同じ処分の品目を手で入れてある種類と、前に自分で消した種類（project.noWaste）は足さない */
+export function missingWaste(project, items) {
+  const lines = project.lines || [], off = project.noWaste || {};
+  const kinds = new Set(lines.filter(isDemoArea).map(l => wasteKind(l.itemId)));
+  return WASTE_ORDER.filter(k => kinds.has(k) && !off[k] && !lines.some(l => l.itemId === k || (l.basis && l.basis.measure === 'waste' && (l.basis.kind || 'w-waste') === k))).map(k => {
+    const it = (items || []).find(i => i.id === k);
+    return it ? { itemId: it.id, name: it.name, spec: it.spec || '', unit: it.unit, kind: it.kind || 'labor', cat: it.cat, price: it.price || '', cost: '', loss: '', sheet: 0, qty: '', basis: { measure: 'waste', kind: k } } : null;
+  }).filter(Boolean);
+}
+const wasteQty = (line, rooms, opt, lines) => Math.round(wasteRows(line, rooms, opt, lines).reduce((s, x) => s + x.v, 0) * 100 + 1e-9) / 100;
 
 /* 配管から数える行（継手・支持金具・保温・手間）：元の配管の長さ（正味）× 1mあたりの数。
  * ceil の時は個数なので切り上げ。元の行が無い時は 0（検算でエラーにする） */
@@ -110,6 +147,7 @@ export const wallGroup = cat => ({ demoW: 'demo', board: 'base', wall: 'fin', pa
 export function netQty(line, rooms, opt, lines) {
   const b = line.basis;
   if (b && b.measure === 'link') return linkQty(line, rooms, opt, lines);
+  if (b && b.measure === 'waste') return wasteQty(line, rooms, opt, lines);
   if (!b || !b.measure || b.measure === 'manual') return Math.max(0, num(line.qty));
   const ids = b.rooms === 'all' || !Array.isArray(b.rooms) ? null : new Set(b.rooms);
   const g0 = b.measure === 'wall' ? wallGroup(line.cat) : null, g = g0 && (line.layer || 1) > 1 ? g0 + line.layer : g0;   // 下の層の解体は demo2, demo3…
@@ -143,7 +181,7 @@ export function lineBasis(line, rooms, opt = DEFAULTS, lines) {
   const net = netQty(line, rooms, o, lines), qty = lineQty(line, rooms, o, lines);
   const link = !!(b && b.measure === 'link');
   const lossOn = (isRoomBased(line) || (line.applyLoss && !link)) && line.kind !== 'labor' && net > 0;
-  const out = { type: link ? 'link' : isRoomBased(line) ? 'room' : 'manual', rows: [], net, qty,
+  const out = { type: link ? 'link' : b && b.measure === 'waste' ? 'waste' : isRoomBased(line) ? 'room' : 'manual', rows: [], net, qty,
     lossPct: lossOn ? (line.loss === '' || line.loss == null ? o.loss : Math.max(0, num(line.loss))) : null,
     sheet: lossOn && num(line.sheet) > 0 ? num(line.sheet) : 0 };
   if (out.type === 'link') {
@@ -151,6 +189,7 @@ export function lineBasis(line, rooms, opt = DEFAULTS, lines) {
     out.parent = par ? { id: par.id, name: par.name || '', len: netQty(par, rooms, o, lines) } : null;
     out.rate = Math.max(0, num(b.rate));
   }
+  if (out.type === 'waste') out.waste = wasteRows(line, rooms, o, lines).map(x => ({ ...x, area: round3(x.area), v: round3(x.v) }));
   if (out.type === 'room') {
     out.measure = b.measure; out.unit = MEASURES[b.measure] ? MEASURES[b.measure].unit : '';
     const ids = b.rooms === 'all' || !Array.isArray(b.rooms) ? null : new Set(b.rooms);
@@ -241,7 +280,9 @@ export function check(project, opt = DEFAULTS) {
     const price = num(l.price);
     if (!(price > 0)) add('error', `「${name}」の単価が入っていません。`, { lineId: l.id });
     const linkedToExisting = l.basis && l.basis.measure === 'link' && all.some(x => x.id === l.basis.line);
-    if (!(q > 0) && !linkedToExisting) add('error', `「${name}」の${l.pipe ? '長さ' : '数量'}が0です。`, { lineId: l.id });
+    const isWaste = !!(l.basis && l.basis.measure === 'waste');
+    if (!(q > 0) && isWaste) add('warn', `「${name}」は解体の量から数える行ですが、もとになる解体の行がありません。要らなければ消してください。`, { lineId: l.id });
+    else if (!(q > 0) && !linkedToExisting) add('error', `「${name}」の${l.pipe ? '長さ' : '数量'}が0です。`, { lineId: l.id });
     if (num(l.price) < 0 || num(l.qty) < 0) add('error', `「${name}」にマイナスの数字があります。`, { lineId: l.id });
     const b = l.basis;
     if (b && b.measure === 'link' && !all.some(x => x.id === b.line)) add('error', `「${name}」の元の配管の行が消えています。この行も消すか、数量を手で入れてください。`, { lineId: l.id });
@@ -261,7 +302,19 @@ export function check(project, opt = DEFAULTS) {
   all.forEach(l => {
     const auto = isRoomBased(l);
     let q = auto ? 0 : Math.max(0, num(l.qty));
-    if (l.basis && l.basis.measure === 'link') {
+    if (l.basis && l.basis.measure === 'waste') {
+      /* 別の道筋：解体の行ごとに部屋の数量を足し直して、厚みを掛ける */
+      const kind = l.basis.kind || 'w-waste'; let v = 0;
+      all.forEach(x => {
+        if (x === l || !isDemoArea(x) || wasteKind(x.itemId) !== kind) return;
+        let a = 0;
+        if (isRoomBased(x)) { const sel = x.basis.rooms === 'all' || !Array.isArray(x.basis.rooms) ? rooms : rooms.filter(r => x.basis.rooms.includes(r.id)); const g0 = x.basis.measure === 'wall' ? wallGroup(x.cat) : null, g = g0 && (x.layer || 1) > 1 ? g0 + x.layer : g0; sel.forEach(r => { let w = roomGeom(r, o)[x.basis.measure] || 0; if (g && r.wallOff && r.wallOff[g] > 0) w = Math.max(0, w - r.wallOff[g]); a += w; }); a = round3(a); }
+        else a = Math.max(0, num(x.qty));
+        const m = String(x.name || '').match(/厚(\d+)/);
+        v += a * (m ? +m[1] / 1000 : o.waste);
+      });
+      q = Math.round(v * 100 + 1e-9) / 100;
+    } else if (l.basis && l.basis.measure === 'link') {
       const par = all.find(x => x.id === l.basis.line);
       const len = par && !(par.basis && par.basis.measure) ? Math.max(0, num(par.qty)) : 0;
       q = len * num(l.basis.rate);

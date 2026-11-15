@@ -305,3 +305,36 @@ test('窓：寸法を入れた窓がある部屋は「窓（か所）」の数�
   assert.equal(roomGeom({ w: 4, d: 3, h: 2.5, winCount: 3, windows: [] }).wall, 30.2);
   assert.equal(roomGeom({ w: 4, d: 3, h: 2.5, winCount: 3, windows: [{ w: '', h: '', n: 1 }] }).wall, 30.2);   // 寸法が空の行は無い物として
 });
+
+test('廃材：解体の面積×厚み（名前の「厚○」、無ければ0.05）。種類ごとに分ける（前のKAKUと同じ決まり）', async () => {
+  const { wasteKind, missingWaste, lineBasis: LB } = await import('../js/calc.js');
+  assert.equal(wasteKind('w-dW-cloth'), 'w-waste');
+  assert.equal(wasteKind('w-dW-cb120'), 'w-gara');
+  assert.equal(wasteKind('w-dF-co100'), 'w-gara');
+  assert.equal(wasteKind('w-dW-tile'), 'w-wGaraMix');
+  assert.equal(wasteKind('w-dW-board'), 'w-wGyp');
+  assert.equal(wasteKind('w-dF-fl'), 'w-wWood');
+  const rooms = [{ id: 'a', w: 4, d: 3, h: 2.4, doors: 1, winCount: 1 }];   // 壁 30.4㎡、床 12㎡
+  const lines = [
+    { id: 'd1', itemId: 'w-dW-cloth', name: '壁解体 クロス剥がしのみ', cat: 'demoW', unit: '㎡', kind: 'labor', price: 650, basis: { measure: 'wall', rooms: 'all' } },
+    { id: 'd2', itemId: 'w-dW-cb120', name: '壁解体 CBブロック 厚120', cat: 'demoW', unit: '㎡', kind: 'labor', price: 5500, qty: 10 },
+    { id: 'd3', itemId: 'w-dF-co100', name: '床解体 コンクリート 厚100', cat: 'demoF', unit: '㎡', kind: 'labor', price: 5000, qty: 3, fromDemo: 'h|w-dF-co100' },   // はつりは入れない
+    { id: 'w1', itemId: 'w-waste', name: '廃材処分', unit: 'm³', kind: 'labor', price: 47000, basis: { measure: 'waste', kind: 'w-waste' } },
+    { id: 'w2', itemId: 'w-gara', name: 'コンクリートガラ処分', unit: 'm³', kind: 'labor', price: 15000, basis: { measure: 'waste', kind: 'w-gara' } }
+  ];
+  assert.equal(lineQty(lines[3], rooms, undefined, lines), 1.52);   // 30.4×0.05
+  assert.equal(lineQty(lines[4], rooms, undefined, lines), 1.2);    // 10×0.12（はつりの3㎡は入れない）
+  assert.equal(LB(lines[3], rooms, undefined, lines).type, 'waste');
+  const p = { rooms, lines };
+  assert.equal(totals(p).subtotal, 30.4 * 650 + 55000 + 15000 + Math.round(1.52 * 47000) + 18000);
+  assert.deepEqual(check(p).filter(c => c.level === 'error'), []);   // 別の道筋の検算とも合う
+  rooms[0].doors = 0;                                                 // 壁 32㎡ → 1.6
+  assert.equal(lineQty(lines[3], rooms, undefined, lines), 1.6);
+  // 足す行：解体があって廃材の行が無い種類だけ。自分で消した種類・手で入れてある種類は足さない
+  const items = [{ id: 'w-waste', name: '廃材処分', unit: 'm³', kind: 'labor', price: 47000 }, { id: 'w-gara', name: 'ガラ', unit: 'm³', kind: 'labor', price: 15000 }, { id: 'w-wGyp', name: '石膏ボード処分', unit: 'm³', kind: 'labor', price: 30000 }];
+  assert.deepEqual(missingWaste(p, items), []);
+  const q = { rooms, lines: [lines[0], lines[1], { id: 'd4', itemId: 'w-dW-board', name: '壁解体 ボードごと', cat: 'demoW', unit: '㎡', qty: 5 }] };
+  assert.deepEqual(missingWaste(q, items).map(l => l.itemId), ['w-waste', 'w-gara', 'w-wGyp']);
+  assert.deepEqual(missingWaste({ ...q, noWaste: { 'w-gara': true } }, items).map(l => l.itemId), ['w-waste', 'w-wGyp']);
+  assert.deepEqual(missingWaste({ rooms, lines: [...q.lines, { id: 'm', itemId: 'w-waste', name: '廃材処分', qty: 1 }] }, items).map(l => l.itemId), ['w-gara', 'w-wGyp']);
+});
