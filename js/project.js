@@ -335,6 +335,8 @@ export function wallRooms(p, w) {
   }).filter(x => x.k >= 0.5).sort((a, b) => b.k - a.k).map(x => x.r);
 }
 const r3 = v => Math.round(v * 1000) / 1000;
+/* 角の点で囲んだ広さ（㎡） */
+export const polyArea = P => Math.abs(P.reduce((s, a, k) => { const b = P[(k + 1) % P.length]; return s + a[0] * b[1] - b[0] * a[1]; }, 0)) / 2;
 
 /* 解体の行があれば、廃材処分の行を足す（前のKAKUと同じ：解体の面積×厚みから m³ を数える行。数量は解体が変わると付いて変わる）。足した行の数を返す */
 export function syncWaste(p) {
@@ -617,8 +619,8 @@ function stepRooms(ctx) {
         const P = meas.pts; let last = 0, total = 0;
         for (let k = 1; k < P.length; k++) { const d = Math.hypot(P[k][0] - P[k - 1][0], P[k][1] - P[k - 1][1]); total += d; last = d; }
         bar.innerHTML = `<span class="small muted">${P.length ? '' : '測りたい所を2点タップしてください。線の端・交点・線の上にくっつきます。長押しすると虫めがねで大きく見えます（指を動かして、離した所に決まります）。'}</span>
-          ${P.length > 1 ? `<span class="pill acc" style="font-size:15px">長さ ${last.toFixed(3)} m</span>${meas.cont && P.length > 2 ? `<span class="pill info" style="font-size:15px">合計 ${total.toFixed(3)} m</span>` : ''}` : ''}
-          <span class="spacer"></span><label class="row small muted" style="gap:6px"><input type="checkbox" data-meas-cont ${meas.cont ? 'checked' : ''} style="width:20px;height:20px">続けて測る（合計を出す）</label>
+          ${P.length > 1 ? `<span class="pill acc" style="font-size:15px">長さ ${last.toFixed(3)} m</span>${meas.cont && P.length > 2 ? `<span class="pill info" style="font-size:15px">合計 ${total.toFixed(3)} m</span><span class="pill ok" style="font-size:15px">囲んだ広さ ${polyArea(P).toFixed(2)} ㎡</span><button class="btn sm primary" data-act="measFace" title="壁の線で囲まれていない部屋（広い事務室・つながった部屋など）を、タップした角で囲んで区画にします">${icon('plus')}この形を区画にする</button>` : ''}` : ''}
+          <span class="spacer"></span><label class="row small muted" style="gap:6px"><input type="checkbox" data-meas-cont ${meas.cont ? 'checked' : ''} style="width:20px;height:20px">続けて測る（合計・囲んだ広さを出す。区画にもできます）</label>
           <button class="btn sm" data-act="measClear">やり直す</button>`;
       } else {
         const fx = fxList();
@@ -923,6 +925,20 @@ function stepRooms(ctx) {
       const a = da.dataset.act;
       if (a === 'fixLines') return fixLinesDialog(p, () => {});
       if (a === 'measClear') { meas.pts = []; paintSel(); return; }
+      if (a === 'measFace') {
+        /* 壁の線で囲まれていなくて区画として拾えなかった部屋を、タップした角で囲んで区画にする（読み取りは変えない。図面に区画を1つ足すだけ）。
+         * 図面の中身（plan）は「元に戻す」が同じ物を指しているので、書き換えずに新しい入れ物に替える */
+        const P = meas.pts.map(q => [r3(q[0]), r3(q[1])]); if (P.length < 3) return;
+        const area = r3(polyArea(P)); if (!(area > 0.05)) { toast('囲んだ広さが小さすぎます。角を3つ以上、ぐるっと一周するようにタップしてください', { bad: true }); return; }
+        const peri = r3(P.reduce((s, q, k) => { const n = P[(k + 1) % P.length]; return s + Math.hypot(n[0] - q[0], n[1] - q[1]); }, 0));
+        const old = p.drawing.plan, i = Math.max(-1, ...old.faces.map(f => f.i)) + 1, no = Math.max(0, ...old.faces.map(f => f.no || 0)) + 1;
+        const face = { i, no, name: '', area, peri, ch: 0, poly: P, cx: r3(P.reduce((s, q) => s + q[0], 0) / P.length), cy: r3(P.reduce((s, q) => s + q[1], 0) / P.length), hand: true };
+        p.drawing.plan = { ...old, faces: [...old.faces, face] };
+        meas.pts = []; mode = 'room'; sel.clear(); sel.add(i);
+        touch(p); draw();
+        toast(`区画${no}（${fmt(area, 2)}㎡・周り ${fmt(peri, 2)}m）を足しました。選んであるので、そのまま「終了：1部屋にする」で部屋にできます`, { ms: 6000 });
+        return;
+      }
       if (a && a[0] === 'p' && /^p(Add|Del|DelItem|DelOne|Rot|SelNone|SelClear)$/.test(a)) {
         const d = p.drawing; d.places = d.places || [];
         const redo = () => { syncDemoLines(p); touch(p); paintSel(); }, was = d.places.slice(), undo = msg => toast(msg, { action: '元に戻す', onAction: () => { d.places = was; redo(); } });
