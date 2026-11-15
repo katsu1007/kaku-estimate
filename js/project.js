@@ -1,6 +1,7 @@
 /* 案件の画面：① 現場 → ② 部屋 → ③ 工事 → ④ 確認 → ⑤ 書類 */
-import { state, registerView, setTop, go, touch, opts, findProject, masterItems, categories, removeProject, restoreProject, newProject, flush } from './app.js';
-import { roomGeom, lineQty, netQty, totals, check, MEASURES, KINDS, isRoomBased, hatsuCalc, hatsuItem, cutItem, ZANDO_F, wallGroup } from './calc.js';
+import { state, registerView, setTop, go, touch, opts, findProject, masterItems, categories, removeProject, restoreProject, newProject, flush, trackUndo, paintUndo, stepUndo } from './app.js';
+import { roomGeom, lineQty, netQty, totals, check, MEASURES, KINDS, isRoomBased, hatsuCalc, hatsuItem, cutItem, ZANDO_F, wallGroup, lineBasis, okState, okMark } from './calc.js';
+import { workChecks } from './workcheck.js';
 import { SYS, MANY, sysOptions, rebuild, PIPE_LOSS } from './piping.js';
 import { importDrawing, groupGeom, planCH, orderFaces as orderFacesOf } from './drawing.js';
 import { readWithFixtures, oldFaceLights, roomOpenRuns, FIX_NAMES, FIX_ITEMS, FIX_WORDS } from './legacy.js';
@@ -42,8 +43,12 @@ registerView('project', async (el, route) => {
   if (!p) { el.innerHTML = `<div class="empty"><b>案件が見つかりません</b><a class="btn" href="#/projects">案件の一覧へ</a></div>`; setTop('案件'); return; }
   p.rooms = p.rooms || []; p.lines = p.lines || []; p.history = p.history || [];
   const step = Math.min(5, Math.max(1, route.step));
-  setTop(p.name || '名前のない案件', `<button class="iconbtn" id="dupBtn" title="この案件を複製">${icon('copy')}</button>`);
+  trackUndo(p);
+  setTop(p.name || '名前のない案件', `<button class="iconbtn" id="undoBtn" title="1つ前に戻す" aria-label="1つ前に戻す" disabled>${icon('undo')}</button><button class="iconbtn" id="redoBtn" title="やり直す" aria-label="やり直す" disabled>${icon('redo')}</button><button class="iconbtn" id="dupBtn" title="この案件を複製" aria-label="この案件を複製">${icon('copy')}</button>`);
   $('#dupBtn').onclick = () => duplicate(p);
+  $('#undoBtn').onclick = () => stepUndo(p, true);
+  $('#redoBtn').onclick = () => stepUndo(p, false);
+  paintUndo();
 
   el.innerHTML = `
     <div class="phead">
@@ -96,12 +101,14 @@ function refresh(p, step) {
   /* 部屋のチップ */
   p.rooms.forEach(r => {
     const g = roomGeom(r, o);
-    set('room:' + r.id, (g.openAuto ? `<span class="chip" style="border-color:var(--info)">図面のドア ${g.openAuto.doors}・開口 ${g.openAuto.gaps} <b>−${fmt(g.openAuto.area)}</b>㎡</span>` : '') + `<span class="chip">床 <b>${fmt(g.floor)}</b>㎡</span><span class="chip">壁 <b>${fmt(g.wall)}</b>㎡</span><span class="chip">天井 <b>${fmt(g.ceil)}</b>㎡</span><span class="chip">周り <b>${fmt(g.perim)}</b>m</span><span class="chip">巾木 <b>${fmt(g.base)}</b>m</span><span class="chip">天井高 <b>${fmt(g.h)}</b>m</span>`);
+    set('room:' + r.id, (g.openAuto ? `<span class="chip" style="border-color:var(--info)">図面のドア ${g.openAuto.doors}・開口 ${g.openAuto.gaps} <b>−${fmt(g.openAuto.area)}</b>㎡</span>` : '') + `<span class="chip">床 <b>${fmt(g.floor)}</b>㎡</span><span class="chip">壁 <b>${fmt(g.wall)}</b>㎡</span><span class="chip">天井 <b>${fmt(g.ceil)}</b>㎡</span><span class="chip">周り <b>${fmt(g.perim)}</b>m</span><span class="chip">巾木 <b>${fmt(g.base)}</b>m</span>${Number(r.h) > 0 ? `<span class="chip">天井高 <b>${fmt(g.h)}</b>m</span>` : `<span class="chip" style="border-color:var(--warn);color:var(--warn)" title="天井高を入れていないので、標準の高さで壁の面積を計算しています">天井高 <b>${fmt(g.h)}</b>m（標準のまま・未入力）</span>`}`);
   });
   /* 明細の金額 */
   p.lines.forEach((l, i) => {
     const q = t.lines[i].qty;
     set('amt:' + l.id, `<b>${yen(t.lines[i].amount)}</b><small>${fmt(q, 3)} ${esc(l.unit || '')} × ${yen(l.price)}</small>`);
+    const ok = okState(l, p.rooms, o, p.lines);
+    set('ok:' + l.id, ok === 'ok' ? `<span class="pill ok">${icon('check')}確認済み</span>` : ok === 'changed' ? `<span class="pill warn">${icon('alert')}確認の後で変わりました</span>` : '');
     if (l.basis && l.basis.measure === 'link') {
       const par = p.lines.find(x => x.id === l.basis.line);
       set('qinfo:' + l.id, par ? `${esc(l.why || '')}：${esc(par.name)} ${esc(par.spec || '')} の長さ ${fmt(netQty(par, p.rooms, o, p.lines), 3)}m → ${fmt(q, 3)}${esc(l.unit || '')}` : '元の配管の行がありません');
@@ -1107,6 +1114,7 @@ function lineCard(l, rooms, lines = []) {
     <button class="iconbtn del" data-act="delLine" title="この行を消す" aria-label="この行を消す">${icon('trash')}</button>
     ${auto || l.applyLoss ? `<div class="qtyinfo" data-out="qinfo:${l.id}"></div>` : ''}
     ${l.pipe ? pipePanel(l, lines) : ''}
+    <div class="basisrow"><button class="btn sm" data-act="basis">${icon('search')}数量の根拠・確認</button><span data-out="ok:${l.id}"></span></div>
     <details class="more" style="grid-column:1/-1"><summary>くわしく（区分・ロス率・原価・コピー）</summary>
       <div class="opts" style="margin-top:10px">
         <label class="f">区分<select class="in" data-lk="kind">${Object.entries(KINDS).map(([k, n]) => `<option value="${k}" ${(l.kind || 'other') === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
@@ -1187,6 +1195,7 @@ function stepLines(ctx) {
       touch(p); draw();
       toast(kids.length ? `「${l.name}」と付いていた ${kids.length} 行を消しました` : `「${l.name || '行'}」を消しました`, { action: '元に戻す', onAction: () => { p.lines = before; touch(p); draw(); } });
     }
+    if (a.dataset.act === 'basis') return basisDialog(p, l, refresh);
     if (a.dataset.act === 'pipeKids') {
       const n = rebuild(p, l, masterItems());
       touch(p); draw(); toast(`継手・支持金具・手間など ${n} 行を付けました`);
@@ -1253,18 +1262,65 @@ export function openPicker(p, after) {
   draw();
 }
 
+/* 数量の根拠（どの部屋から何㎡か）を見せて、「確認済み」の印を付ける */
+function basisDialog(p, l, after) {
+  const o = opts(), B = lineBasis(l, p.rooms, o, p.lines), u = esc(l.unit || ''), price = Math.max(0, Number(l.price) || 0);
+  const mu = B.unit || '';
+  const hasOff = B.rows.some(r => r.off > 0);
+  let how;
+  if (B.type === 'room') {
+    how = `<p class="small muted" style="margin:0 0 8px">${esc(MEASURES[B.measure].label)}を、部屋ごとに足しています。</p>
+      ${B.rows.length ? `<div style="overflow-x:auto"><table class="sum basis"><tr><th>部屋</th>${hasOff ? '<th>部屋の数量</th><th>図面で壁ごとに入れた分</th>' : ''}<th>この行に入る分</th></tr>
+      ${B.rows.map(r => `<tr><td>${esc(r.name || '名前なし')}</td>${hasOff ? `<td>${fmt(r.raw, 3)}${mu}</td><td>${r.off > 0 ? '−' + fmt(r.off, 3) + mu : '—'}</td>` : ''}<td>${fmt(r.v, 3)}${mu}</td></tr>`).join('')}
+      <tr class="tot"><td>正味の合計（${B.rows.length} 部屋）</td>${hasOff ? '<td></td><td></td>' : ''}<td>${fmt(B.net, 3)}${mu}</td></tr></table></div>` : '<p class="muted">この行に入る部屋がありません。</p>'}`;
+  } else if (B.type === 'link') {
+    how = B.parent ? `<p style="margin:0">元の配管「${esc(B.parent.name)}」の長さ ${fmt(B.parent.len, 3)}m × 1mあたり ${fmt(B.rate, 3)} ＝ ${fmt(B.net, 3)}${u}${l.why ? `（${esc(l.why)}）` : ''}</p>` : '<p class="muted" style="margin:0">元の配管の行がありません。</p>';
+  } else {
+    const src = l.fromFix ? `図面の器具（${esc(FIX_NAMES[l.fromFix] || '')}）の数から入れた行です。`
+      : l.fromDemo ? '図面で入れた物から自動で作った行です（図面を直すと数量も変わります）。' : '数量は手で入れた数です。';
+    how = `<p style="margin:0">${src}</p><p style="margin:6px 0 0">入れた数量：<b>${fmt(B.net, 3)}</b>${u}</p>`;
+  }
+  const lossTxt = B.lossPct == null ? (l.kind === 'labor' && B.type !== 'manual' ? '手間なので、ロスは足さず正味のままです。' : 'ロスは足していません。')
+    : `ロス ${fmt(B.lossPct, 1)}% を足して${B.sheet ? `、1枚 ${fmt(B.sheet, 3)}㎡ の板 ${Math.round(B.qty / B.sheet)} 枚に切り上げ` : '、0.1 単位で切り上げ'}ています。`;
+  const st = okState(l, p.rooms, o, p.lines);
+  const m = modal({
+    title: `「${l.name || '名前のない行'}」の数量の根拠`, wide: true,
+    body: `${how}
+      <p class="small muted" style="margin:10px 0 0">${lossTxt}</p>
+      <table class="sum" style="margin-top:10px">
+        <tr><td>見積もりの数量</td><td>${fmt(B.qty, 3)} ${u}</td></tr>
+        <tr><td>単価</td><td>${yen(price)}</td></tr>
+        <tr class="tot"><td>金額</td><td>${yen(Math.round(B.qty * price))}</td></tr></table>
+      ${st === 'changed' ? `<div class="chk warn" style="margin-top:12px">${icon('alert')}<span>前に確認した時は ${fmt(l.ok.qty, 3)}${u} × ${yen(l.ok.price)} でした。その後で数量か単価が変わっています。</span></div>` : ''}
+      ${st === 'ok' ? `<div class="chk" style="margin-top:12px;border-color:var(--ok)">${icon('checkc')}<span>確認済みです。数量か単価が変わると、印は「変わりました」になります。</span></div>` : ''}`,
+    foot: `${st ? '<button class="btn" id="bsOff">確認の印を外す</button>' : ''}<button class="btn" data-close>閉じる</button><button class="btn primary" id="bsOk">${icon('check')}${st === 'changed' ? 'この数量で確認し直す' : st === 'ok' ? '確認済み' : '確認済みにする'}</button>`
+  });
+  $('#bsOk', m.el).onclick = () => { l.ok = okMark(l, p.rooms, o, p.lines); touch(p); m.close(); after && after(); };
+  const off = $('#bsOff', m.el); if (off) off.onclick = () => { delete l.ok; touch(p); m.close(); after && after(); };
+}
+
 /* ---------- ④ 確認 ---------- */
 function stepCheck({ p, body, refresh }) {
   const o = opts();
   const draw = () => {
     const c = check(p, o), t = totals(p, o);
     const errs = c.filter(x => x.level === 'error'), warns = c.filter(x => x.level === 'warn');
+    const W = workChecks(p, o), wOn = W.filter(x => !x.off), wOff = W.filter(x => x.off);
+    const oks = p.lines.map(l => okState(l, p.rooms, o, p.lines)), nOk = oks.filter(x => x === 'ok').length, chg = p.lines.filter((l, i) => oks[i] === 'changed');
+    const wRow = x => `<div class="chk ${x.off ? '' : x.level === 'warn' ? 'warn' : 'tip'}" ${x.off ? 'style="opacity:.6"' : ''}>${icon(x.level === 'warn' ? 'alert' : 'info')}<span style="flex:1">${esc(x.msg)}</span>
+      ${x.off ? `<button class="btn sm" data-won="${esc(x.key)}">戻す</button>` : `<button class="btn sm" data-wgo="${x.step}" data-wid="${esc(x.lineId || x.roomId || '')}">見る</button><button class="btn sm" data-woff="${esc(x.key)}" title="この案件では要らない（一覧から外す）">要らない</button>`}</div>`;
     const mx = Math.max(1, ...Object.values(t.byKind).map(k => k.amount));
     const inp = (k, unit, w = 120) => `<div class="unitwrap" style="width:${w}px;display:inline-block"><input class="in num" style="min-height:40px" type="number" inputmode="decimal" data-k="${k}" value="${esc(p[k] ?? '')}" ${k === 'taxRate' ? `placeholder="${o.taxRate}"` : ''}><span>${unit}</span></div>`;
     body.innerHTML = `
       ${errs.length || warns.length ? '' : `<div class="okbig" style="margin-bottom:14px">${icon('shield')}<div><b style="font-size:17px">検算OK</b><div class="small muted">別の計算方法でも小計 ${yen(t.subtotal)} で一致しました。単価や数量の抜けもありません。</div></div></div>`}
       ${errs.length || warns.length ? `<div class="card" style="margin-bottom:14px"><h2>確認が必要な所</h2><div class="sub">赤：このままだと金額が間違います ／ 黄：念のため確かめてください</div>
         <div class="checks">${[...errs, ...warns].map(x => `<div class="chk ${x.level}">${icon(x.level === 'error' ? 'alert' : 'info')}<span style="flex:1">${esc(x.msg)}</span>${x.lineId || x.roomId ? `<button class="btn sm" data-fix="${esc(x.lineId || x.roomId)}" data-step="${x.lineId ? 3 : 2}">直す</button>` : ''}</div>`).join('')}</div></div>` : ''}
+      <div class="card" style="margin-bottom:14px" id="workChk"><h2>入れ忘れのチェック</h2><div class="sub">工事の入れ忘れ・確かめ忘れを探します。金額は変わりません。黄：入れ忘れかもしれません ／ 青：工事の内容によっては要りません。要らない物は「要らない」で外せます。</div>
+        ${wOn.length ? `<div class="checks">${wOn.map(wRow).join('')}</div>` : `<div class="row">${icon('checkc')}<b>気になる所はありません</b></div>`}
+        ${wOff.length ? `<details class="more" style="margin-top:10px"><summary>「要らない」にした物（${wOff.length}）</summary><div class="checks" style="margin-top:8px">${wOff.map(wRow).join('')}</div></details>` : ''}</div>
+      ${p.lines.length ? `<div class="card" style="margin-bottom:14px" id="okSum"><h2>数量の確認</h2><div class="sub">③工事の「数量の根拠・確認」で、行ごとに根拠を見て印を付けられます。印を付けた後で数量か単価が変わると、ここに出ます。</div>
+        <div class="row"><span class="pill ${nOk === p.lines.length ? 'ok' : ''}">確認済み <b>${nOk}</b> ／ ${p.lines.length} 行</span>${chg.length ? `<span class="pill warn">確認の後で変わった ${chg.length} 行</span>` : ''}</div>
+        ${chg.length ? `<div class="checks" style="margin-top:10px">${chg.map(l => `<div class="chk warn">${icon('alert')}<span style="flex:1">「${esc(l.name || '名前のない行')}」は、確認した時（${fmt(l.ok.qty, 3)}${esc(l.unit || '')} × ${yen(l.ok.price)}）から変わっています。</span><button class="btn sm" data-fix="${esc(l.id)}" data-step="3">見る</button></div>`).join('')}</div>` : ''}</div>` : ''}
       <div class="grid g2">
         <div class="card"><h2>金額</h2><div class="sub">諸経費と利益は小計に対する割合です</div>
           <table class="sum">
@@ -1292,6 +1348,10 @@ function stepCheck({ p, body, refresh }) {
     p[k] = e.target.value === '' ? '' : Number(e.target.value); touch(p); draw();
   });
   body.addEventListener('click', e => {
+    const wo = e.target.closest('[data-woff]'), wn = e.target.closest('[data-won]'), wg = e.target.closest('[data-wgo]');
+    if (wo) { (p.checksOff = p.checksOff || {})[wo.dataset.woff] = true; touch(p); draw(); return; }
+    if (wn) { delete p.checksOff[wn.dataset.won]; touch(p); draw(); return; }
+    if (wg) { if (+wg.dataset.wgo === 4) { const k = $('[data-k="overheadPct"]', body); if (k) { k.scrollIntoView({ block: 'center' }); k.focus(); } return; } lastFocus.id = wg.dataset.wid || null; go('#/p/' + encodeURIComponent(p.id) + '/' + wg.dataset.wgo); return; }
     const f = e.target.closest('[data-fix]'); if (!f) return;
     lastFocus.id = f.dataset.fix;
     go('#/p/' + encodeURIComponent(p.id) + '/' + f.dataset.step);

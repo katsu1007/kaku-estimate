@@ -33,6 +33,8 @@ const P = {
   compare: '<path d="M7 4v16M17 4v16M3.5 8H7M17 8h3.5M3.5 16H7M17 16h3.5M10 12h4"/>',
   spark: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/>',
   excel: '<rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="m8.5 8.5 7 7M15.5 8.5l-7 7"/>',
+  undo: '<path d="M8.5 5 4 9.5 8.5 14"/><path d="M4 9.5h10a6 6 0 0 1 0 12H9"/>',
+  redo: '<path d="M15.5 5 20 9.5 15.5 14"/><path d="M20 9.5H10a6 6 0 0 0 0 12h5"/>',
   user: '<circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20c1-3.6 4-5.5 7.5-5.5s6.5 1.9 7.5 5.5"/>'
 };
 export const icon = (n, cls = '') => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || ''}</svg>`;

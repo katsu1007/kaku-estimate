@@ -133,6 +133,45 @@ export function lineQty(line, rooms, opt = DEFAULTS, lines) {
   return round3(ceilTo(q * (1 + loss / 100), 0.1));
 }
 
+/* 行の数量の根拠（どの部屋から何㎡か）。画面の「根拠」と検算に使う。数量は lineQty と同じ決まりで出す。
+ *   type: 'room'（部屋から数える）／'link'（配管の長さから）／'manual'（手で入れた数）
+ *   rows: 部屋ごと { id, name, raw（部屋の数量）, off（図面で壁ごとに入れて引いた分）, v（この行に入る分） }
+ *   net: 正味の合計、lossPct: 足したロス率（足さない時は null）、sheet: 1枚の大きさ（枚数に切り上げる時）、qty: 見積もりの数量 */
+export function lineBasis(line, rooms, opt = DEFAULTS, lines) {
+  const o = { ...DEFAULTS, ...opt }, b = line.basis;
+  const net = netQty(line, rooms, o, lines), qty = lineQty(line, rooms, o, lines);
+  const link = !!(b && b.measure === 'link');
+  const lossOn = (isRoomBased(line) || (line.applyLoss && !link)) && line.kind !== 'labor' && net > 0;
+  const out = { type: link ? 'link' : isRoomBased(line) ? 'room' : 'manual', rows: [], net, qty,
+    lossPct: lossOn ? (line.loss === '' || line.loss == null ? o.loss : Math.max(0, num(line.loss))) : null,
+    sheet: lossOn && num(line.sheet) > 0 ? num(line.sheet) : 0 };
+  if (out.type === 'link') {
+    const par = (lines || []).find(x => x.id === b.line);
+    out.parent = par ? { id: par.id, name: par.name || '', len: netQty(par, rooms, o, lines) } : null;
+    out.rate = Math.max(0, num(b.rate));
+  }
+  if (out.type === 'room') {
+    out.measure = b.measure; out.unit = MEASURES[b.measure] ? MEASURES[b.measure].unit : '';
+    const ids = b.rooms === 'all' || !Array.isArray(b.rooms) ? null : new Set(b.rooms);
+    const g0 = b.measure === 'wall' ? wallGroup(line.cat) : null, g = g0 && (line.layer || 1) > 1 ? g0 + line.layer : g0;
+    (rooms || []).filter(r => !ids || ids.has(r.id)).forEach(r => {
+      const raw = roomGeom(r, o)[b.measure] || 0;
+      const off = g && r.wallOff && r.wallOff[g] > 0 ? Math.min(raw, r.wallOff[g]) : 0;
+      out.rows.push({ id: r.id, name: r.name || '', raw: round3(raw), off: round3(off), v: round3(raw - off) });
+    });
+  }
+  return out;
+}
+
+/* 「確認済み」の印：付けた時の数量と単価を覚えておき、後で変わったら「変わりました」にする。
+ * 戻り値 'ok'（確認済みのまま）／'changed'（確認の後で数量か単価が変わった）／''（まだ確認していない） */
+export function okState(line, rooms, opt = DEFAULTS, lines) {
+  const k = line.ok;
+  if (!k) return '';
+  return k.qty === lineQty(line, rooms, opt, lines) && k.price === Math.max(0, num(line.price)) ? 'ok' : 'changed';
+}
+export const okMark = (line, rooms, opt = DEFAULTS, lines) => ({ qty: lineQty(line, rooms, opt, lines), price: Math.max(0, num(line.price)), at: Date.now() });
+
 export const lineAmount = (line, rooms, opt, lines) => Math.round(lineQty(line, rooms, opt, lines) * Math.max(0, num(line.price)));
 
 /* 原価：材料＝定価×掛け率、手間＝単価×原価率、外注・その他＝入れた原価（無ければ見積単価のまま） */

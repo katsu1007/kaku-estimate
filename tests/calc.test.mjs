@@ -2,7 +2,7 @@
  * 期待値は関数の出力を写したものではなく、手計算した数字。 */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { roomGeom, lineQty, totals, check, compare, ceilTo } from '../js/calc.js';
+import { roomGeom, lineQty, totals, check, compare, ceilTo, lineBasis, okState, okMark } from '../js/calc.js';
 
 const room = { id: 'r1', name: '事務室', w: 4, d: 3, h: 2.4, qty: 1, doors: 1, winCount: 1 };
 
@@ -239,4 +239,48 @@ test('寸法を足す・引く（L字・出っ張り・柱）：前のKAKUと同
   g = R([{ s: -1, k: 'wall', w: 500, h: 300 }]); assert.equal(g.floor, 11.85); assert.equal(g.perim, 14.6);
   // 部屋の中の柱 0.4×0.4：面積 12−0.16、周り 14+1.6
   g = R([{ s: -1, k: 'col', w: 0.4, h: 0.4 }]); assert.equal(g.floor, 11.84); assert.equal(g.perim, 15.6);
+});
+
+test('根拠：部屋ごとの内訳を足すと正味になり、数量は lineQty と同じ（手計算）', () => {
+  const rooms = [{ id: 'a', name: '事務室', w: 4, d: 3, h: 2.4, doors: 1, winCount: 1 }, { id: 'b', name: '倉庫', w: 2, d: 2, h: 2.4 }];
+  const l = { kind: 'mat', cat: 'wall', basis: { measure: 'wall', rooms: 'all' }, price: 1000 };
+  const B = lineBasis(l, rooms);
+  assert.equal(B.type, 'room');
+  assert.deepEqual(B.rows.map(r => [r.name, r.v]), [['事務室', 30.4], ['倉庫', 19.2]]);   // 14×2.4−3.2 ／ 8×2.4
+  assert.equal(B.net, 49.6);
+  assert.equal(B.lossPct, 10);
+  assert.equal(B.qty, 54.6);            // 49.6×1.1=54.56 → 54.6
+  assert.equal(B.qty, lineQty(l, rooms));
+});
+
+test('根拠：選んだ部屋だけ・図面で壁ごとに入れた分を引く・手間はロスなし', () => {
+  const rooms = [{ id: 'a', name: '事務室', w: 4, d: 3, h: 2.4, wallOff: { fin: 5 } }, { id: 'b', name: '倉庫', w: 2, d: 2, h: 2.4 }];
+  const B = lineBasis({ kind: 'labor', cat: 'wall', basis: { measure: 'wall', rooms: ['a'] }, price: 900 }, rooms);
+  assert.deepEqual(B.rows, [{ id: 'a', name: '事務室', raw: 33.6, off: 5, v: 28.6 }]);
+  assert.equal(B.net, 28.6); assert.equal(B.lossPct, null); assert.equal(B.qty, 28.6);
+});
+
+test('根拠：板物は枚数に切り上げ、手で入れた行は内訳なし、配管に付く行は元の長さ', () => {
+  const rooms = [{ id: 'a', w: 4, d: 3, h: 2.4 }];
+  const B = lineBasis({ kind: 'mat', cat: 'board', sheet: 1.62, basis: { measure: 'ceil', rooms: 'all' } }, rooms);
+  assert.equal(B.sheet, 1.62); assert.equal(B.qty, 14.58);          // 12×1.1=13.2 → 9枚×1.62
+  const M = lineBasis({ kind: 'mat', qty: 3, price: 100 }, rooms);
+  assert.equal(M.type, 'manual'); assert.equal(M.rows.length, 0); assert.equal(M.qty, 3); assert.equal(M.lossPct, null);
+  const pipe = { id: 'p1', name: 'VP50', qty: 10, applyLoss: true, kind: 'mat' }, kid = { id: 'k1', kind: 'mat', basis: { measure: 'link', line: 'p1', rate: 0.5, ceil: true } };
+  const K = lineBasis(kid, rooms, undefined, [pipe, kid]);
+  assert.equal(K.type, 'link'); assert.equal(K.parent.len, 10); assert.equal(K.rate, 0.5); assert.equal(K.qty, 5);
+  assert.equal(lineBasis(pipe, rooms, undefined, [pipe, kid]).lossPct, 10);
+});
+
+test('確認済みの印：数量か単価が変わったら「変わりました」になる', () => {
+  const rooms = [{ id: 'a', w: 4, d: 3, h: 2.4 }];
+  const l = { kind: 'mat', basis: { measure: 'floor', rooms: 'all' }, price: 1000 };
+  assert.equal(okState(l, rooms), '');
+  l.ok = okMark(l, rooms);
+  assert.equal(l.ok.qty, 13.2); assert.equal(l.ok.price, 1000);
+  assert.equal(okState(l, rooms), 'ok');
+  rooms[0].w = 5;
+  assert.equal(okState(l, rooms), 'changed');
+  rooms[0].w = 4; l.price = 1200;
+  assert.equal(okState(l, rooms), 'changed');
 });

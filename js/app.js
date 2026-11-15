@@ -1,6 +1,7 @@
 /* 起動・画面の切り替え・保存のまとめ役 */
 import * as store from './store.js';
 import * as sync from './sync.js';
+import * as undoer from './undo.js';
 import { DEFAULTS } from './calc.js';
 import { BUILTIN_ITEMS, CATEGORIES } from './master-data.js';
 import { icon, esc, toast, showError, $ } from './ui.js';
@@ -38,6 +39,7 @@ let saveTimer = null;
 export function touch(p) {
   p.updatedAt = Date.now();
   pending.set(p.id, p);
+  paintUndo();
   setSave('busy');
   clearTimeout(saveTimer);
   saveTimer = setTimeout(flush, 400);
@@ -48,6 +50,8 @@ export async function flush() {
   pending.clear();
   try {
     for (const p of list) await store.putProject(p);
+    list.forEach(p => undoer.commit(p));
+    paintUndo();
     setSave('ok');
     sync.autoSave(list, opts());
   } catch (e) {
@@ -58,6 +62,27 @@ export async function flush() {
 }
 window.addEventListener('pagehide', flush);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
+
+/* ---------- 案件全体の「元に戻す」「やり直す」（js/undo.js。保存のたびに変わる前を控える） ---------- */
+export const trackUndo = p => { undoer.track(p); };
+export function paintUndo() {
+  const r = state.route, id = r && r.name === 'project' ? r.id : null;
+  const u = document.getElementById('undoBtn'), d = document.getElementById('redoBtn');
+  if (u) u.disabled = !(id && (undoer.canUndo(id) || pending.has(id)));
+  if (d) d.disabled = !(id && undoer.canRedo(id));
+}
+export async function stepUndo(p, back) {
+  clearTimeout(saveTimer);
+  const ok = back ? undoer.undo(p) : undoer.redo(p);
+  if (!ok) { paintUndo(); toast(back ? 'これより前には戻せません' : 'やり直す物がありません'); return false; }
+  p.updatedAt = Date.now();
+  pending.set(p.id, p);
+  await flush();
+  state.keepScroll = true;
+  await render();
+  toast(back ? '1つ前に戻しました' : 'やり直しました', { ms: 1800 });
+  return true;
+}
 
 function setSave(kind, msg) {
   const el = document.getElementById('savestate');
@@ -142,7 +167,8 @@ export async function render() {
     el.innerHTML = `<div class="card"><h2>画面を表示できませんでした</h2><p class="muted">${esc(e.message)}</p><a class="btn" href="#/">ホームに戻る</a></div>`;
     showError('画面の表示でエラーが起きました：' + e.message);
   }
-  if (!state.route.keepScroll) window.scrollTo(0, 0);
+  if (!state.route.keepScroll && !state.keepScroll) window.scrollTo(0, 0);
+  state.keepScroll = false;
 }
 
 export function findProject(id) { return state.projects.find(p => p.id === id); }
@@ -170,6 +196,7 @@ function nextNumber() {
 export async function removeProject(p) {
   state.projects = state.projects.filter(x => x.id !== p.id);
   pending.delete(p.id);
+  undoer.forget(p.id);
   await store.deleteProject(p.id);
 }
 export async function restoreProject(p) {
