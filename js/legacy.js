@@ -66,13 +66,15 @@ export async function readWithFixtures(file) {
   }
 }
 
-export const FIX_NAMES = { toilet: '便器', urinal: '小便器', counter: '洗面カウンター', sink: '手洗器・流し', slop: 'SK（掃除流し）', bath: '浴槽', kitchen: 'キッチン', unknown: '判定保留', other: '器具ではない' };
+/* 前のKAKUに渡す時の種類：前のKAKUに無い種類（ステンレス流し）は、形が同じ洗面カウンターとして渡す */
+export const oldType = t => t === 'trough' ? 'counter' : t;
+export const FIX_NAMES = { toilet: '便器', urinal: '小便器', counter: '洗面カウンター', sink: '手洗器・流し', slop: 'SK（掃除流し）', trough: 'ステンレス流し（長い手洗い）', bath: '浴槽', kitchen: 'キッチン', unknown: '判定保留', other: '器具ではない' };
 /* 器具の種類ごとの、明細に入れる品目の初め（本体・取付手間）。画面で変えられる */
 export const FIX_ITEMS = {
   toilet: ['s-b-wc1', 's-l-wc-on'], urinal: ['s-b-ur', 's-l-ur-on'], counter: ['s-b-wb600', 's-l-wb-on'], sink: ['s-b-hw', 's-l-hw-on'],
-  slop: ['s-b-sk', 's-l-sk-on'], bath: ['fx-ub', 's-l-ub-on'], kitchen: ['fx-kitchen', 's-l-ki-on']
+  slop: ['s-b-sk', 's-l-sk-on'], trough: ['s-b-sst', 's-l-sst-on'], bath: ['fx-ub', 's-l-ub-on'], kitchen: ['fx-kitchen', 's-l-ki-on']
 };
-export const FIX_WORDS = { toilet: ['便器', 'トイレ'], urinal: ['小便器'], counter: ['洗面'], sink: ['手洗', '流し'], slop: ['SK', '掃除流し'], bath: ['ユニットバス', '浴'], kitchen: ['キッチン'] };
+export const FIX_WORDS = { toilet: ['便器', 'トイレ'], urinal: ['小便器'], counter: ['洗面'], sink: ['手洗', '流し'], slop: ['SK', '掃除流し'], trough: ['ステンレス流し'], bath: ['ユニットバス', '浴'], kitchen: ['キッチン'] };
 
 /* 部屋（区画の組み合わせ）の、壁から引く開口。前のKAKUと同じ決め方：
  * 部屋の中の境目（となりの区画も同じ部屋）は数えない。ドアは幅×高さ（2.0m、天井が低い時は天井高−5cm）、扉の無い開口は幅×天井高 */
@@ -93,7 +95,7 @@ export function roomOpenRuns(faceIds, plan, open) {
  * pitchOf(face, pitch): 照度が足りない時に間隔を詰めるかどうかを決める（need を返す）。戻り値は面ごとの点 */
 export async function oldFaceLights(faces, fixtures, { base = 2, need = () => 0 } = {}) {
   const W = await getReader();
-  W.__kxFx = (fixtures || []).filter(x => x && x.b).map(x => ({ t: x.t, b: x.b.slice() }));
+  W.__kxFx = (fixtures || []).filter(x => x && x.b).map(x => ({ t: oldType(x.t), b: x.b.slice() }));
   const keep = W.eval('KAKU_fix');
   W.eval('KAKU_fix={fx:window.__kxFx}');
   try {

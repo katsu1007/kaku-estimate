@@ -8,7 +8,7 @@ import { DEFAULTS, isRoomBased, lineQty, hasCode } from './calc.js';
 
 const FIX = {
   toilet: ['便器', ['便器', 'トイレ']], urinal: ['小便器', ['小便器']], counter: ['洗面カウンター', ['洗面']], sink: ['手洗器・流し', ['手洗', '流し']],
-  slop: ['SK（掃除流し）', ['SK', '掃除流し']], bath: ['浴槽', ['ユニットバス', '浴']], kitchen: ['キッチン', ['キッチン']]
+  slop: ['SK（掃除流し）', ['SK', '掃除流し']], trough: ['ステンレス流し', ['ステンレス流し']], bath: ['浴槽', ['ユニットバス', '浴']], kitchen: ['キッチン', ['キッチン']]
 };
 const num = v => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const has = (lines, re) => lines.some(l => re.test(`${l.name || ''} ${l.spec || ''}`));
@@ -59,7 +59,7 @@ export function workChecks(project, opt = DEFAULTS) {
       if (q !== cnt[t]) add('fxN:' + t, 'warn', `${label}は図面で ${cnt[t]} 個ですが、見積もりの本体は ${q} 個です。`, { step: 3, lineId: tagged[0].id });
     }
   });
-  if (cnt.toilet || cnt.urinal || cnt.counter || cnt.sink || cnt.slop || cnt.bath || cnt.kitchen) {
+  if (cnt.toilet || cnt.urinal || cnt.counter || cnt.sink || cnt.slop || cnt.trough || cnt.bath || cnt.kitchen) {
     if (lines.some(l => l.fromFix) && !lines.some(l => l.pipe || /^(pipe|spipe)$/.test(l.cat || ''))) add('fxPipe', 'tip', '設備の器具が入っていますが、給排水の配管の行がありません。配管もやり替える工事なら入れてください。', { step: 3 });
   }
 

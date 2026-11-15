@@ -3,8 +3,8 @@ const COLORS = ['#ff8a3d', '#3ccf8e', '#5ab7ff', '#f3c04f', '#c084fc', '#ff6b9a'
 export const roomColor = n => COLORS[(n || 0) % COLORS.length];
 
 /* 器具の絵：種類ごとの色と形。背面（壁側）の向き back：N・S・E・W */
-const FIX_COLOR = { toilet: '#ff8a3d', urinal: '#5ab7ff', counter: '#3ccf8e', sink: '#3ccf8e', slop: '#c084fc', bath: '#5ab7ff', kitchen: '#f3c04f', unknown: '#f3c04f' };
-const FIX_LABEL = { toilet: '便器', urinal: '小便器', counter: '洗面', sink: '手洗', slop: 'SK', bath: '浴槽', kitchen: 'キッチン', unknown: '？' };
+const FIX_COLOR = { toilet: '#ff8a3d', urinal: '#5ab7ff', counter: '#3ccf8e', sink: '#3ccf8e', slop: '#c084fc', trough: '#3ccf8e', bath: '#5ab7ff', kitchen: '#f3c04f', unknown: '#f3c04f' };
+const FIX_LABEL = { toilet: '便器', urinal: '小便器', counter: '洗面', sink: '手洗', slop: 'SK', trough: '流し', bath: '浴槽', kitchen: 'キッチン', unknown: '？' };
 function fixSymbol(x, lw) {
   const [x0, y0, x1, y1] = x.b, c = FIX_COLOR[x.t] || '#9aa7b8';
   const X0 = x0, X1 = x1, Y0 = -y1, Y1 = -y0, W = X1 - X0, H = Y1 - Y0, cx = (X0 + X1) / 2, cy = (Y0 + Y1) / 2;
@@ -18,7 +18,7 @@ function fixSymbol(x, lw) {
     if (tank) g += `<rect x="${tank[0]}" y="${tank[1]}" width="${tank[2]}" height="${tank[3]}" rx="${sw}" fill="${c}" fill-opacity=".35" stroke="${c}" stroke-width="${sw}"/>`;
     const ex = back === 'W' ? cx + tk / 2 : back === 'E' ? cx - tk / 2 : cx, ey = back === 'N' ? cy + tk / 2 : back === 'S' ? cy - tk / 2 : cy;
     g += `<ellipse cx="${ex}" cy="${ey}" rx="${(vert ? W : W - tk) * 0.42}" ry="${(vert ? H - tk : H) * 0.42}" fill="${c}" fill-opacity=".2" stroke="${c}" stroke-width="${sw}"/>`;
-  } else if (x.t === 'counter' || x.t === 'sink' || x.t === 'slop' || x.t === 'kitchen') {
+  } else if (x.t === 'counter' || x.t === 'sink' || x.t === 'slop' || x.t === 'trough' || x.t === 'kitchen') {
     g += `<rect x="${X0}" y="${Y0}" width="${W}" height="${H}" rx="${sw * 2}" fill="${c}" fill-opacity=".15" stroke="${c}" stroke-width="${sw}"/>`;
     const r = Math.min(W, H) * 0.3;
     if (x.t !== 'kitchen') g += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${c}" stroke-width="${sw}"/>`;

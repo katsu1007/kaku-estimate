@@ -109,6 +109,15 @@ test('品番・色：1行でも入れていたら、入っていない仕上げ�
   assert.ok(!keys(p).includes('noCode'));
 });
 
+test('ステンレス流し：図面にあるのに行が無ければ知らせる。手洗器の行では足りたと見ない', () => {
+  const p = base();
+  p.drawing = { fixtures: [{ t: 'trough' }] };
+  p.lines.push({ id: 'h1', name: '手洗器', kind: 'mat', price: 35000, qty: 1 });
+  assert.ok(keys(p).includes('fx:trough'));
+  p.lines.push({ id: 't1', name: 'ステンレス流し（長い手洗い・製作品）', kind: 'mat', price: 300000, qty: 1, fromFix: 'trough' });
+  assert.ok(!keys(p).includes('fx:trough'));
+});
+
 test('空の案件でも落ちない', () => {
   assert.deepEqual(workChecks({}).map(x => x.key), ['customer', 'pname']);
 });

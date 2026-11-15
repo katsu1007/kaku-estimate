@@ -1,4 +1,5 @@
 /* 3Dで見る。
+import { oldType } from './legacy.js';
  * 前のKAKUの3D（壁の組み立て・ドアの切り抜き・質感・タップで寸法と数量の根拠）をそのまま使う。
  * 新しい画面の案件（図面・部屋・器具・照明・分電盤）を前のKAKUの形に直して渡し、全画面の層に出す。
  * 前のKAKUの保存（案件一覧）には何も足さない。閉じたら層ごと消す。 */
@@ -39,7 +40,7 @@ export function toOld(p) {
   const W = lightWires(p), link = {};
   W.sws.forEach(s0 => places.push({ id: 'sw_' + s0.key, item: 'e-sw1', where: 'pt', p: s0.l, count: 1 }));
   Object.entries(W.assign || {}).forEach(([lk, sk]) => { link[lk + ':0'] = 'sw_' + sk + ':0'; });
-  const fix = { fx: (d.fixtures || []).map((x, k) => ({ id: 'f' + k, t: x.t, b: x.b, back: x.back || '' })), doors: (d.doors || []).map(x => ({ c: x.c, m: x.m, r: x.r })) };
+  const fix = { fx: (d.fixtures || []).map((x, k) => ({ id: 'f' + k, t: oldType(x.t), b: x.b, back: x.back || '' })), doors: (d.doors || []).map(x => ({ c: x.c, m: x.m, r: x.r })) };
   const cur = { id: '__k3d', name: p.name || '', rooms, places, win: {}, win3d: clone(d.win3d || []), openAuto: true,
     wire: { on: (d.lights || []).length > 0 || (d.outlets || []).length > 0, sw: 'e-sw1', cL: 'e-v16-2', cO: 'e-v20-2', extra: d.wireExtra ?? 10, out: (d.outlets || []).length > 0, link } };
   /* 配線の線と長さは新しい画面の計算（ブースは外の部屋のスイッチ、置いたスイッチ・つなぎ替え込み）をそのまま見せる */

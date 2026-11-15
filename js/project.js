@@ -289,7 +289,9 @@ function fixLinesDialog(p, after) {
       if (!(n > 0)) return;
       ['body', 'labor'].forEach(k => {
         const id = $(`[data-k=${k}]`, row).value; const it = id && items.find(i => i.id === id); if (!it) return;
-        p.lines.push({ id: uid('l'), itemId: it.id, name: it.name, spec: it.spec || '', unit: it.unit, kind: it.kind, price: it.price || '', cost: '', loss: '', sheet: 0, cat: it.cat, qty: n, basis: null, fromFix: t });
+        /* ステンレス流しは寸法で作ってもらう物なので、図面の大きさ（長さ×奥行）を規格に書いておく */
+        const dim = t === 'trough' && k === 'body' ? [...new Set(fx.filter(x => x.t === t && x.b).map(x => { const a = Math.abs(x.b[2] - x.b[0]), b2 = Math.abs(x.b[3] - x.b[1]); return `長さ${fmt(Math.max(a, b2), 2)}m×奥行${fmt(Math.min(a, b2), 2)}m`; }))].join('・') : '';
+        p.lines.push({ id: uid('l'), itemId: it.id, name: it.name, spec: [it.spec, dim].filter(Boolean).join(' '), unit: it.unit, kind: it.kind, price: it.price || '', cost: '', loss: '', sheet: 0, cat: it.cat, qty: n, basis: null, fromFix: t });
         added++;
       });
     });
@@ -455,7 +457,7 @@ function stepRooms(ctx) {
     return h;
   };
   const meas = { pts: [], cont: false };
-  const FIX_SIZE = { toilet: [0.46, 0.8], urinal: [0.4, 0.36], counter: [1.2, 0.5], sink: [0.45, 0.36], slop: [0.8, 0.52], bath: [1.6, 1.6], kitchen: [2.55, 0.65] };
+  const FIX_SIZE = { toilet: [0.46, 0.8], urinal: [0.4, 0.36], counter: [1.2, 0.5], sink: [0.45, 0.36], slop: [0.8, 0.52], trough: [3.6, 0.6], bath: [1.6, 1.6], kitchen: [2.55, 0.65] };
   const BACKS = [['N', '上'], ['E', '右'], ['S', '下'], ['W', '左']];
   const fxList = () => (p.drawing && p.drawing.fixtures) || [];
   const owner = () => { const m = new Map(); p.rooms.forEach(r => (r.faces || []).forEach(i => m.set(i, r.color))); return m; };
