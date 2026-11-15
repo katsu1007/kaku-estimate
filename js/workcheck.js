@@ -4,7 +4,7 @@
  * 戻り値：[{ key, level: 'warn'|'tip', msg, step, roomId?, lineId? }]
  *   warn＝入れ忘れの可能性が高い ／ tip＝工事の内容によっては要らない（画面で「この案件では要らない」にできる）
  *   key は project.checksOff[key] で消した物を覚えるための名前 */
-import { DEFAULTS, isRoomBased, lineQty } from './calc.js';
+import { DEFAULTS, isRoomBased, lineQty, hasCode } from './calc.js';
 
 const FIX = {
   toilet: ['便器', ['便器', 'トイレ']], urinal: ['小便器', ['小便器']], counter: ['洗面カウンター', ['洗面']], sink: ['手洗器・流し', ['手洗', '流し']],
@@ -82,6 +82,9 @@ export function workChecks(project, opt = DEFAULTS) {
       const work = lines.some(l => l.kind !== 'mat' && !/^demo/.test(l.cat || '') && !/解体|撤去/.test(l.name || '') && (l.cat === c || (l.basis && l.basis.measure === c) || re.test(l.name || '')));
       if (!work) add('lab:' + c, 'tip', `${label}の材料がありますが、張る手間の行が見当たりません。材工の単価なら、このままで構いません。`, { step: 3 });
     });
+    /* 品番・色：1行でも入れている案件だけ、入れていない仕上げ材を知らせる（品番を使わない案件では出さない） */
+    const coded = lines.filter(hasCode), noCode = coded.filter(l => !String(l.code || '').trim());
+    if (noCode.length && noCode.length < coded.length) add('noCode', 'tip', `仕上げ材 ${noCode.length} 行に品番・色が入っていません（「${noCode[0].name || '名前のない行'}」${noCode.length > 1 ? ' など' : ''}）。`, { step: 3, lineId: noCode[0].id });
     if (!(num(p.overheadPct) > 0) && !(num(p.profitPct) > 0) && !has(lines, /諸経費|現場管理|運搬|経費/)) add('overhead', 'tip', '諸経費・利益が 0% で、経費の行もありません。', { step: 4 });
   }
   const off = p.checksOff || {};

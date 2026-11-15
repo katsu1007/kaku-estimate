@@ -2,7 +2,7 @@
  * 期待値は関数の出力を写したものではなく、手計算した数字。 */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { roomGeom, lineQty, totals, check, compare, ceilTo, lineBasis, okState, okMark } from '../js/calc.js';
+import { roomGeom, lineQty, totals, check, compare, ceilTo, lineBasis, okState, okMark, specOf, hasCode } from '../js/calc.js';
 
 const room = { id: 'r1', name: '事務室', w: 4, d: 3, h: 2.4, qty: 1, doors: 1, winCount: 1 };
 
@@ -283,4 +283,18 @@ test('確認済みの印：数量か単価が変わったら「変わりまし�
   assert.equal(okState(l, rooms), 'changed');
   rooms[0].w = 4; l.price = 1200;
   assert.equal(okState(l, rooms), 'changed');
+});
+
+test('品番・色：仕上げの材料だけ欄を出す。書類には規格の後ろに付く。金額は変わらない', () => {
+  const l = { name: 'ビニールクロス（量産品）', spec: 'サンゲツ SP（量産）', cat: 'wall', kind: 'mat', price: 652, qty: 10 };
+  assert.equal(hasCode(l), true);
+  assert.equal(hasCode({ cat: 'wall', kind: 'labor' }), false);
+  assert.equal(hasCode({ cat: 'elec', kind: 'mat' }), false);
+  assert.equal(hasCode({ cat: 'elec', kind: 'mat', code: 'X' }), true);
+  assert.equal(specOf(l), 'サンゲツ SP（量産）');
+  const before = totals({ lines: [l], rooms: [] }).grand;
+  l.code = ' SP-2801 ';
+  assert.equal(specOf(l), 'サンゲツ SP（量産）　品番 SP-2801');
+  assert.equal(specOf({ code: 'FS3001' }), '品番 FS3001');
+  assert.equal(totals({ lines: [l], rooms: [] }).grand, before);
 });

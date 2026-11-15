@@ -1,6 +1,6 @@
 /* 案件の画面：① 現場 → ② 部屋 → ③ 工事 → ④ 確認 → ⑤ 書類 */
 import { state, registerView, setTop, go, touch, opts, findProject, masterItems, categories, removeProject, restoreProject, newProject, flush, trackUndo, paintUndo, stepUndo } from './app.js';
-import { roomGeom, lineQty, netQty, totals, check, MEASURES, KINDS, isRoomBased, hatsuCalc, hatsuItem, cutItem, ZANDO_F, wallGroup, lineBasis, okState, okMark } from './calc.js';
+import { roomGeom, lineQty, netQty, totals, check, MEASURES, KINDS, isRoomBased, hatsuCalc, hatsuItem, cutItem, ZANDO_F, wallGroup, lineBasis, okState, okMark, hasCode } from './calc.js';
 import { workChecks } from './workcheck.js';
 import { SYS, MANY, sysOptions, rebuild, PIPE_LOSS } from './piping.js';
 import { importDrawing, groupGeom, planCH, orderFaces as orderFacesOf } from './drawing.js';
@@ -1103,7 +1103,8 @@ function lineCard(l, rooms, lines = []) {
   return `<div class="linec ${l.parent ? 'child' : ''} ${l.pipe ? 'pipe' : ''}" data-line="${l.id}">
     <div class="name"><span class="cat">${l.sys || (l.pipeSet && l.pipeSet.sys) ? `<span class="pill info" style="padding:1px 7px">${SYS[l.sys || l.pipeSet.sys]}</span> ` : ''}${l.parent ? '↳ 配管に付く行・' : ''}${esc(catName)}${catName ? '・' : ''}${KINDS[l.kind] || 'その他'}</span>
       <input class="in" data-lk="name" value="${esc(l.name)}" placeholder="工事項目" aria-label="工事項目">
-      <input class="in" data-lk="spec" value="${esc(l.spec || '')}" placeholder="規格・仕様（なくても可）" aria-label="規格・仕様" style="min-height:40px;font-size:14px"></div>
+      <input class="in" data-lk="spec" value="${esc(l.spec || '')}" placeholder="規格・仕様（なくても可）" aria-label="規格・仕様" style="min-height:40px;font-size:14px">
+      ${hasCode(l) ? `<input class="in" data-lk="code" value="${esc(l.code || '')}" placeholder="品番・色（例：SP-2801）" aria-label="品番・色" autocapitalize="characters" autocomplete="off" style="min-height:44px">` : ''}</div>
     <label class="f">数え方<select class="in" data-lk="measure">${Object.entries(MEASURES).filter(([k]) => k !== 'link' || link).map(([k, m]) => `<option value="${k}" ${(auto ? l.basis.measure : 'manual') === k ? 'selected' : ''}>${k === 'manual' && l.pipe ? '長さを手で入れる' : m.label}</option>`).join('')}</select>
       ${auto && !link ? roomSel(l, rooms) : ''}</label>
     <label class="f">${l.pipe ? '長さ（m）・単位' : '数量・単位'}<div class="qtybox">

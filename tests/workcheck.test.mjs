@@ -98,6 +98,17 @@ test('「この案件では要らない」にした物は出ない。金額は�
   assert.equal(totals(p).grand, before);
 });
 
+test('品番・色：1行でも入れていたら、入っていない仕上げ材を知らせる', () => {
+  const p = base();
+  p.lines.push({ id: 'l9', name: '長尺シート', cat: 'floor', kind: 'mat', price: 3000, basis: { measure: 'floor', rooms: 'all' } }, { id: 'l10', name: '長尺シート貼り手間', cat: 'work', kind: 'labor', price: 1800, basis: { measure: 'floor', rooms: 'all' } });
+  assert.ok(!keys(p).includes('noCode'));
+  p.lines[0].code = 'SP-2801';
+  const c = openChecks(p).find(x => x.key === 'noCode');
+  assert.equal(c.lineId, 'l9'); assert.match(c.msg, /1 行/);
+  p.lines.find(l => l.id === 'l9').code = 'FS3001';
+  assert.ok(!keys(p).includes('noCode'));
+});
+
 test('空の案件でも落ちない', () => {
   assert.deepEqual(workChecks({}).map(x => x.key), ['customer', 'pname']);
 });

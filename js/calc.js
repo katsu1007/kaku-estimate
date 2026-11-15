@@ -185,6 +185,11 @@ export function lineCost(line, rooms, opt = DEFAULTS, lines) {
   return Math.round(q * price);
 }
 
+/* 品番・色を入れられる行（仕上げの材料）。値段はシリーズ（品目）で決まり、品番は書類に載せるだけ */
+export const hasCode = l => !!l.code || (l.kind === 'mat' && ['floor', 'wall', 'ceil', 'trim'].includes(l.cat));
+/* 書類・Excel に出す規格：規格の後ろに品番・色を付ける */
+export const specOf = l => [String(l.spec || '').trim(), String(l.code || '').trim() ? '品番 ' + String(l.code).trim() : ''].filter(Boolean).join('　');
+
 export const KINDS = Object.freeze({ mat: '材料', labor: '手間', sub: '外注', other: 'その他' });
 
 /* 案件全体の合計 */

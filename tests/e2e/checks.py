@@ -29,6 +29,11 @@ with sync_playwright() as p:
     pg.keyboard.press('Escape');pg.wait_for_timeout(200)
     if pg.locator('.modal-bg').count(): pg.locator('.modal [data-close]').first.click();pg.wait_for_timeout(200)
     print('行：',pg.evaluate(f"async()=>{P}.lines.map(l=>[l.name,l.cat,l.kind,l.basis&&l.basis.measure])"))
+    # 品番・色：仕上げの材料の行だけ欄が出る。打つと見積書と Excel に載る
+    ok('品番の欄は仕上げ材だけ', pg.locator('[data-lk=code]').count()==1)
+    pg.fill('[data-lk=code]','SP-2801');pg.wait_for_timeout(700)
+    r=pg.evaluate(f"async()=>{{const p={P};const a=await import('./js/app.js');const d=await import('./js/docs.js');const x=await import('./js/export.js');return [p.lines[1].code,d.estimateHtml(p,1,'2026年1月1日').includes('品番 SP-2801'),(await x.projectCsv(p,a.opts()).text()).includes('品番 SP-2801')]}}")
+    ok('品番が保存され、見積書とCSVに載る', r==['SP-2801',True,True])
     # 根拠を開く
     pg.locator('[data-act=basis]').last.click();pg.wait_for_timeout(300)
     t=pg.inner_text('.modal');print(t[:400].replace('\n',' / '))

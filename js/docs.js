@@ -1,6 +1,6 @@
 /* ⑤ 書類：見積書・請求書・内訳書（印刷してPDF保存）、Excel・CSV、見積もりの履歴と比較 */
 import { state, touch, opts, go } from './app.js';
-import { totals, check, compare, roomGeom, KINDS } from './calc.js';
+import { totals, check, compare, roomGeom, KINDS, specOf } from './calc.js';
 import { projectXlsx, projectCsv } from './export.js';
 import { floorsOf, autoFloors, floorBreakdown } from './floors.js';
 import { icon, esc, yen, fmt, today, toast, modal, ask, share, $ } from './ui.js';
@@ -126,7 +126,7 @@ function companyBlock() {
 }
 function itemsTable(p, t) {
   return `<table class="items"><thead><tr><th style="width:4%">No</th><th>工事項目</th><th style="width:22%">規格・仕様</th><th style="width:10%">数量</th><th style="width:6%">単位</th><th style="width:12%">単価</th><th style="width:14%">金額</th></tr></thead><tbody>
-    ${p.lines.map((l, i) => `<tr><td class="r">${i + 1}</td><td>${esc(l.name)}</td><td>${esc(l.spec || '')}</td><td class="r">${fmt(t.lines[i].qty, 3)}</td><td>${esc(l.unit || '')}</td><td class="r">${Math.round(l.price || 0).toLocaleString('ja-JP')}</td><td class="r">${t.lines[i].amount.toLocaleString('ja-JP')}</td></tr>`).join('')}
+    ${p.lines.map((l, i) => `<tr><td class="r">${i + 1}</td><td>${esc(l.name)}</td><td>${esc(specOf(l))}</td><td class="r">${fmt(t.lines[i].qty, 3)}</td><td>${esc(l.unit || '')}</td><td class="r">${Math.round(l.price || 0).toLocaleString('ja-JP')}</td><td class="r">${t.lines[i].amount.toLocaleString('ja-JP')}</td></tr>`).join('')}
   </tbody></table>`;
 }
 function totTable(t) {
@@ -174,7 +174,7 @@ function breakdownHtml(p) {
       ${p.rooms.map(r => { const g = roomGeom(r, o); return `<tr><td>${esc(r.name)}${g.qty > 1 ? ` ×${g.qty}` : ''}</td><td class="r">${fmt(g.floor)}</td><td class="r">${fmt(g.ceil)}</td><td class="r">${fmt(g.wall)}</td><td class="r">${fmt(g.perim)}</td><td class="r">${fmt(g.base)}</td><td class="r">${fmt(g.h)}</td></tr>`; }).join('')}
     </tbody></table>
     ${Object.entries(groups).map(([k, a]) => `<h2>${k}</h2><table class="items"><thead><tr><th>工事項目</th><th style="width:22%">規格・仕様</th><th style="width:12%">数量</th><th style="width:6%">単位</th><th style="width:12%">単価</th><th style="width:14%">金額</th></tr></thead><tbody>
-      ${a.map(([l, x]) => `<tr><td>${esc(l.name)}</td><td>${esc(l.spec || '')}</td><td class="r">${fmt(x.qty, 3)}</td><td>${esc(l.unit || '')}</td><td class="r">${Math.round(l.price || 0).toLocaleString('ja-JP')}</td><td class="r">${x.amount.toLocaleString('ja-JP')}</td></tr>`).join('')}</tbody></table>`).join('')}
+      ${a.map(([l, x]) => `<tr><td>${esc(l.name)}</td><td>${esc(specOf(l))}</td><td class="r">${fmt(x.qty, 3)}</td><td>${esc(l.unit || '')}</td><td class="r">${Math.round(l.price || 0).toLocaleString('ja-JP')}</td><td class="r">${x.amount.toLocaleString('ja-JP')}</td></tr>`).join('')}</tbody></table>`).join('')}
   </div>`;
 }
 void $;
@@ -195,7 +195,7 @@ function floorCard(p) {
       <tr><td>内訳の合計</td><td></td><td class="r money"><b>${yen(res.sum)}</b></td></tr></tbody></table></div>
       <div class="small muted" style="margin-top:6px">見積もり全体の小計 ${yen(res.total)}${Math.abs(res.sum - res.total) >= 1 ? `（差 ${yen(Math.abs(res.sum - res.total))}）。階ごとに数え直すので、ロスの切り上げや器具の数の振り分けで少し差が出ます。` : ''}</div>
       ${res.parts.map(x => `<details style="margin-top:6px"><summary class="small" style="cursor:pointer">${esc(x.name)} の明細（${x.rows.length} 行）</summary><div class="tablewrap"><table class="list"><tbody>
-        ${x.rows.map(r => `<tr><td>${esc(r.l.name)}<div class="small muted">${esc(r.l.spec || '')}</div></td><td class="r">${q(r.qty)} ${esc(r.l.unit || '')}</td><td class="r money">${yen(r.amount)}</td></tr>`).join('')}</tbody></table></div></details>`).join('')}` : ''}
+        ${x.rows.map(r => `<tr><td>${esc(r.l.name)}<div class="small muted">${esc(specOf(r.l))}</div></td><td class="r">${q(r.qty)} ${esc(r.l.unit || '')}</td><td class="r money">${yen(r.amount)}</td></tr>`).join('')}</tbody></table></div></details>`).join('')}` : ''}
   </div>`;
 }
 function floorHtml(p, res) {
@@ -205,7 +205,7 @@ function floorHtml(p, res) {
       ${res.parts.map(x => `<tr><td>${esc(x.name)}</td><td class="r">${x.sub.toLocaleString('ja-JP')}</td></tr>`).join('')}
       <tr><td><b>合計</b></td><td class="r"><b>${res.sum.toLocaleString('ja-JP')}</b></td></tr></tbody></table>
     ${res.parts.map(x => `<h2>${esc(x.name)}　${yen(x.sub)}</h2><table class="items"><thead><tr><th>工事項目</th><th style="width:22%">規格・仕様</th><th style="width:12%">数量</th><th style="width:6%">単位</th><th style="width:12%">単価</th><th style="width:14%">金額</th></tr></thead><tbody>
-      ${x.rows.map(r => `<tr><td>${esc(r.l.name)}</td><td>${esc(r.l.spec || '')}</td><td class="r">${fmt(r.qty, 3)}</td><td>${esc(r.l.unit || '')}</td><td class="r">${Math.round(r.l.price || 0).toLocaleString('ja-JP')}</td><td class="r">${r.amount.toLocaleString('ja-JP')}</td></tr>`).join('')}</tbody></table>`).join('')}
+      ${x.rows.map(r => `<tr><td>${esc(r.l.name)}</td><td>${esc(specOf(r.l))}</td><td class="r">${fmt(r.qty, 3)}</td><td>${esc(r.l.unit || '')}</td><td class="r">${Math.round(r.l.price || 0).toLocaleString('ja-JP')}</td><td class="r">${r.amount.toLocaleString('ja-JP')}</td></tr>`).join('')}</tbody></table>`).join('')}
     ${Math.abs(res.sum - res.total) >= 1 ? `<div class="note">見積もり全体の小計 ${yen(res.total)}。階ごとに数え直すため、材料の切り上げなどで少し差が出ることがあります。</div>` : ''}
   </div>`;
 }

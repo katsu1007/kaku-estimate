@@ -1,5 +1,5 @@
 /* 書き出し：CSV・Excel（.xlsx）。Excel は外部ライブラリを使わず、無圧縮のZIPで作る */
-import { totals, KINDS, roomGeom } from './calc.js';
+import { totals, KINDS, roomGeom, specOf } from './calc.js';
 
 const enc = new TextEncoder();
 
@@ -76,7 +76,7 @@ export function projectXlsx(p, opt) {
   const first = rows.length + 1;
   (p.lines || []).forEach((l, i) => {
     const r = rows.length + 1;
-    rows.push([l.name || '', l.spec || '', { v: t.lines[i].qty, s: 3 }, l.unit || '', { v: Number(l.price) || 0, s: 2 }, { f: `ROUND(C${r}*E${r},0)`, s: 2 }, KINDS[l.kind] || '']);
+    rows.push([l.name || '', specOf(l), { v: t.lines[i].qty, s: 3 }, l.unit || '', { v: Number(l.price) || 0, s: 2 }, { f: `ROUND(C${r}*E${r},0)`, s: 2 }, KINDS[l.kind] || '']);
   });
   const last = rows.length;
   rows.push([]);
@@ -99,7 +99,7 @@ export function projectCsv(p, opt) {
   const t = totals(p, opt);
   const q = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   const rows = [['工事項目', '規格・仕様', '数量', '単位', '単価', '金額', '区分']];
-  (p.lines || []).forEach((l, i) => rows.push([l.name, l.spec, t.lines[i].qty, l.unit, l.price, t.lines[i].amount, KINDS[l.kind] || '']));
+  (p.lines || []).forEach((l, i) => rows.push([l.name, specOf(l), t.lines[i].qty, l.unit, l.price, t.lines[i].amount, KINDS[l.kind] || '']));
   rows.push([], ['小計', '', '', '', '', t.subtotal], ['諸経費', '', '', '', '', t.overhead], ['利益', '', '', '', '', t.profit]);
   if (t.discount) rows.push(['値引き', '', '', '', '', -t.discount]);
   rows.push(['消費税', '', '', '', '', t.tax], ['合計（税込）', '', '', '', '', t.grand]);
