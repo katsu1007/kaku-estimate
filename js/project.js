@@ -3,7 +3,7 @@ import { state, registerView, setTop, go, touch, opts, findProject, masterItems,
 import { roomGeom, lineQty, netQty, totals, check, MEASURES, KINDS, isRoomBased, hatsuCalc, hatsuItem, cutItem, ZANDO_F, wallGroup, lineBasis, okState, okMark, hasCode, missingWaste, isDemoArea, wasteRows } from './calc.js';
 import { workChecks } from './workcheck.js';
 import { makerLinks } from './makers.js';
-import { analyze as analyzeFrame } from './reader2/frame.js';
+import { analyzeAll as analyzeFrame } from './reader2/index.js';
 import { SYS, MANY, sysOptions, rebuild, PIPE_LOSS } from './piping.js';
 import { importDrawing, groupGeom, planCH, orderFaces as orderFacesOf } from './drawing.js';
 import { readWithFixtures, oldFaceLights, roomOpenRuns, FIX_NAMES, FIX_ITEMS, FIX_WORDS } from './legacy.js';
@@ -261,12 +261,22 @@ function drawingCard(p) {
     <div class="small muted" id="dwgStatus" style="margin-top:6px"></div></div>`;
 }
 
+/* 新しい読み取りで分かったことの続き：つないだ文字・名前の提案・器具ではない物・表の設備機器 */
+function r2more(A, on) {
+  const o = [], n = Object.keys(A.names || {}).length, t = A.text || {};
+  if (t.joined) o.push(`1文字ずつの文字 ${t.parts} 個を ${t.joined} 個の言葉につなぎました`);
+  if (n) o.push(`名前の無い区画 ${n} 個に、中の文字から名前を付けられます${on ? '（部屋にする時に入ります）' : ''}`);
+  if ((A.fxOut || []).length) o.push(`表題欄・表の中の「器具」${A.fxOut.length} 個は、会社のマークなどの見間違いと見ています${on ? '（器具の数から外しました）' : ''}`);
+  if ((A.equip || []).length) o.push(`表の設備機器：${A.equip.slice(0, 8).map(e => `${esc(e.name)} ${esc(e.model)}`).join('／')}${A.equip.length > 8 ? ` ほか${A.equip.length - 8}件` : ''}`);
+  return o.length ? '<br>' + o.join('<br>') : '';
+}
+
 /* 新しい読み取り（試し）の切り替えと、見つけた図枠・表の数。解析の結果がある図面（JWW・DXF を読み込んだ時に作る）だけ出す */
 function r2row(d) {
   const A = d.analysis; if (!A || !A.stats) return '';
   const st = A.stats, on = d.reader === 'v2', any = st.out || st.hold;
   return `<div class="row" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line)"><label class="row" style="gap:8px;min-height:44px;cursor:pointer"><input type="checkbox" data-reader2 ${on ? 'checked' : ''} style="width:22px;height:22px"><b class="small">新しい読み取り（試し）：図枠・表を部屋にしない</b></label>
-    <span class="small muted">${any ? `図枠 ${st.frames}・表 ${st.tables} を見つけました。部屋ではないと見た区画 ${st.out}・決めきれない区画 ${st.hold}` : st.frames ? `図枠 ${st.frames} を見つけました。印を付ける区画はありませんでした` : '図枠・表は見つかりませんでした（今までの読み取りと同じです）'}${on && any ? '。灰色＝部屋ではない、点線＝決めきれない。タップすると理由が出ます' : ''}</span></div>`;
+    <span class="small muted">${any ? `図枠 ${st.frames}・表 ${st.tables} を見つけました。部屋ではないと見た区画 ${st.out}・決めきれない区画 ${st.hold}` : st.frames ? `図枠 ${st.frames} を見つけました。印を付ける区画はありませんでした` : '図枠・表は見つかりませんでした（今までの読み取りと同じです）'}${on && any ? '。灰色＝部屋ではない、点線＝決めきれない。タップすると理由が出ます' : ''}${r2more(A, on)}</span></div>`;
 }
 
 function fixSummary(d) {
@@ -756,7 +766,9 @@ function stepRooms(ctx) {
     groups.forEach(g => {
       const F = g.map(i => plan.faces.find(f => f.i === i)).filter(Boolean);
       const geo = groupGeom(F);
-      const names = [...new Set(F.map(f => f.name).filter(Boolean))];
+      /* 新しい読み取りを選んだ図面では、名前の無い区画に「つないだ文字」からの名前の提案を使う */
+      const r2n = (p.drawing.reader === 'v2' && p.drawing.analysis && p.drawing.analysis.names) || {};
+      const names = [...new Set(F.map(f => f.name || r2n[f.i] || r2n[String(f.i)]).filter(Boolean))];
       const chs = F.map(f => +f.ch || 0).filter(v => v > 0);
       const runs = p.drawing.open ? roomOpenRuns(g, plan, p.drawing.open) : [];
       p.rooms.push({ id: uid('r'), name: names.join('・') || `区画 ${F.map(f => f.no).join('・')}`, shape: 'free', area: geo.area, perim: geo.perim,
@@ -909,7 +921,13 @@ function stepRooms(ctx) {
     touch(p); refresh();
   });
   body.addEventListener('change', e => {
-    if (e.target.matches('[data-reader2]')) { if (e.target.checked) p.drawing.reader = 'v2'; else delete p.drawing.reader; touch(p); draw(); return; }
+    if (e.target.matches('[data-reader2]')) {
+      /* 入れる：表題欄・表の中の「器具」を「器具ではない」にする（元の種類は r2 に覚える）。外す：元の種類に戻す */
+      const fxs = p.drawing.fixtures || [], outs = (p.drawing.analysis && p.drawing.analysis.fxOut) || [];
+      if (e.target.checked) { p.drawing.reader = 'v2'; outs.forEach(o => { const x = fxs[o.k]; if (x && x.t === o.t && !x.edited) { x.r2 = x.t; x.t = 'other'; } }); }
+      else { delete p.drawing.reader; fxs.forEach(x => { if (x.r2) { if (x.t === 'other') x.t = x.r2; delete x.r2; } }); }
+      touch(p); draw(); return;
+    }
     if (e.target.matches('[data-meas-cont]')) { meas.cont = e.target.checked; meas.pts = []; paintSel(); return; }
     if (e.target.id === 'oItem') { lset.out = e.target.value; return; }
     if (e.target.id === 'pItem') { pset.item = e.target.value; paintSel(); return; }

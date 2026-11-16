@@ -4,6 +4,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { analyze } from '../js/reader2/frame.js';
 import { score } from '../js/reader2/score.js';
+import { joinTexts, classify, equipment, normalizeText } from '../js/reader2/text.js';
+import { analyzeAll } from '../js/reader2/index.js';
 
 const rect = (x0, y0, x1, y1) => [[x0, y0, x1, y0], [x1, y0, x1, y1], [x1, y1, x0, y1], [x0, y1, x0, y0]];
 const face = (i, x0, y0, x1, y1, area) => ({ i, no: i + 1, poly: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]], area: area ?? (x1 - x0) * (y1 - y0) });
@@ -106,4 +108,44 @@ test('採点：正しく拾えた・拾えなかった・無いのに作られ�
   assert.equal(S.roomOut, 1);            // 本当の部屋を除外にした（重大）
   assert.deepEqual(S.areaErr, [{ name: '事務室', pct: -4 }]);   // (12−12.5)÷12.5
   assert.equal(score(faces, { 2: { s: 'hold' } }, ans).spurious, 0);   // 保留は「作られた区画」に数えない
+});
+
+test('文字：1文字ずつ等間隔に並んだ文字を言葉につなぐ（横書き・縦書き）。数字の並びと、同じ札のくり返しはつながない', () => {
+  const ch = (s, x0, y, p) => [...s].map((c, k) => ({ t: c, x: x0 + k * p, y }));
+  const T = [...ch('事務室', 10, 5, 0.35), ...ch('階段室', 30, 5, 0.35),                     // 同じ高さでも離れていれば別の言葉
+    { t: '廊', x: 50, y: 10 }, { t: '下', x: 50, y: 9.6 },                                   // 縦書き
+    { t: '12', x: 60, y: 1 }, { t: '34', x: 60.4, y: 1 },                                    // 寸法の数字
+    { t: '4L', x: 70, y: 1 }, { t: '4L', x: 70.5, y: 1 }, { t: '4L', x: 71, y: 1 },          // 同じ札のくり返し
+    { t: '応接室', x: 80, y: 1 }];
+  const J = joinTexts(T);
+  const got = J.texts.map(t => t.t);
+  assert.ok(got.includes('事務室')); assert.ok(got.includes('階段室')); assert.ok(got.includes('廊下')); assert.ok(got.includes('応接室'));
+  assert.ok(!got.includes('事務室階段室')); assert.ok(!got.includes('1234')); assert.equal(got.filter(s => s === '4L').length, 3);
+  assert.equal(J.joined, 3); assert.equal(J.parts, 8);
+  const j = J.texts.find(t => t.t === '事務室'); assert.equal(j.x, 10.35); assert.equal(j.from, 3);   // 言葉の真ん中に置く
+});
+
+test('文字：整える・種類に分ける', () => {
+  assert.equal(normalizeText('ＣＳ２３２Ｂ　(TOTO)'), 'CS232B (TOTO)');
+  assert.equal(normalizeText('\\U+2460プラン'), '①プラン');
+  assert.equal(classify('CH:≒2340'), 'ch'); assert.equal(classify('工事名称'), 'title'); assert.equal(classify('1,835'), 'dim');
+  assert.equal(classify('CS232B+SH232BA(TOTO)'), 'model'); assert.equal(classify('大便器'), 'item'); assert.equal(classify('事務室'), 'room'); assert.equal(classify('備考'), 'other');
+});
+
+test('文字：表の中の器具の名前と、同じ行の品番を組にする（表の外の文字は使わない）', () => {
+  const T = [{ t: '大便器', x: 1, y: 5 }, { t: 'CS232B+SH232BA(TOTO)', x: 2.5, y: 5.02 }, { t: '小便器', x: 1, y: 4.3 }, { t: 'UFH507CR', x: 2.5, y: 4.3 }, { t: '紙巻器', x: 1, y: 3.6 },
+    { t: '大便器', x: 20, y: 5 }, { t: 'XX999', x: 21, y: 5 }];
+  assert.deepEqual(equipment(T, [[0, 0, 10, 10]]), [{ name: '大便器', model: 'CS232B+SH232BA(TOTO)' }, { name: '小便器', model: 'UFH507CR' }]);
+});
+
+test('まとめ：つないだ文字から区画の名前を提案する。表題欄の中の「器具」は器具ではないと見る', () => {
+  const d = sheet();
+  d.segs.push([0, 3, 42, 3]);
+  [...'会議室'].forEach((c, k) => d.texts.push({ t: c, x: 6.3 + k * 0.35, y: 11.5 }));       // 区画1（5〜9 × 10〜13）の中に1文字ずつ
+  d.fixtures.push({ t: 'counter', b: [4, 0.8, 6, 2.2] }, { t: 'toilet', b: [10, 11, 10.5, 11.8] });
+  const A = analyzeAll(d);
+  assert.equal(A.names[1], '会議室');
+  assert.equal(A.text.joined, 1);
+  assert.deepEqual(A.fxOut.map(o => [o.k, o.t]), [[0, 'counter']]);                         // 建物の中の便器はそのまま
+  assert.equal(A.regions.filter(r => r.type === 'title').length, 1);
 });
