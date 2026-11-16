@@ -269,6 +269,8 @@ function r2more(A, on) {
   if (n) o.push(`名前の無い区画 ${n} 個に、中の文字から名前を付けられます${on ? '（部屋にする時に入ります）' : ''}`);
   if ((A.fxOut || []).length) o.push(`表題欄・表の中の「器具」${A.fxOut.length} 個は、会社のマークなどの見間違いと見ています${on ? '（器具の数から外しました）' : ''}`);
   if ((A.equip || []).length) o.push(`表の設備機器：${A.equip.slice(0, 8).map(e => `${esc(e.name)} ${esc(e.model)}`).join('／')}${A.equip.length > 8 ? ` ほか${A.equip.length - 8}件` : ''}`);
+  const ti = A.title || {};
+  if ((ti.project || []).length || (ti.sheet || []).length) o.push(`表題欄：${(ti.project || []).length ? `工事の名前「${esc(ti.project[0])}」` : ''}${(ti.sheet || []).length ? ` 図面の名前「${ti.sheet.slice(0, 4).map(esc).join('」「')}」` : ''}${(ti.scale || []).length ? ` 縮尺 ${esc(ti.scale[0])}` : ''}${(ti.date || []).length ? ` 日付 ${esc(ti.date[0])}` : ''}${(ti.project || []).length ? ` <button class="btn sm" data-act="r2name" style="min-height:36px;margin-left:6px">案件の名前に入れる</button>` : ''}`);
   return o.length ? '<br>' + o.join('<br>') : '';
 }
 
@@ -962,6 +964,7 @@ function stepRooms(ctx) {
     if (da && !da.closest('[data-room]')) {
       const a = da.dataset.act;
       if (a === 'fixLines') return fixLinesDialog(p, () => {});
+      if (a === 'r2name') { const v = (((p.drawing.analysis || {}).title || {}).project || [])[0]; if (v) { p.name = v; touch(p); refresh(); toast(`案件の名前を「${v}」にしました`); } return; }
       if (a === 'measClear') { meas.pts = []; paintSel(); return; }
       if (a === 'measFace') {
         /* 壁の線で囲まれていなくて区画として拾えなかった部屋を、タップした角で囲んで区画にする（読み取りは変えない。図面に区画を1つ足すだけ）。

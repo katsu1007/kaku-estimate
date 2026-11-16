@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { analyze } from '../js/reader2/frame.js';
 import { score } from '../js/reader2/score.js';
-import { joinTexts, classify, equipment, normalizeText, modelFor } from '../js/reader2/text.js';
+import { joinTexts, classify, equipment, normalizeText, modelFor, titleInfo } from '../js/reader2/text.js';
 import { analyzeAll } from '../js/reader2/index.js';
 
 const rect = (x0, y0, x1, y1) => [[x0, y0, x1, y0], [x1, y0, x1, y1], [x1, y1, x0, y1], [x0, y1, x0, y0]];
@@ -158,4 +158,17 @@ test('図面の設備機器の表から、器具の種類ごとの品番を選�
   assert.equal(modelFor('counter', eq), 'MLUA #NM1(TOTO)');
   assert.equal(modelFor('slop', eq), 'SK322(TOTO)');
   assert.equal(modelFor('bath', eq), ''); assert.equal(modelFor('toilet', []), '');
+});
+
+test('表題欄から工事の名前・図面の名前・縮尺・日付を読む（見出しの右、無ければ下。見出しの言葉は値にしない）', () => {
+  const T = [{ t: '工事名称', x: 1, y: 3 }, { t: '○○ビル　3階便所改修工事', x: 4, y: 3.02 }, { t: '図面名称', x: 1, y: 2 }, { t: '平面図（計画）', x: 4, y: 2 },
+    { t: 'SCALE', x: 1, y: 1 }, { t: '1/50 (A3)', x: 2.2, y: 0.95 }, { t: 'DATE', x: 6, y: 1 }, { t: '2026.10.31', x: 7.2, y: 0.95 }, { t: '承認', x: 9, y: 3 },
+    { t: '工事名称', x: 50, y: 3 }, { t: '別の工事', x: 53, y: 3 }];                    // 表題欄の外
+  const R = titleInfo(T, [[0, 0, 20, 4]]);
+  assert.deepEqual(R.project, ['○○ビル 3階便所改修工事']); assert.deepEqual(R.sheet, ['平面図（計画）']);
+  assert.deepEqual(R.scale, ['1/50 (A3)']); assert.deepEqual(R.date, ['2026.10.31']);
+  assert.deepEqual(titleInfo([{ t: '工事名称', x: 1, y: 3 }, { t: '図面名称', x: 4, y: 3 }], [[0, 0, 20, 4]]).project, []);   // 右にあるのが別の見出しなら読まない
+  assert.deepEqual(titleInfo([{ t: '工事名称', x: 1, y: 3 }, { t: '△△邸改修', x: 1.5, y: 2.2 }], [[0, 0, 20, 4]]).project, ['△△邸改修']);   // 下にある値
+  const J = titleInfo([{ t: 'SCALE', x: 1, y: 1 }, { t: 'aoba', x: 2, y: 1 }, { t: '工事名称', x: 1, y: 3 }, { t: 'PROTECTED', x: 3, y: 3 }], [[0, 0, 20, 4]]);
+  assert.deepEqual(J.scale, []); assert.deepEqual(J.project, []);                              // 形が合わない物は読まない
 });

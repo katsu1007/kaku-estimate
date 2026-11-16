@@ -88,3 +88,30 @@ export function modelFor(type, equip = []) {
   hit.sort((a, b) => b.name.length - a.name.length);
   return hit.length ? String(hit[0].model || '').trim() : '';
 }
+
+/* 表題欄から、工事の名前・図面の名前・縮尺・日付を読む。boxes：表題欄の場所 [[x0,y0,x1,y1]…]（図面が何枚も並んでいれば何個も）。
+ * 見出し（「工事名称」など）と同じ行で右にある一番近い文字、無ければすぐ下の文字を値にする。
+ * 見出しの言葉が混ざった物・長すぎる物は、読み取りとして信用しない（間違った名前を出すより「読めなかった」にする）。
+ * 戻り：{ project:[…], sheet:[…], scale:[…], date:[…] }（枠ごとに読めた値。同じ値は1つにまとめる） */
+const TITLE_LABELS = { project: /^(工事名称|工事名|工事件名)$/, sheet: /^(図面名称|図面名)$/, scale: /^(SCALE|縮尺)$/i, date: /^(DATE|日付|作成日)$/i };
+const ANY_LABEL = /工事名|図面名|図面番号|SCALE|縮尺|DATE|日付|承認|設計|製図|検図|作成|担当|No[.．]?$|^備考/i;
+export function titleInfo(texts = [], boxes = []) {
+  const out = { project: [], sheet: [], scale: [], date: [] };
+  boxes.forEach(b => {
+    const T = texts.filter(t => t.x >= b[0] && t.x <= b[2] && t.y >= b[1] && t.y <= b[3]).map(t => ({ ...t, s: String(t.t).replace(/\s+/g, '') }));
+    const h = b[3] - b[1], w = b[2] - b[0];
+    Object.entries(TITLE_LABELS).forEach(([k, re]) => {
+      T.filter(t => re.test(t.s)).forEach(lab => {
+        const ok = t => t !== lab && !ANY_LABEL.test(t.s) && t.s.length >= 2 && t.s.length <= 40;
+        const right = T.filter(t => ok(t) && t.x > lab.x && t.x - lab.x <= w * 0.5 && Math.abs(t.y - lab.y) <= h * 0.12).sort((p, q) => p.x - q.x)[0];
+        const below = right ? null : T.filter(t => ok(t) && lab.y - t.y > 0 && lab.y - t.y <= h * 0.35 && Math.abs(t.x - lab.x) <= w * 0.2).sort((p, q) => q.y - p.y)[0];
+        const v = right || below; if (!v) return;
+        const val = String(v.t).replace(/[\u3000\s]+/g, ' ').trim();
+        /* 値として形が合わない物は読まない：縮尺は「1/50」の形、日付は数字と区切り、名前は日本語の字を含む物 */
+        const fit = k === 'scale' ? /\d\s*[\/:：]\s*\d|NON|ノンスケール/i.test(val) : k === 'date' ? /\d{2,4}\s*[.\/年-]\s*\d{1,2}/.test(val) : /[\u3040-\u30ff\u4e00-\u9fff]/.test(val);
+        if (fit && !out[k].includes(val)) out[k].push(val);
+      });
+    });
+  });
+  return out;
+}

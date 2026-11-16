@@ -4,9 +4,10 @@
  *   names { 区画の i: 名前 }：名前の無い区画の中に、部屋らしい文字が直にあれば、その名前の提案（つないだ文字も使う）
  *   fxOut [{ k: 器具の番号, why }]：表題欄・表の中にある「器具」（会社のマークや表の線の見間違い）
  *   equip [{ name, model }]：表の中の、器具の名前と品番の組
+ *   title { project, sheet, scale, date }：表題欄から読めた工事の名前・図面の名前・縮尺・日付
  *   text { total, joined, parts, kinds }：文字の数、つないだ数、種類ごとの数 */
 import { analyze as analyzeFrame } from './frame.js';
-import { joinTexts, classify, equipment } from './text.js';
+import { joinTexts, classify, equipment, titleInfo } from './text.js';
 
 export const VER = 2;
 const pip = (x, y, P) => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const a = P[i], b = P[j]; if ((a[1] > y) !== (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; };
@@ -33,5 +34,6 @@ export function analyzeAll({ segs = [], faces = [], texts = [], fixtures = [], d
     if (r) fxOut.push({ k, t: x.t, why: r.type === 'title' ? '表題欄の中にあります（会社のマークなどの見間違い）' : '表の中にあります（表の線や文字の見間違い）' });
   });
   const equip = equipment(J.texts, A.regions.filter(r => r.type === 'table').map(r => r.box)).slice(0, 40);
-  return { ...A, ver: VER, names, fxOut, equip, text: { total: texts.length, after: J.texts.length, joined: J.joined, parts: J.parts, kinds } };
+  const title = titleInfo(J.texts, A.regions.filter(r => r.type === 'title').map(r => r.box));
+  return { ...A, ver: VER, names, fxOut, equip, title, text: { total: texts.length, after: J.texts.length, joined: J.joined, parts: J.parts, kinds } };
 }
