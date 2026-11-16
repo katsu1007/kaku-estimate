@@ -54,18 +54,34 @@ export function planView(box, plan, opt = {}) {
   box.innerHTML = `<div class="pv-wrap"><svg class="pv" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"><g id="${gid}">
       ${opt.bg ? `<image class="pv-bg" href="${opt.bg.src}" x="0" y="0" width="${opt.bg.w * opt.bg.s}" height="${opt.bg.h * opt.bg.s}" preserveAspectRatio="none" opacity=".35" pointer-events="none" ${bgOn() ? '' : 'display="none"'}/>` : ''}
       <g class="faces"></g>
-      <path d="${pathOf(plan.dsegs || [])}" fill="none" stroke="var(--faint)" stroke-width="${lw}" stroke-dasharray="${lw * 4} ${lw * 3}"/>
-      <path d="${pathOf(plan.segs)}" fill="none" stroke="var(--text)" stroke-width="${lw}" stroke-linecap="round" opacity=".85"/>
+      <path d="${pathOf(plan.dsegs || [])}" fill="none" stroke="var(--faint)" stroke-width="1" vector-effect="non-scaling-stroke" stroke-dasharray="4 3"/>
+      <path d="${pathOf(plan.segs)}" fill="none" stroke="var(--text)" stroke-width="1" vector-effect="non-scaling-stroke" stroke-linecap="round" opacity=".85"/>
       ${(plan.gsegs || []).length ? `<path class="pv-grid" d="${pathOf(plan.gsegs)}" fill="none" stroke="#e5534b" stroke-width="${lw}" stroke-dasharray="${lw * 14} ${lw * 3} ${lw * 2} ${lw * 3}" opacity=".75" pointer-events="none" ${gridOn() ? '' : 'display="none"'}/>` : ''}
-      ${opt.fixG ? `<path d="${opt.fixG}" transform="scale(0.001,0.001)" fill="none" stroke="var(--text)" stroke-width="${lw * 1000}" opacity=".8" pointer-events="none"/>` : ''}
-      ${opt.fixGd ? `<path d="${opt.fixGd}" transform="scale(0.001,0.001)" fill="none" stroke="var(--faint)" stroke-width="${lw * 1000}" stroke-dasharray="${lw * 4000} ${lw * 3000}" pointer-events="none"/>` : ''}
+      ${opt.fixG ? `<path d="${opt.fixG}" transform="scale(0.001,0.001)" fill="none" stroke="var(--text)" stroke-width="1" vector-effect="non-scaling-stroke" opacity=".8" pointer-events="none"/>` : ''}
+      ${opt.fixGd ? `<path d="${opt.fixGd}" transform="scale(0.001,0.001)" fill="none" stroke="var(--faint)" stroke-width="1" vector-effect="non-scaling-stroke" stroke-dasharray="4 3" pointer-events="none"/>` : ''}
       <g class="fixes" pointer-events="none"></g>
       <g class="overlay" pointer-events="none"></g>
       <g class="labels" font-size="${fs}" text-anchor="middle"></g></g></svg>
+    <div class="pv-note" hidden>拡大すると、区画の番号が出ます</div>
     <div class="pv-loupe" hidden><svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"><use href="#${gid}"/><g class="lp-mark"></g></svg></div>
     <div class="pv-tools">${opt.bg ? `<button class="iconbtn pv-gridbtn ${bgOn() ? 'on' : ''}" data-z="bg" aria-pressed="${bgOn()}" title="下に敷いた図を出す・隠す">図</button>` : ''}${(plan.gsegs || []).length ? `<button class="iconbtn pv-gridbtn ${gridOn() ? 'on' : ''}" data-z="grid" aria-pressed="${gridOn()}" title="通り芯を出す・隠す">芯</button>` : ''}<button class="iconbtn" data-z="in" aria-label="拡大">＋</button><button class="iconbtn" data-z="out" aria-label="縮小">－</button><button class="iconbtn" data-z="fit" aria-label="全体を表示">⤢</button></div></div>`;
   const svg = box.querySelector('svg');
-  const set = () => svg.setAttribute('viewBox', vb.join(' '));
+  /* 区画の番号の字：区画の大きさに合わせた大きさにして、画面で小さすぎて読めない字（7px 未満）は出さない。
+   * 区画が何百もある図面で、字が重なって図が見えなくなるため。拡大すると、その大きさで読める区画から順に出る */
+  const fzOf = new Map();
+  plan.faces.forEach(f => { let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity; f.poly.forEach(q => { if (q[0] < a) a = q[0]; if (q[0] > c) c = q[0]; if (q[1] < b) b = q[1]; if (q[1] > d) d = q[1]; });
+    fzOf.set(f.i, Math.max(0.02, Math.min(fs, (c - a) / (2.4 + 0.62 * String(f.no ?? '').length), (d - b) / 2.6))); });
+  let visT = 0;
+  function vis() {
+    cancelAnimationFrame(visT);
+    visT = requestAnimationFrame(() => {
+      const r = svg.getBoundingClientRect(); if (!r.width) return;
+      const sc = Math.min(r.width / vb[2], r.height / vb[3]); let hid = 0;
+      svg.querySelectorAll('.labels text').forEach(t => { const fz = +t.dataset.fz || fs, on = fz * sc >= 7; if (on) { t.removeAttribute('display'); t.setAttribute('font-size', Math.min(fz, 17 / sc)); } else { t.setAttribute('display', 'none'); hid++; } });   // 大きく拡大した時は、字を画面で 17px までにする
+      const note = box.querySelector('.pv-note'); if (note) note.hidden = !hid;
+    });
+  }
+  const set = () => { svg.setAttribute('viewBox', vb.join(' ')); vis(); };
   set();
   /* 図面の縦横の比に合わせて高さを決める（横長の図面で下が空かないように） */
   const fitH = () => { const w = box.clientWidth || 600; svg.style.height = Math.round(Math.max(240, Math.min(window.innerHeight * 0.62, 560, w * base[3] / base[2]))) + 'px'; };
@@ -88,9 +104,11 @@ export function planView(box, plan, opt = {}) {
     svg.querySelector('.labels').innerHTML = plan.faces.map(f => {
       const o = owner.get(f.i), s = sel.has(f.i);
       const m = !s && o == null ? mk(f) : null;
-      if (m) return `<text x="${f.cx}" y="${-f.cy}" fill="${m.s === 'out' ? 'var(--faint)' : 'var(--warn)'}" font-weight="700" pointer-events="none">${m.s === 'out' ? (m.type === 'frame' ? '図枠' : m.type === 'title' ? '表題欄' : '表') : '？'}<tspan x="${f.cx}" dy="1.15em" font-weight="400" font-size="${fs * 0.8}">区画${f.no}</tspan></text>`;
-      return `<text x="${f.cx}" y="${-f.cy}" fill="${s ? 'var(--accent)' : o != null ? roomColor(o) : 'var(--muted)'}" font-weight="700" pointer-events="none">区画${f.no}<tspan x="${f.cx}" dy="1.15em" font-weight="400" font-size="${fs * 0.8}">${(Math.round(f.area * 100) / 100)}㎡</tspan></text>`;
+      const fz = fzOf.get(f.i) || fs;
+      if (m) return `<text x="${f.cx}" y="${-f.cy}" font-size="${fz}" data-fz="${fz}" fill="${m.s === 'out' ? 'var(--faint)' : 'var(--warn)'}" font-weight="700" pointer-events="none">${m.s === 'out' ? (m.type === 'frame' ? '図枠' : m.type === 'title' ? '表題欄' : '表') : '？'}<tspan x="${f.cx}" dy="1.15em" font-weight="400" font-size="0.8em">区画${f.no}</tspan></text>`;
+      return `<text x="${f.cx}" y="${-f.cy}" font-size="${fz}" data-fz="${fz}" fill="${s ? 'var(--accent)' : o != null ? roomColor(o) : 'var(--muted)'}" font-weight="700" pointer-events="none">区画${f.no}<tspan x="${f.cx}" dy="1.15em" font-weight="400" font-size="0.8em">${(Math.round(f.area * 100) / 100)}㎡</tspan></text>`;
     }).join('');
+    vis();
   }
   paint();
   const overlay = html => { svg.querySelector('.overlay').innerHTML = html; };
