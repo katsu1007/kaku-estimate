@@ -30,7 +30,7 @@ const wait = (fn, ms) => new Promise(res => { const t0 = Date.now(); const t = s
 /* JWW・DXF を読んで、図面（区画）・器具・ドア・開口を返す。
  * 前のKAKUの変数（KAKU_plan・current・data など）は let で宣言されていて window から見えないので、
  * 前のKAKUの中で式を評価して読み書きする（W.eval） */
-export async function readWithFixtures(file) {
+export async function readWithFixtures(file, opt = {}) {
   const W = await getReader();
   const G = code => W.eval(code);
   const before = G('data.map(p=>p.id)');
@@ -64,6 +64,31 @@ export async function readWithFixtures(file) {
       const E = W.document.getElementById('engineFrame').contentWindow;
       out.longSegs = JSON.parse(E.eval(`(()=>{const M=rgM(),o=[];RG.segs.forEach(s=>{const a=KAKU_rerot([s[1]*M,s[2]*M],M),b=KAKU_rerot([s[3]*M,s[4]*M],M),dx=Math.abs(b[0]-a[0]),dy=Math.abs(b[1]-a[1]);if(Math.max(dx,dy)<1||Math.min(dx,dy)>0.01)return;o.push([a[0],a[1],b[0],b[1]].map(v=>Math.round(v*1000)/1000))});return JSON.stringify(o.slice(0,60000))})()`));
     } catch (e) { out.longSegs = []; }
+    /* 新しい読み取り・段階3：線のまとまりの「使う・使わない」を選び直して、同じ区画探しをもう一度回す。
+     * opt.regroup(out, raw) が「使わないにするまとまりの番号」を返した時だけ回す。回した後は元の選び方に戻して探し直すので、今の読み取りの結果は変わらない。
+     * 開口（ドア・扉の無い開口）は、前のKAKUの調べ方に、探し直した区画を一時的に渡して出す */
+    if (opt.regroup) {
+      try {
+        const E = W.document.getElementById('engineFrame').contentWindow;
+        const raw = JSON.parse(E.eval(`(()=>{const M=rgM(),ix=new Map(RG.groups.map((g,i)=>[g.key,i])),q=v=>Math.round(v*1000)/1000;
+          return JSON.stringify({groups:RG.groups.map(g=>({layer:g.layer,on:!!g.on})),segs:RG.segs.map(s=>{const a=KAKU_rerot([s[1]*M,s[2]*M],M),b=KAKU_rerot([s[3]*M,s[4]*M],M),i=ix.get(gkey(s));return [q(a[0]),q(a[1]),q(b[0]),q(b[1]),i==null?-1:i]})})})()`));
+        const off = (opt.regroup(out, raw) || []).filter(i => raw.groups[i] && raw.groups[i].on);
+        if (off.length) {
+          E.__kxOff = off;
+          E.eval(`(()=>{const keep=RG.groups.map(g=>g.on);try{window.__kxOff.forEach(i=>{RG.groups[i].on=false});rgCompute();window.__kxP2=KakuEngine.plan()}finally{RG.groups.forEach((g,i)=>{g.on=keep[i]});rgCompute()}})()`);
+          const P2 = E.__kxP2; E.__kxP2 = null;
+          if (P2 && P2.faces && P2.faces.length) {
+            W.__kxP2 = P2;
+            const R2 = JSON.parse(G(`(()=>{const keep=KAKU_plan,P=window.__kxP2,q=v=>Math.round(v*1000)/1000,open={};let O={};
+              try{KAKU_plan=P;O=(typeof KX_openScan==='function'&&KX_openScan())||{}}finally{KAKU_plan=keep}
+              Object.keys(O).forEach(k=>{open[k]=O[k].map(r=>({ty:r.ty,len:Math.round(r.len*100)/100,a:r.a.map(q),b:r.b.map(q),n:r.n.map(q)}))});
+              return JSON.stringify({open,faces:P.faces.map(f=>({i:f.i,name:f.name||'',area:f.area,peri:f.peri,ch:f.ch||0,poly:f.poly.map(p=>[q(p[0]),q(p[1])])}))})})()`));
+            W.__kxP2 = null;
+            out.v2 = { faces: R2.faces, open: R2.open, off };
+          }
+        }
+      } catch (e) { console.warn('区画の探し直しに失敗', e); }
+    }
     return out;
   } finally {
     /* 作業用の案件と、その図面の保存を消す（前のKAKUの案件一覧に残さない） */

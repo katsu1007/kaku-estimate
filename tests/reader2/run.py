@@ -28,7 +28,7 @@ with sync_playwright() as p:
             if pg.evaluate("async()=>{const a=await import('./js/app.js');const p=a.state.projects.find(x=>x.id==='%s');return !!(p.drawing&&p.drawing.plan&&p.drawing.fixtures)}"%pid): ok=True;break
         if not ok: print(tag,'読めませんでした');pg.close();continue
         r=pg.evaluate("""async()=>{const a=await import('./js/app.js');const p=a.state.projects.find(x=>x.id==='%s');const d=p.drawing,P=d.plan,A=d.analysis||null;
-          return {faces:P.faces.map(f=>({i:f.i,no:f.no,name:f.name,area:f.area,peri:f.peri,poly:f.poly})),fixtures:(d.fixtures||[]).map(x=>({t:x.t,b:x.b})),doors:(d.doors||[]).length,analysis:A}}"""%pid)
+          return {faces:P.faces.map(f=>({i:f.i,no:f.no,name:f.name,area:f.area,peri:f.peri,poly:f.poly})),fixtures:(d.fixtures||[]).map(x=>({t:x.t,b:x.b})),doors:(d.doors||[]).length,analysis:A,v2:d.v2?{faces:d.v2.faces.map(f=>({i:f.i,no:f.no,name:f.name,area:f.area,poly:f.poly})),roles:d.v2.roles,open:Object.keys(d.v2.open||{}).length,openDrop:d.v2.openDrop||0,marks:d.v2.analysis.marks,stats:d.v2.analysis.stats,names:d.v2.analysis.names}:null}}"""%pid)
         r['errs']=errs
         json.dump(r,open(f'{OUT}/{tag}.json','w'),ensure_ascii=False)
         A=r['analysis'] or {'stats':{},'regions':[],'marks':{}}
@@ -48,6 +48,8 @@ with sync_playwright() as p:
             sc=pg.evaluate("async([r,ans])=>{const s=await import('./js/reader2/score.js');return s.score(r.faces,(r.analysis||{}).marks||{},ans)}",[r,json.load(open(ap))])
             line+='  採点 '+json.dumps({k:v for k,v in sc.items() if k!='detail'},ensure_ascii=False)
             if sc.get('roomOut',0)>0: bad+=1
+        V=r.get('v2')
+        if V: line+=f"\n{'':<34} 探し直し：区画{len(V['faces'])}（{sum(f['area'] for f in V['faces']):.1f}㎡） 外した線{V['roles']} 除外{V['stats'].get('out',0)} 保留{V['stats'].get('hold',0)}（輪・帯{V['stats'].get('shapes',0)}） 開口のある区画{V['open']}（開口を引かない{V.get('openDrop',0)}） 名前の提案{len(V['names'])}"
         if errs: line+='  JSエラー '+errs[0][:80]
         print(line,flush=True);pg.close()
     b.close()

@@ -12,9 +12,29 @@ import { joinTexts, classify, equipment, titleInfo } from './text.js';
 export const VER = 2;
 const pip = (x, y, P) => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const a = P[i], b = P[j]; if ((a[1] > y) !== (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; };
 
-export function analyzeAll({ segs = [], faces = [], texts = [], fixtures = [], doors = [] } = {}) {
+/* 探し直した区画（段階3）だけに使う印：外壁の外をぐるっと回る輪と、細い帯。どちらも決めきれない物として「保留」にする（部屋にもできる）
+ *   輪：ほかの区画2つ以上をすっぽり囲み、囲まれた区画のまとまりが、どの辺からも 25cm 以上内側にある（便所とブースのように壁に付いている物は輪ではない）
+ *   帯：細い方が 35cm 以下で、長さがその4倍以上 */
+export function shapeMarks(faces, marks = {}) {
+  const B = faces.filter(f => f && f.poly && f.poly.length >= 3).map(f => { const xs = f.poly.map(q => q[0]), ys = f.poly.map(q => q[1]); return { f, b: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] }; });
+  const out = {};
+  B.forEach(a => {
+    if (marks[a.f.i]) return;
+    const w = a.b[2] - a.b[0], h = a.b[3] - a.b[1], lo = Math.min(w, h), hi = Math.max(w, h);
+    if (lo <= 0.35 && hi >= lo * 4) { out[a.f.i] = { s: 'hold', type: 'strip', why: '細い帯です（見出しの帯や壁の厚みかもしれません）' }; return; }
+    const kids = B.filter(c => c !== a && c.b[0] >= a.b[0] - 0.02 && c.b[1] >= a.b[1] - 0.02 && c.b[2] <= a.b[2] + 0.02 && c.b[3] <= a.b[3] + 0.02 && (c.b[2] - c.b[0]) * (c.b[3] - c.b[1]) < w * h * 0.9);
+    if (kids.length < 2) return;
+    const u = [Math.min(...kids.map(c => c.b[0])), Math.min(...kids.map(c => c.b[1])), Math.max(...kids.map(c => c.b[2])), Math.max(...kids.map(c => c.b[3]))];
+    const inset = Math.min(u[0] - a.b[0], u[1] - a.b[1], a.b[2] - u[2], a.b[3] - u[3]);
+    if (inset >= 0.25 && (u[2] - u[0]) * (u[3] - u[1]) >= w * h * 0.4) out[a.f.i] = { s: 'hold', type: 'ring', why: 'ほかの区画をぐるっと囲んでいます（建物の外まわりかもしれません）' };
+  });
+  return out;
+}
+
+export function analyzeAll({ segs = [], faces = [], texts = [], fixtures = [], doors = [], shapes = false } = {}) {
   const J = joinTexts(texts);
   const A = analyzeFrame({ segs, faces, texts: J.texts, fixtures, doors });
+  if (shapes) { const M = shapeMarks(faces, A.marks); Object.assign(A.marks, M); A.stats.hold += Object.keys(M).length; A.stats.shapes = Object.keys(M).length; }
   const kinds = {}; J.texts.forEach(t => { const k = classify(t.t); kinds[k] = (kinds[k] || 0) + 1; });
   /* 名前の提案：印の無い・名前の無い区画に、部屋らしい文字が直に（中の小さい区画に入らずに）1〜2種類あれば */
   const names = {}, rooms = J.texts.filter(t => classify(t.t) === 'room');

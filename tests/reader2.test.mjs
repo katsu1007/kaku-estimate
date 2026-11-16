@@ -172,3 +172,25 @@ test('表題欄から工事の名前・図面の名前・縮尺・日付を読�
   const J = titleInfo([{ t: 'SCALE', x: 1, y: 1 }, { t: 'aoba', x: 2, y: 1 }, { t: '工事名称', x: 1, y: 3 }, { t: 'PROTECTED', x: 3, y: 3 }], [[0, 0, 20, 4]]);
   assert.deepEqual(J.scale, []); assert.deepEqual(J.project, []);                              // 形が合わない物は読まない
 });
+
+/* 段階3：線のまとまりの役割 */
+import { groupRoles } from '../js/reader2/lines.js';
+import { shapeMarks } from '../js/reader2/index.js';
+test('線のまとまり：細かい線・寸法の線・表の線だけを外す。決め手の無い物は使う', () => {
+  const segs = [];
+  for (let i = 0; i < 4; i++) segs.push([0, i * 3, 9, i * 3, 0], [i * 3, 0, i * 3, 9, 0]);                 // 0：壁（長い線）
+  for (let i = 0; i < 300; i++) segs.push([1 + i * 0.01, 1, 1 + i * 0.01 + 0.008, 1.005, 1]);              // 1：細かい線
+  for (let i = 0; i < 4; i++) segs.push([i * 2, -1, i * 2 + 2, -1, 2]);                                    // 2：寸法の線（数字が付く）
+  for (let i = 0; i < 6; i++) segs.push([20, i, 25, i, 3]);                                                // 3：表の線
+  for (let i = 0; i < 5; i++) segs.push([30 + i, 0, 30 + i, 2, 4]);                                        // 4：使っていないまとまり
+  const texts = [0, 1, 2, 3].map(i => ({ t: '2000', x: i * 2 + 1, y: -0.9 }));
+  const R = groupRoles({ segs, groups: [{ on: true }, { on: true }, { on: true }, { on: true }, { on: false }], texts, regions: [{ type: 'table', box: [20, 0, 25, 5] }] });
+  assert.deepEqual(R.off, { 1: 'tiny', 2: 'dim', 3: 'sheet' });
+  const all = groupRoles({ segs: segs.filter(s => s[4] === 1), groups: [{ on: false }, { on: true }], texts: [], regions: [] });
+  assert.deepEqual(all.off, {});                                                                            // 全部外れる時は何もしない
+});
+test('探し直した区画の印：外まわりの輪と細い帯は保留。壁に付いたブースを持つ便所は印なし', () => {
+  const box = (i, a, b, c, d) => ({ i, area: (c - a) * (d - b), poly: [[a, b], [c, b], [c, d], [a, d]] });
+  const M = shapeMarks([box(0, 0, 0, 10, 8), box(1, 1, 1, 9, 7), box(2, 1.2, 5.5, 2.4, 7), box(3, 2.6, 5.5, 3.8, 7), box(4, 0, 9, 6, 9.3)]);
+  assert.equal(M[0].type, 'ring'); assert.equal(M[4].type, 'strip'); assert.equal(M[1], undefined); assert.equal(M[2], undefined);
+});

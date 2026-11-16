@@ -4,6 +4,7 @@ import { roomGeom, lineQty, netQty, totals, check, MEASURES, KINDS, isRoomBased,
 import { workChecks } from './workcheck.js';
 import { makerLinks } from './makers.js';
 import { analyzeAll as analyzeFrame } from './reader2/index.js';
+import { groupRoles, ROLE } from './reader2/lines.js';
 import { modelFor } from './reader2/text.js';
 import { SYS, MANY, sysOptions, rebuild, PIPE_LOSS } from './piping.js';
 import { importDrawing, groupGeom, planCH, orderFaces as orderFacesOf } from './drawing.js';
@@ -274,12 +275,20 @@ function r2more(A, on) {
   return o.length ? '<br>' + o.join('<br>') : '';
 }
 
+/* 段階3：壁ではなさそうな線を外して区画を探し直した結果の一行 */
+function r2lines(d, on) {
+  const v = d.v2; if (!v || !v.faces) return '';
+  const rs = Object.keys(v.roles || {}).map(k => `${ROLE[k] || k} ${v.roles[k].toLocaleString()}本`).join('・');
+  const n1 = (d.v1 ? d.v1.faces : d.plan.faces).length, n2 = (d.v1 ? d.plan.faces : v.faces).length;
+  return `<br>壁ではなさそうな線（${rs}）を外して、区画を探し直しました：区画 ${n1} → ${n2} 個${on ? '（探し直した区画を出しています。印を外すと今までの区画に戻ります）' : '（印を付けると、探し直した区画に入れ替わります）'}${v.openDrop ? `。形が壁の線に合っていない区画 ${v.openDrop} 個は、扉の無い開口を壁から引いていません` : ''}`;
+}
+
 /* 新しい読み取り（試し）の切り替えと、見つけた図枠・表の数。解析の結果がある図面（JWW・DXF を読み込んだ時に作る）だけ出す */
 function r2row(d) {
   const A = d.analysis; if (!A || !A.stats) return '';
   const st = A.stats, on = d.reader === 'v2', any = st.out || st.hold;
   return `<div class="row" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line)"><label class="row" style="gap:8px;min-height:44px;cursor:pointer"><input type="checkbox" data-reader2 ${on ? 'checked' : ''} style="width:22px;height:22px"><b class="small">新しい読み取り（試し）：図枠・表を部屋にしない</b></label>
-    <span class="small muted">${any ? `図枠 ${st.frames}・表 ${st.tables} を見つけました。部屋ではないと見た区画 ${st.out}・決めきれない区画 ${st.hold}` : st.frames ? `図枠 ${st.frames} を見つけました。印を付ける区画はありませんでした` : '図枠・表は見つかりませんでした（今までの読み取りと同じです）'}${on && any ? '。灰色＝部屋ではない、点線＝決めきれない。タップすると理由が出ます' : ''}${r2more(A, on)}</span></div>`;
+    <span class="small muted">${any ? `図枠 ${st.frames}・表 ${st.tables} を見つけました。部屋ではないと見た区画 ${st.out}・決めきれない区画 ${st.hold}` : st.frames ? `図枠 ${st.frames} を見つけました。印を付ける区画はありませんでした` : '図枠・表は見つかりませんでした（今までの読み取りと同じです）'}${on && any ? '。灰色＝部屋ではない、点線＝決めきれない。タップすると理由が出ます' : ''}${r2lines(d, on)}${r2more(A, on)}</span></div>`;
 }
 
 function fixSummary(d) {
@@ -892,7 +901,13 @@ function stepRooms(ctx) {
         const pic = !cad && files.find(f => /^image\//.test(f.type) || /\.(png|jpe?g|heic|webp|gif)$/i.test(f.name));
         if (pic) { if (st) st.textContent = ''; openSk(pic); e.target.value = ''; return; }
         if (cad) {
-          res = await readWithFixtures(cad);
+          /* 新しい読み取り・段階3：壁ではなさそうな線のまとまり（細かい線・寸法・表や図枠）を外して、区画を探し直した結果も一緒にもらう（別に覚えるだけ） */
+          res = await readWithFixtures(cad, { regroup: (out, raw) => {
+            try { const A1 = analyzeFrame({ segs: out.longSegs && out.longSegs.length ? out.longSegs : out.plan.segs, faces: out.plan.faces, texts: out.texts || [], fixtures: out.fixtures || [], doors: out.doorList || [] });
+              const g = groupRoles({ segs: raw.segs, groups: raw.groups, texts: out.texts || [], regions: A1.regions });
+              out.roles = {}; Object.keys(g.off).forEach(i => { const r = g.off[i], o = g.stats.find(x => x.gi === +i); out.roles[r] = (out.roles[r] || 0) + (o ? o.n : 0); });
+              return Object.keys(g.off).map(Number);
+            } catch (e2) { console.warn('線の役割を見分けられませんでした', e2); return []; } } });
           orderFacesOf(res.plan); res.plan.order = 2;
         } else res = await importDrawing(files);
         if (!res.plan || !res.plan.faces.length) { const msg = res.message || '部屋の区画が見つかりませんでした'; if (st) st.textContent = msg;
@@ -903,6 +918,13 @@ function stepRooms(ctx) {
         p.drawing = { fileName: (cad ? [cad] : files).map(f => f.name).join('、'), at: Date.now(), plan: res.plan, fixtures: cad ? res.fixtures : null, open: cad ? res.open : null, doors: cad ? (res.doorList || []) : [], fixG: cad ? res.fixG : '', fixGd: cad ? res.fixGd : '' };
         /* 新しい読み取り（js/reader2）：図枠・表の印を作って覚えておく。今の読み取りの結果（区画・器具）は変えない。画面に出すのは「新しい読み取り」を選んだ時だけ */
         if (cad) { try { p.drawing.analysis = analyzeFrame({ segs: res.longSegs && res.longSegs.length ? res.longSegs : res.plan.segs, faces: res.plan.faces, texts: res.texts || [], fixtures: res.fixtures || [], doors: res.doorList || [] }); } catch (e2) { console.warn('新しい読み取りの解析に失敗', e2); } }
+        if (cad && res.v2) { try { const P2 = { faces: res.v2.faces }; orderFacesOf(P2);
+          /* 扉の無い開口は「区画の辺に壁の線が無い所」で決めるので、区画の形が壁の線に沿っていないと、辺のほとんどが開口になる。
+           * 開口が周りの3割以上になる区画は、形が合っていないと見て、扉の無い開口を引かない（分からない物を引かない。ドアは残す） */
+          const op2 = {}; let drop = 0;
+          Object.keys(res.v2.open || {}).forEach(k => { const f = P2.faces.find(x => String(x.i) === k), runs = res.v2.open[k], g = runs.filter(r => r.ty !== 'd').reduce((t, r) => t + r.len, 0);
+            const keep = f && g >= (Number(f.peri) || 0) * 0.3 ? (drop++, runs.filter(r => r.ty === 'd')) : runs; if (keep.length) op2[k] = keep; });
+          p.drawing.v2 = { faces: P2.faces, open: op2, openDrop: drop, roles: res.roles || {}, analysis: analyzeFrame({ segs: res.longSegs && res.longSegs.length ? res.longSegs : res.plan.segs, faces: P2.faces, texts: res.texts || [], fixtures: res.fixtures || [], doors: res.doorList || [], shapes: true }) }; } catch (e2) { console.warn('探し直した区画の解析に失敗', e2); } }
         sel.clear(); touch(p); draw();
         toast(`区画を ${res.plan.faces.length} 個${cad ? `、器具を ${res.fixtures.filter(x => x.t !== 'other').length} 個` : ''}見つけました`);
       } catch (err) {
@@ -929,9 +951,19 @@ function stepRooms(ctx) {
   body.addEventListener('change', e => {
     if (e.target.matches('[data-reader2]')) {
       /* 入れる：表題欄・表の中の「器具」を「器具ではない」にする（元の種類は r2 に覚える）。外す：元の種類に戻す */
-      const fxs = p.drawing.fixtures || [], outs = (p.drawing.analysis && p.drawing.analysis.fxOut) || [];
-      if (e.target.checked) { p.drawing.reader = 'v2'; outs.forEach(o => { const x = fxs[o.k]; if (x && x.t === o.t && !x.edited) { x.r2 = x.t; x.t = 'other'; } }); }
-      else { delete p.drawing.reader; fxs.forEach(x => { if (x.r2) { if (x.t === 'other') x.t = x.r2; delete x.r2; } }); }
+      const d = p.drawing, fxs = d.fixtures || [], on = e.target.checked;
+      /* 探し直した区画がある図面は、区画ごと入れ替える（今までの区画は v1 に取っておく）。区画が変わるので、この図面から作った部屋のつながりは外す */
+      const swap = on ? !!(d.v2 && !d.v1) : !!d.v1;
+      if (swap && p.rooms.some(r => r.src === 'plan') && !confirm('区画が入れ替わるので、この図面から作った部屋は残りますが、図面とのつながりは外れます。切り替えますか？')) { e.target.checked = !on; return; }
+      if (!on) fxs.forEach(x => { if (x.r2) { if (x.t === 'other') x.t = x.r2; delete x.r2; } });
+      if (swap) {
+        p.rooms.forEach(r => { if (r.src === 'plan') { r.src = 'plan-old'; delete r.faces; } }); sel.clear();
+        if (on) { d.v1 = { faces: d.plan.faces, open: d.open, analysis: d.analysis }; d.plan = { ...d.plan, faces: d.v2.faces }; d.open = d.v2.open; d.analysis = d.v2.analysis; }
+        else { d.v2 = { ...d.v2, faces: d.plan.faces }; d.plan = { ...d.plan, faces: d.v1.faces }; d.open = d.v1.open; d.analysis = d.v1.analysis; delete d.v1; }
+      }
+      const outs = (d.analysis && d.analysis.fxOut) || [];
+      if (on) { p.drawing.reader = 'v2'; outs.forEach(o => { const x = fxs[o.k]; if (x && x.t === o.t && !x.edited) { x.r2 = x.t; x.t = 'other'; } }); }
+      else delete p.drawing.reader;
       touch(p); draw(); return;
     }
     if (e.target.matches('[data-meas-cont]')) { meas.cont = e.target.checked; meas.pts = []; paintSel(); return; }
