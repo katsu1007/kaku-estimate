@@ -78,3 +78,13 @@ export function equipment(texts = [], boxes = []) {
   });
   return out;
 }
+
+/* 器具の種類ごとの品番（表の設備機器から）。水栓・便座などの付属品の行は、本体の品番にしない。見つからなければ '' */
+const FIX_NAME = { toilet: /大便器/, urinal: /小便器/, counter: /洗面/, sink: /手洗/, slop: /^(SK|ＳＫ)|掃除/, bath: /浴槽|ユニットバス/, kitchen: /キッチン/ };
+export function modelFor(type, equip = []) {
+  const re = FIX_NAME[type]; if (!re) return '';
+  const hit = equip.filter(e => e && re.test(e.name) && !/水栓|便座|ウォシュレット|ｳｫｼｭﾚｯﾄ|鏡/.test(e.name));
+  /* 「洗面カウンター」のように長い名前の行を先に（「洗面」だけの行は見出しの一部のことがある） */
+  hit.sort((a, b) => b.name.length - a.name.length);
+  return hit.length ? String(hit[0].model || '').trim() : '';
+}

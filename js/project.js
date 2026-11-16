@@ -4,6 +4,7 @@ import { roomGeom, lineQty, netQty, totals, check, MEASURES, KINDS, isRoomBased,
 import { workChecks } from './workcheck.js';
 import { makerLinks } from './makers.js';
 import { analyzeAll as analyzeFrame } from './reader2/index.js';
+import { modelFor } from './reader2/text.js';
 import { SYS, MANY, sysOptions, rebuild, PIPE_LOSS } from './piping.js';
 import { importDrawing, groupGeom, planCH, orderFaces as orderFacesOf } from './drawing.js';
 import { readWithFixtures, oldFaceLights, roomOpenRuns, FIX_NAMES, FIX_ITEMS, FIX_WORDS } from './legacy.js';
@@ -299,10 +300,13 @@ function fixLinesDialog(p, after) {
     return `<option value="">入れない</option>` + list.map(i => `<option value="${esc(i.id)}" ${i.id === def ? 'selected' : ''}>${esc(i.name)}${i.spec ? ' ' + esc(i.spec) : ''}（${yen(i.price)}）</option>`).join('');
   };
   const skip = (c.unknown || 0) + (c.other || 0);
+  /* 新しい読み取りを選んだ図面で、図面の表（設備機器）に品番が書いてあれば、本体の行の品番に入れる */
+  const eq = (p.drawing && p.drawing.reader === 'v2' && p.drawing.analysis && p.drawing.analysis.equip) || [];
+  const codeOfType = t => modelFor(t, eq);
   const m = modal({
     title: '図面の器具を明細に入れる', wide: true,
     body: `<p class="small muted" style="margin-top:0">種類ごとに、入れる品目と数を確かめてください。前に入れた器具の行は入れ直します。${skip ? `「判定保留」「器具ではない」の ${skip} 個は入れません。` : ''}</p>
-      <div class="grid" style="gap:10px">${types.map(t => `<div class="card" style="padding:12px" data-ft="${t}"><div class="row" style="margin-bottom:8px"><b>${esc(FIX_NAMES[t])}</b><span class="pill info">図面で ${c[t]} 個</span></div>
+      <div class="grid" style="gap:10px">${types.map(t => `<div class="card" style="padding:12px" data-ft="${t}"><div class="row" style="margin-bottom:8px"><b>${esc(FIX_NAMES[t])}</b><span class="pill info">図面で ${c[t]} 個</span>${codeOfType(t) ? `<span class="pill ok">図面の品番 ${esc(codeOfType(t))}</span>` : ''}</div>
         <div class="grid g3"><label class="f">本体<select class="in" data-k="body">${opts2(t, 'mat', FIX_ITEMS[t][0])}</select></label>
         <label class="f">取付の手間<select class="in" data-k="labor">${opts2(t, 'labor', FIX_ITEMS[t][1])}</select></label>
         <label class="f">数<input class="in num" type="number" inputmode="numeric" data-k="n" value="${c[t]}"></label></div></div>`).join('') || '<p class="muted">明細に入れられる器具がありません。</p>'}</div>`,
@@ -318,7 +322,7 @@ function fixLinesDialog(p, after) {
         const id = $(`[data-k=${k}]`, row).value; const it = id && items.find(i => i.id === id); if (!it) return;
         /* ステンレス流しは寸法で作ってもらう物なので、図面の大きさ（長さ×奥行）を規格に書いておく */
         const dim = t === 'trough' && k === 'body' ? [...new Set(fx.filter(x => x.t === t && x.b).map(x => { const a = Math.abs(x.b[2] - x.b[0]), b2 = Math.abs(x.b[3] - x.b[1]); return `長さ${fmt(Math.max(a, b2), 2)}m×奥行${fmt(Math.min(a, b2), 2)}m`; }))].join('・') : '';
-        p.lines.push({ id: uid('l'), itemId: it.id, name: it.name, spec: [it.spec, dim].filter(Boolean).join(' '), unit: it.unit, kind: it.kind, price: it.price || '', cost: '', loss: '', sheet: 0, cat: it.cat, qty: n, basis: null, fromFix: t });
+        p.lines.push({ id: uid('l'), itemId: it.id, name: it.name, spec: [it.spec, dim].filter(Boolean).join(' '), unit: it.unit, kind: it.kind, price: it.price || '', cost: '', loss: '', sheet: 0, cat: it.cat, qty: n, basis: null, fromFix: t, ...(k === 'body' && codeOfType(t) ? { code: codeOfType(t) } : {}) });
         added++;
       });
     });

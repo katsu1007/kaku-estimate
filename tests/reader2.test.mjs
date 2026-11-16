@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { analyze } from '../js/reader2/frame.js';
 import { score } from '../js/reader2/score.js';
-import { joinTexts, classify, equipment, normalizeText } from '../js/reader2/text.js';
+import { joinTexts, classify, equipment, normalizeText, modelFor } from '../js/reader2/text.js';
 import { analyzeAll } from '../js/reader2/index.js';
 
 const rect = (x0, y0, x1, y1) => [[x0, y0, x1, y0], [x1, y0, x1, y1], [x1, y1, x0, y1], [x0, y1, x0, y0]];
@@ -148,4 +148,14 @@ test('まとめ：つないだ文字から区画の名前を提案する。表�
   assert.equal(A.text.joined, 1);
   assert.deepEqual(A.fxOut.map(o => [o.k, o.t]), [[0, 'counter']]);                         // 建物の中の便器はそのまま
   assert.equal(A.regions.filter(r => r.type === 'title').length, 1);
+});
+
+test('図面の設備機器の表から、器具の種類ごとの品番を選ぶ（水栓・便座などの付属品の行は使わない）', () => {
+  const eq = [{ name: '大便器', model: 'CS232B+SH232BA(TOTO)' }, { name: 'ｳｫｼｭﾚｯﾄ', model: 'TCF6624(TOTO)' }, { name: '小便器', model: 'UFH507CR+TEA62ADS(TOTO)' },
+    { name: '洗面', model: 'LS351C #NW1(TOTO)' }, { name: '洗面自動水栓', model: 'REAH03B1RS28SK(TOTO)' }, { name: '洗面カウンター', model: 'MLUA #NM1(TOTO)' }, { name: 'SK', model: 'SK322(TOTO)' }];
+  assert.equal(modelFor('toilet', eq), 'CS232B+SH232BA(TOTO)');
+  assert.equal(modelFor('urinal', eq), 'UFH507CR+TEA62ADS(TOTO)');
+  assert.equal(modelFor('counter', eq), 'MLUA #NM1(TOTO)');
+  assert.equal(modelFor('slop', eq), 'SK322(TOTO)');
+  assert.equal(modelFor('bath', eq), ''); assert.equal(modelFor('toilet', []), '');
 });

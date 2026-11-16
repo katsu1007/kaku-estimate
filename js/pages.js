@@ -215,6 +215,8 @@ registerView('help', async el => {
         <div class="st"><span class="n">5</span><div><b>書類</b><span>見積書・請求書・内訳書を印刷やPDFで出します。Excel にも書き出せます。見積書を出すたびに版が残り、前の版と比べられます。</span></div></div>
       </div></div>
     <div class="card"><h2>はじめにお読みください</h2><div class="sub">最初に起動した時に出した注意書きです。</div>${NOTICE_HTML}</div>
+    <div class="card"><h2>オープンソースのライセンス</h2><div class="sub">KAKU は、次のオープンソースの部品を使っています。それぞれの著作権の表示と許諾の条件は、ボタンで見られます。</div>
+      <div class="row"><button class="btn sm" data-lic="./vendor/pdfjs/LICENSE" data-lic-name="PDF.js（PDF を読む。Apache License 2.0）">PDF.js</button><button class="btn sm" data-lic="./vendor/three/LICENSE" data-lic-name="three.js（3D の表示。MIT License）">three.js</button></div></div>
     <div class="card"><h2>よくある質問</h2>
       <p><b>PDFにするには？</b><br><span class="muted">見積書を出すと印刷の画面が出ます。iPhone は印刷の画面で共有ボタン →「ファイルに保存」。パソコンは送信先を「PDFに保存」にしてください。</span></p>
       <p><b>図面を読み込むには？</b><br><span class="muted">案件の「②部屋」で「図面を選ぶ」を押して、JWW・DXF・PDFを選んでください。区画をタップして「1部屋にする」で部屋になります。図面の上の「器具を直す」「壁の解体」「カッター」「照明・配線」「測る」で拾い、「3Dで見る」で確かめられます。</span></p>
@@ -231,6 +233,12 @@ registerView('help', async el => {
       <p><b>データはどこに保存されますか？</b><br><span class="muted">この端末の中です。別の端末とは共有されません。設定 → バックアップで書き出して、別の端末で「戻す」と移せます。</span></p>
       <p style="margin-bottom:0"><b>数量が思ったより多い</b><br><span class="muted">材料はロス率（最初は10%）を足して切り上げています。行の「くわしく」で行ごとに、設定で全体のロス率を変えられます。</span></p></div>
   </div>`;
+  el.addEventListener('click', async e => {
+    const b = e.target.closest('[data-lic]'); if (!b) return;
+    let text = '';
+    try { const r = await fetch(b.dataset.lic); if (!r.ok) throw new Error(String(r.status)); text = await r.text(); } catch (err) { text = 'ライセンスの文を読み込めませんでした（' + err.message + '）。'; }
+    modal({ title: b.dataset.licName, wide: true, body: `<pre style="white-space:pre-wrap;font-size:12px;line-height:1.5;margin:0;max-height:60vh;overflow:auto">${esc(text)}</pre>`, foot: '<button class="btn primary" data-close>閉じる</button>' });
+  });
 });
 
 
